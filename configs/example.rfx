@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "metadata": {
+    "name": "Example Login Config",
+    "author": "reqflow",
+    "created": "2026-02-15T00:00:00Z",
+    "modified": "2026-02-15T00:00:00Z"
+  },
+  "pipeline": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "Example Login Config",
+    "author": "reqflow",
+    "created": "2026-02-15T00:00:00Z",
+    "modified": "2026-02-15T00:00:00Z",
+    "blocks": [
+      {
+        "id": "10000000-0000-0000-0000-000000000001",
+        "block_type": "HttpRequest",
+        "label": "Login Request",
+        "disabled": false,
+        "safe_mode": false,
+        "settings": {
+          "type": "HttpRequest",
+          "method": "POST",
+          "url": "https://httpbin.org/post",
+          "headers": [
+            ["Content-Type", "application/json"],
+            ["Accept", "application/json"]
+          ],
+          "body": "{\"email\":\"<input.USER>\",\"password\":\"<input.PASS>\"}",
+          "body_type": "Raw",
+          "content_type": "application/json",
+          "follow_redirects": true,
+          "max_redirects": 8,
+          "timeout_ms": 10000,
+          "auto_redirect": true,
+          "basic_auth": null
+        }
+      },
+      {
+        "id": "10000000-0000-0000-0000-000000000002",
+        "block_type": "ParseJSON",
+        "label": "Extract Data",
+        "disabled": false,
+        "safe_mode": false,
+        "settings": {
+          "type": "ParseJSON",
+          "json_path": "json.email",
+          "output_var": "EMAIL",
+          "capture": true
+        }
+      },
+      {
+        "id": "10000000-0000-0000-0000-000000000003",
+        "block_type": "KeyCheck",
+        "label": "Check Status",
+        "disabled": false,
+        "safe_mode": false,
+        "settings": {
+          "type": "KeyCheck",
+          "keychains": [
+            {
+              "result": "Success",
+              "conditions": [
+                {
+                  "source": "data.RESPONSECODE",
+                  "comparison": "EqualTo",
+                  "value": "200"
+                }
+              ]
+            },
+            {
+              "result": "Fail",
+              "conditions": [
+                {
+                  "source": "data.RESPONSECODE",
+                  "comparison": "EqualTo",
+                  "value": "401"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "startup_blocks": [],
+    "data_settings": {
+      "wordlist_type": "Credentials",
+      "separator": ":",
+      "slices": ["USER", "PASS"]
+    },
+    "proxy_settings": {
+      "proxy_mode": "None",
+      "proxy_sources": [],
+      "ban_duration_secs": 300,
+      "max_retries_before_ban": 3
+    },
+    "browser_settings": {
+      "browser": "chrome",
+      "ja3": null,
+      "http2_fingerprint": null,
+      "user_agent": null
+    }
+  }
+}

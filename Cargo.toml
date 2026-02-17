@@ -1,0 +1,50 @@
+[package]
+name = "reqflow"
+version = "0.1.0"
+edition = "2021"
+description = "Pipelined request automation & script builder"
+
+[dependencies]
+tao = "0.34.5"
+wry = "0.54.1"
+rfd = "0.17.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util"] }
+thiserror = "2"
+include_dir = "0.7"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+base64 = "0.22"
+rand = "0.8"
+sha1 = "0.10"
+sha2 = "0.10"
+md-5 = "0.10"
+hmac = "0.12"
+raw-window-handle = "0.6"
+reqwest = { version = "0.12", features = ["cookies", "gzip", "deflate", "brotli"] }
+chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
+futures = "0.3"
+crc32fast = "1"
+csv = "1"
+rusty-tesseract = "1"
+libloading = "0.8"
+scraper = "0.22"
+sxd-document = "0.3"
+sxd-xpath = "0.4"
+native-tls = "0.2"
+tokio-native-tls = "0.3"
+bcrypt = "0.16"
+aes-gcm = "0.10"
+zip = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Foundation"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "reqflow"
+path = "src/main.rs"
