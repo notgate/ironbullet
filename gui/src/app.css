@@ -1,0 +1,558 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-border-light: var(--border-light);
+	--color-border-dark: var(--border-dark);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-surface: var(--surface);
+	--color-surface2: var(--surface2);
+	--color-dim: var(--dim);
+	--color-green: var(--green);
+	--color-red: var(--red);
+	--color-blue: var(--blue);
+	--color-orange: var(--orange);
+	--color-purple: var(--purple);
+	--color-yellow: var(--yellow);
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+	--font-sans: var(--font-family), system-ui, sans-serif;
+	--font-mono: 'Cascadia Code', Consolas, 'Courier New', monospace;
+}
+
+:root {
+	--radius: 0.25rem;
+	--font-family: 'Segoe UI';
+	--background: #1a1a1d;
+	--foreground: #cccccc;
+	--card: #28282c;
+	--card-foreground: #cccccc;
+	--popover: #2d2d2d;
+	--popover-foreground: #cccccc;
+	--primary: #0078d4;
+	--primary-foreground: #ffffff;
+	--secondary: #3c3c3c;
+	--secondary-foreground: #cccccc;
+	--muted: #2d2d2d;
+	--muted-foreground: #858585;
+	--accent: #264f78;
+	--accent-foreground: #ffffff;
+	--destructive: #c42b1c;
+	--destructive-foreground: #ffffff;
+	--border: #3e3e44;
+	--border-light: #4a4a52;
+	--border-dark: #1e1e22;
+	--input: #2e2e33;
+	--ring: #0078d4;
+	--surface: #222225;
+	--surface2: #2d2d2d;
+	--dim: #858585;
+	--green: #4ec9b0;
+	--red: #c42b1c;
+	--blue: #0078d4;
+	--orange: #d7ba7d;
+	--purple: #c586c0;
+	--yellow: #dcdcaa;
+
+	/* Skeuomorphic depth tokens */
+	--panel-inset: inset 0 1px 3px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(0,0,0,0.15);
+	--panel-raised: 0 1px 0 rgba(255,255,255,0.04), inset 0 -1px 0 rgba(0,0,0,0.3);
+	--btn-raised: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 2px rgba(0,0,0,0.4);
+	--btn-pressed: inset 0 1px 3px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(0,0,0,0.2);
+}
+
+html {
+	height: 100%;
+	background: var(--background);
+}
+
+body {
+	background: var(--background);
+	color: var(--foreground);
+	font-family: var(--font-family, 'Segoe UI'), system-ui, sans-serif;
+	font-size: var(--font-size, 13px);
+	height: 100%;
+	overflow: hidden;
+	user-select: none;
+	margin: 0;
+}
+
+/* ===== Mechanical Scrollbars ===== */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track {
+	background: var(--background);
+	box-shadow: inset 0 0 4px rgba(0,0,0,0.4);
+	border: 1px solid var(--border-dark);
+}
+::-webkit-scrollbar-thumb {
+	background: linear-gradient(to right, #3a3a42, #44444c, #3a3a42);
+	border: 1px solid var(--border-dark);
+	border-top-color: var(--border-light);
+	border-left-color: var(--border-light);
+	border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: linear-gradient(to right, #48484f, #52525a, #48484f);
+}
+::-webkit-scrollbar-corner { background: var(--background); }
+
+/* ===== Animations ===== */
+@keyframes fadeSlideIn {
+	from { opacity: 0; transform: translateY(6px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+@keyframes dropPulse {
+	0%, 100% { border-color: var(--primary); opacity: 0.7; }
+	50% { border-color: var(--primary); opacity: 1; }
+}
+
+/* ===== Block category colors ===== */
+.block-request { border-left: 2px solid var(--blue); }
+.block-parse { border-left: 2px solid var(--green); }
+.block-check { border-left: 2px solid var(--orange); }
+.block-function { border-left: 2px solid var(--purple); }
+.block-control { border-left: 2px solid var(--yellow); }
+.block-utility { border-left: 2px solid var(--dim); }
+.block-bypass { border-left: 2px solid var(--orange); }
+.block-browser { border-left: 2px solid var(--red); }
+.block-sensor { border-left: 2px solid #2dd4bf; }
+
+/* ===== Zoom container ===== */
+.app-zoom-container {
+	zoom: var(--app-zoom, 1);
+}
+
+/* Zoom for portaled dialog content only (not overlays — they're just backdrops) */
+[data-slot="dialog-content"],
+[data-slot="alert-dialog-content"] {
+	zoom: var(--app-zoom, 1);
+}
+
+/* Keep dialog overlays below the fixed title bar (28px unzoomed) */
+[data-slot="dialog-overlay"],
+[data-slot="alert-dialog-overlay"] {
+	top: 28px !important;
+}
+
+/* ===== Panel depth classes ===== */
+.panel-inset {
+	box-shadow: var(--panel-inset);
+	background: var(--background);
+}
+
+.panel-raised {
+	box-shadow: var(--panel-raised);
+	border-bottom: 1px solid var(--border-dark);
+}
+
+/* ===== Groove separators ===== */
+.groove-v {
+	background: var(--border-dark);
+	border-left: 1px solid var(--border-dark);
+	border-right: 1px solid var(--border-light);
+}
+
+.groove-h {
+	background: var(--border-dark);
+	border-top: 1px solid var(--border-dark);
+	border-bottom: 1px solid var(--border-light);
+}
+
+/* ===== Resize handles ===== */
+.resize-handle {
+	position: relative;
+	z-index: 10;
+	cursor: col-resize;
+	transition: box-shadow 0.15s;
+}
+.resize-handle:hover,
+.resize-handle:active {
+	box-shadow: 0 0 6px rgba(0, 120, 212, 0.35);
+}
+
+.resize-handle-h {
+	position: relative;
+	z-index: 10;
+	cursor: row-resize;
+	transition: box-shadow 0.15s;
+}
+.resize-handle-h:hover,
+.resize-handle-h:active {
+	box-shadow: 0 0 6px rgba(0, 120, 212, 0.35);
+}
+
+/* ===== Skeuomorphic Form Controls ===== */
+.skeu-input {
+	background: var(--input);
+	border: 1px solid var(--border);
+	border-top-color: var(--border-dark);
+	border-left-color: var(--border-dark);
+	border-bottom-color: var(--border-light);
+	border-right-color: var(--border-light);
+	border-radius: var(--radius);
+	box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+	color: var(--foreground);
+	font-size: 11px;
+	padding: 2px 6px;
+	outline: none;
+	transition: border-color 0.15s, box-shadow 0.15s;
+}
+.skeu-input:focus {
+	border-color: var(--primary);
+	box-shadow: inset 0 1px 2px rgba(0,0,0,0.3), 0 0 0 1px rgba(0, 120, 212, 0.25);
+}
+.skeu-input::placeholder {
+	color: var(--muted-foreground);
+}
+
+.skeu-select {
+	background: linear-gradient(to bottom, #333338, #2a2a2f);
+	border: 1px solid var(--border);
+	border-top-color: var(--border-light);
+	border-left-color: var(--border-light);
+	border-bottom-color: var(--border-dark);
+	border-right-color: var(--border-dark);
+	border-radius: var(--radius);
+	box-shadow: var(--btn-raised);
+	color: var(--foreground);
+	font-size: 11px;
+	padding: 2px 6px;
+	outline: none;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+.skeu-select:hover {
+	background: linear-gradient(to bottom, #3a3a3f, #313136);
+}
+.skeu-select:active {
+	box-shadow: var(--btn-pressed);
+	background: linear-gradient(to bottom, #28282d, #2e2e33);
+}
+
+.skeu-checkbox {
+	appearance: none;
+	-webkit-appearance: none;
+	width: 14px;
+	height: 14px;
+	border: 1px solid var(--border);
+	border-top-color: var(--border-dark);
+	border-left-color: var(--border-dark);
+	border-bottom-color: var(--border-light);
+	border-right-color: var(--border-light);
+	border-radius: 2px;
+	background: var(--input);
+	box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+	cursor: pointer;
+	position: relative;
+	vertical-align: middle;
+	flex-shrink: 0;
+	transition: background 0.15s, border-color 0.15s;
+}
+.skeu-checkbox:checked {
+	background: var(--primary);
+	border-color: var(--primary);
+	box-shadow: inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.skeu-checkbox:checked::after {
+	content: '';
+	position: absolute;
+	left: 3px;
+	top: 0px;
+	width: 5px;
+	height: 9px;
+	border: solid white;
+	border-width: 0 1.5px 1.5px 0;
+	transform: rotate(45deg);
+}
+
+.skeu-btn {
+	background: linear-gradient(to bottom, #333338, #2a2a2f);
+	border: 1px solid var(--border);
+	border-top-color: var(--border-light);
+	border-left-color: var(--border-light);
+	border-bottom-color: var(--border-dark);
+	border-right-color: var(--border-dark);
+	border-radius: var(--radius);
+	box-shadow: var(--btn-raised);
+	color: var(--foreground);
+	font-size: 11px;
+	padding: 2px 8px;
+	cursor: pointer;
+	transition: background 0.12s, box-shadow 0.12s, transform 0.08s;
+}
+.skeu-btn:hover {
+	background: linear-gradient(to bottom, #3a3a3f, #313136);
+}
+.skeu-btn:active {
+	box-shadow: var(--btn-pressed);
+	transform: scale(0.97);
+	background: linear-gradient(to bottom, #28282d, #2e2e33);
+}
+
+/* ===== Micro-interaction utility classes ===== */
+.hover-lift {
+	transition: transform 0.15s, box-shadow 0.15s;
+}
+.hover-lift:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+}
+
+.press-sink:active {
+	transform: scale(0.97) !important;
+}
+
+.fade-slide-in {
+	animation: fadeSlideIn 0.2s ease-out;
+}
+
+/* ===== Dark dropdown option styling (native fallback) ===== */
+.skeu-select option,
+select option {
+	background: #2a2a2f;
+	color: var(--foreground);
+	padding: 4px 8px;
+}
+.skeu-select option:checked,
+select option:checked {
+	background: var(--primary);
+	color: white;
+}
+.skeu-select option:hover,
+select option:hover {
+	background: var(--accent);
+}
+
+/* ===== Custom Select (bits-ui) ===== */
+.skeu-select-trigger {
+	background: linear-gradient(to bottom, #333338, #2a2a2f);
+	border: 1px solid var(--border);
+	border-top-color: var(--border-light);
+	border-left-color: var(--border-light);
+	border-bottom-color: var(--border-dark);
+	border-right-color: var(--border-dark);
+	border-radius: var(--radius);
+	box-shadow: var(--btn-raised);
+	color: var(--foreground);
+	font-size: inherit;
+	padding: 2px 6px;
+	outline: none;
+	cursor: pointer;
+	transition: background 0.15s;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	white-space: nowrap;
+	height: auto;
+	min-height: 0;
+	line-height: 1.4;
+}
+.skeu-select-trigger:hover {
+	background: linear-gradient(to bottom, #3a3a3f, #313136);
+}
+.skeu-select-trigger[data-state="open"] {
+	box-shadow: var(--btn-pressed);
+	background: linear-gradient(to bottom, #28282d, #2e2e33);
+}
+
+.skeu-select-content {
+	background: linear-gradient(to bottom, #2e2e33, #28282c);
+	border: 1px solid var(--border);
+	border-top-color: var(--border-light);
+	border-left-color: var(--border-light);
+	border-bottom-color: var(--border-dark);
+	border-right-color: var(--border-dark);
+	box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3);
+	border-radius: var(--radius);
+	font-family: var(--font-family, 'Segoe UI'), system-ui, sans-serif;
+	font-size: inherit;
+	zoom: var(--app-zoom, 1);
+}
+
+.skeu-select-item {
+	font-size: inherit;
+	padding: 3px 24px 3px 8px;
+	border-radius: 2px;
+	cursor: default;
+	outline: none;
+	transition: background 0.08s;
+}
+.skeu-select-item[data-highlighted] {
+	background: var(--accent);
+	color: var(--accent-foreground);
+}
+
+/* ===== bits-ui Menu Content (shared by DropdownMenu & ContextMenu) ===== */
+.menu-content {
+	background: linear-gradient(to bottom, #2e2e33, #28282c);
+	border: 1px solid var(--border);
+	border-top-color: var(--border-light);
+	border-left-color: var(--border-light);
+	border-bottom-color: var(--border-dark);
+	border-right-color: var(--border-dark);
+	box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3);
+	border-radius: var(--radius);
+	padding: 3px;
+	min-width: 160px;
+	z-index: 50;
+	zoom: var(--app-zoom, 1);
+}
+
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 8px;
+	font-size: 10px;
+	color: var(--foreground);
+	border-radius: 2px;
+	cursor: default;
+	outline: none;
+	user-select: none;
+	transition: background 0.08s;
+}
+.menu-item:hover,
+.menu-item[data-highlighted] {
+	background: var(--accent);
+	color: var(--accent-foreground);
+}
+.menu-item:disabled,
+.menu-item[data-disabled] {
+	opacity: 0.4;
+	pointer-events: none;
+}
+.menu-item-danger:hover,
+.menu-item-danger[data-highlighted] {
+	background: var(--destructive);
+	color: var(--destructive-foreground);
+}
+
+.menu-sep {
+	height: 1px;
+	background: var(--border);
+	margin: 3px 4px;
+}
+
+/* ===== bits-ui Tabs styling ===== */
+.tab-trigger {
+	padding: 3px 8px;
+	font-size: 10px;
+	color: var(--muted-foreground);
+	background: transparent;
+	border: none;
+	border-radius: 0;
+	cursor: pointer;
+	transition: color 0.12s;
+	box-shadow: none;
+	outline: none;
+}
+.tab-trigger:hover {
+	color: var(--foreground);
+}
+.tab-trigger[data-state="active"] {
+	color: var(--foreground);
+}
+
+/* ===== Toolbar menu button (for DropdownMenu triggers) ===== */
+.toolbar-trigger {
+	padding: 1px 6px;
+	font-size: 10px;
+	color: var(--muted-foreground);
+	border-radius: var(--radius);
+	cursor: pointer;
+	background: transparent;
+	border: 1px solid transparent;
+	transition: background 0.1s, color 0.1s;
+	outline: none;
+}
+.toolbar-trigger:hover,
+.toolbar-trigger[data-state="open"] {
+	color: var(--foreground);
+	background: rgba(255,255,255,0.05);
+	border-color: var(--border);
+}
+
+/* ===== Menu shortcut text ===== */
+.menu-shortcut {
+	margin-left: auto;
+	font-size: 9px;
+	color: var(--muted-foreground);
+}
+
+/* ===== Range input styling ===== */
+input[type="range"] {
+	-webkit-appearance: none;
+	appearance: none;
+	height: 4px;
+	background: var(--input);
+	border-radius: 2px;
+	box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+	outline: none;
+	cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: linear-gradient(to bottom, #555, #3a3a3f);
+	border: 1px solid var(--border);
+	border-top-color: var(--border-light);
+	border-left-color: var(--border-light);
+	border-bottom-color: var(--border-dark);
+	border-right-color: var(--border-dark);
+	box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+	cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+	background: linear-gradient(to bottom, #666, #484850);
+}
+input[type="range"]::-webkit-slider-thumb:active {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+
+/* ===== Slide-in panel ===== */
+@keyframes slideInRight {
+	from { transform: translateX(100%); opacity: 0.7; }
+	to { transform: translateX(0); opacity: 1; }
+}
+.slide-in-right { animation: slideInRight 0.2s ease-out; }
+
+/* ===== Drop zone indicators ===== */
+.drop-zone {
+	height: 4px;
+	border-radius: 2px;
+	transition: height 0.15s, background-color 0.15s;
+	margin: 0 4px;
+}
+.drop-zone.active {
+	height: 6px;
+	background-color: var(--primary);
+	animation: dropPulse 1s ease-in-out infinite;
+}

