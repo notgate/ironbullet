@@ -1,7 +1,7 @@
 <script lang="ts">
 	import BlockRenderer from './BlockRenderer.svelte';
 	import type { Block } from '$lib/types';
-	import { pushUndo } from '$lib/state.svelte';
+	import { app, pushUndo } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
 
 	let { blocks, depth = 0, parentId = '', branch = '' }: { blocks: Block[]; depth?: number; parentId?: string; branch?: string } = $props();
@@ -88,7 +88,7 @@
 	{#each blocks as block, i (block.id)}
 		<BlockRenderer {block} index={i} />
 
-		{#if block.settings.type === 'IfElse'}
+		{#if block.settings.type === 'IfElse' && !app.collapsedBlockIds.has(block.id)}
 			<div class="ml-4 border-l-2 border-[#dcdcaa]/30 pl-2 my-0.5" style="margin-left: {depth > 0 ? '0.5rem' : '1rem'}">
 				<div class="text-[9px] text-green-400/70 uppercase tracking-wider mb-0.5 pl-1">If True</div>
 				<svelte:self blocks={block.settings.true_blocks} depth={depth + 1} parentId={block.id} branch="true" />
@@ -97,14 +97,14 @@
 			</div>
 		{/if}
 
-		{#if block.settings.type === 'Loop'}
+		{#if block.settings.type === 'Loop' && !app.collapsedBlockIds.has(block.id)}
 			<div class="ml-4 border-l-2 border-[#dcdcaa]/30 pl-2 my-0.5" style="margin-left: {depth > 0 ? '0.5rem' : '1rem'}">
 				<div class="text-[9px] text-blue-400/70 uppercase tracking-wider mb-0.5 pl-1">Loop Body</div>
 				<svelte:self blocks={block.settings.blocks} depth={depth + 1} parentId={block.id} branch="body" />
 			</div>
 		{/if}
 
-		{#if block.settings.type === 'Group' && !block.settings.collapsed}
+		{#if block.settings.type === 'Group' && !app.collapsedBlockIds.has(block.id) && !block.settings.collapsed}
 			<div class="ml-4 border-l-2 border-[#858585]/30 pl-2 my-0.5" style="margin-left: {depth > 0 ? '0.5rem' : '1rem'}">
 				<svelte:self blocks={block.settings.blocks} depth={depth + 1} parentId={block.id} branch="body" />
 			</div>

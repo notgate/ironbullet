@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { BLOCK_CATALOG, type BlockType, type BlockMeta } from '$lib/types';
 	import { send } from '$lib/ipc';
-	import { app } from '$lib/state.svelte';
+	import { app, pushUndo, deleteBlockTemplate } from '$lib/state.svelte';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Bookmark from '@lucide/svelte/icons/bookmark';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Scissors from '@lucide/svelte/icons/scissors';
 	import Braces from '@lucide/svelte/icons/braces';
@@ -43,6 +45,14 @@
 	import Send from '@lucide/svelte/icons/send';
 	import Inbox from '@lucide/svelte/icons/inbox';
 	import Calendar from '@lucide/svelte/icons/calendar';
+	import FileType from '@lucide/svelte/icons/file-type';
+	import Database from '@lucide/svelte/icons/database';
+	import BookOpen from '@lucide/svelte/icons/book-open';
+	import Calculator from '@lucide/svelte/icons/calculator';
+	import Hash from '@lucide/svelte/icons/hash';
+	import Fingerprint from '@lucide/svelte/icons/fingerprint';
+	import Phone from '@lucide/svelte/icons/phone';
+	import Workflow from '@lucide/svelte/icons/workflow';
 	import type { Component } from 'svelte';
 
 	const ICON_MAP: Record<string, Component<any>> = {
@@ -87,6 +97,14 @@
 		'send': Send,
 		'inbox': Inbox,
 		'calendar': Calendar,
+		'file-type': FileType,
+		'database': Database,
+		'book-open': BookOpen,
+		'calculator': Calculator,
+		'hash': Hash,
+		'fingerprint': Fingerprint,
+		'phone': Phone,
+		'workflow': Workflow,
 	};
 
 	// Category colors for the expander header accent
@@ -103,7 +121,7 @@
 	};
 
 	let searchFilter = $state('');
-	let expandedCategories = $state<Set<string>>(new Set(['Requests', 'Parsing', 'Checks', 'Functions', 'Control', 'Browser', 'Utilities']));
+	let expandedCategories = $state<Set<string>>(new Set(['Requests', 'Parsing', 'Checks', 'Functions', 'Control', 'Browser', 'Utilities', 'Bypass', 'Sensors']));
 
 	const categories = $derived(() => {
 		const cats = new Map<string, BlockMeta[]>();
@@ -230,5 +248,39 @@
 				{/if}
 			</div>
 		{/each}
+
+		<!-- Templates section -->
+		{#if app.blockTemplates.length > 0}
+			<div class="mt-2 pt-1 border-t border-border/30">
+				<div class="flex items-center gap-1.5 px-1.5 py-1">
+					<Bookmark size={11} class="text-muted-foreground" />
+					<span class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex-1">Templates</span>
+					<span class="text-[9px] text-muted-foreground/50 font-mono">{app.blockTemplates.length}</span>
+				</div>
+				<div class="ml-2 border-l border-border/30 pl-0.5">
+					{#each app.blockTemplates as template, ti}
+						<div class="group/tpl flex items-center gap-2 px-1.5 py-0.5 mx-0.5 rounded hover:bg-accent/30 text-xs text-foreground">
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								class="flex-1 flex items-center gap-2 cursor-pointer"
+								ondblclick={() => { pushUndo(); send('paste_blocks', { blocks: JSON.parse(JSON.stringify(template.blocks)) }); }}
+								title="Double-click to insert {template.blocks.length} block{template.blocks.length !== 1 ? 's' : ''}"
+							>
+								<Bookmark size={10} class="text-primary/60 shrink-0" />
+								<span class="truncate">{template.name}</span>
+								<span class="text-[9px] text-muted-foreground/50">{template.blocks.length}b</span>
+							</div>
+							<button
+								class="p-0.5 rounded opacity-0 group-hover/tpl:opacity-100 hover:bg-destructive/20 text-muted-foreground hover:text-red transition-opacity"
+								onclick={() => deleteBlockTemplate(ti)}
+								title="Delete template"
+							>
+								<Trash2 size={10} />
+							</button>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
 	</div>
 </div>

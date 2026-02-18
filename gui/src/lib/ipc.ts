@@ -1,9 +1,10 @@
-import { app, loadPipelineIntoTab, markTabSaved, openInNewTab } from './state.svelte';
+import { app, loadPipelineIntoTab, markTabSaved, openInNewTab, takePipelineSnapshot } from './state.svelte';
 import { toast } from './toast.svelte';
 
 const MUTATION_CMDS = new Set([
 	'add_block', 'remove_block', 'move_block', 'add_block_nested',
 	'move_block_to_nested', 'update_block', 'remove_blocks', 'toggle_blocks', 'paste_blocks',
+	'move_blocks_to', 'group_blocks',
 ]);
 
 export function send(cmd: string, data: Record<string, unknown> = {}) {
@@ -71,6 +72,7 @@ export function registerCallbacks() {
 					if (loadedPath) {
 						// File load — open in new tab with full pipeline
 						openInNewTab(raw, loadedPath);
+						setTimeout(takePipelineSnapshot, 50);
 					} else if (tabId) {
 						// Mutation response — only update blocks, preserve name/settings
 						if (tabId === app.activeTabId) {
@@ -96,6 +98,7 @@ export function registerCallbacks() {
 						if (raw._security_issues !== undefined) delete raw._security_issues;
 						loadPipelineIntoTab(raw);
 						app.pipeline = raw;
+						setTimeout(takePipelineSnapshot, 50);
 						if (importWarnings && importWarnings.length > 0) {
 							toast(`Import completed with notes: ${importWarnings.join('; ')}`, 'warning');
 						}
@@ -125,6 +128,7 @@ export function registerCallbacks() {
 					const savedPath = (resp.data as any)?.path || '';
 					app.statusText = `Config saved: ${savedPath}`;
 					markTabSaved(savedPath || undefined);
+					takePipelineSnapshot();
 					toast('Config saved', 'success');
 				} else {
 					app.statusText = `Save error: ${resp.error}`;
@@ -246,6 +250,39 @@ export function registerCallbacks() {
 					toast(`Plugin saved to: ${(resp.data as any).dir}`, 'success');
 				}
 				break;
+			case 'update_check_result':
+				app.updateChecking = false;
+				if (resp.data) {
+					const ud = resp.data as any;
+					app.updateAvailable = ud.has_update || false;
+					app.updateLatestVersion = ud.latest_version || '';
+					app.updateCurrentVersion = ud.current_version || '0.1.0';
+					app.updateReleaseNotes = ud.release_notes || '';
+					app.updateDownloadUrl = ud.download_url || '';
+					app.updatePublishedAt = ud.published_at || '';
+					if (ud.has_update) {
+						app.showUpdateDialog = true;
+					}
+				}
+				break;
+			case 'update_progress':
+				if (resp.data) {
+					app.updateProgress = (resp.data as any).percent || 0;
+				}
+				break;
+			case 'probe_result':
+				// Handled by registered callback in FingerprintDialog
+				break;
+			case 'update_download_result':
+				if (resp.success) {
+					app.updateInstalling = false;
+					app.updateComplete = true;
+					toast('Update installed — restart to apply', 'success');
+				} else {
+					app.updateInstalling = false;
+					toast(`Update failed: ${resp.error}`, 'error');
+				}
+				break;
 		}
 
 		// Generic error toast for any failed command
@@ -264,4 +301,7 @@ export function registerCallbacks() {
 	send('get_pipeline');
 	send('get_recent_configs');
 	send('get_plugin_blocks');
+
+	// Auto-check for updates after a short delay
+	setTimeout(() => send('check_for_updates'), 3000);
 }

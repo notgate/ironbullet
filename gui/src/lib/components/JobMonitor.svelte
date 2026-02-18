@@ -10,8 +10,188 @@
 	import Square from '@lucide/svelte/icons/square';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import HelpCircle from '@lucide/svelte/icons/help-circle';
+	import HelpModal from './HelpModal.svelte';
 
 	let showNewJob = $state(false);
+	let showHelp = $state(false);
+
+	const helpSections = [
+		{
+			heading: 'What are Jobs?',
+			content: `Jobs are pipeline execution instances that process data at scale. Each job:
+
+- Runs your configured pipeline against a data source
+- Uses multiple threads for parallel execution
+- Tracks real-time statistics (CPM, hits, progress, errors)
+- Operates independently with its own lifecycle and thread pool
+
+Architecture: Pipeline + Data Source + Thread Pool = Automated Job Processing`
+		},
+		{
+			heading: 'Creating a Job',
+			content: `Prerequisite: Debug your pipeline first (F5 or Debug panel)
+
+Job creation workflow:
+
+1. Click "New Job" button
+
+2. Configure job parameters:
+   Name
+     Descriptive identifier (e.g., "Gmail Check", "Site Login Test")
+
+   Threads
+     1-1000 parallel executions
+     Recommendation: Start low (10-50), increase based on performance
+
+3. Select data source:
+
+   File
+     Full path to wordlist or CSV file
+     Example: C:\\data\\combo.txt
+     Format: One entry per line (user:pass)
+
+   Inline
+     Paste data directly into text area
+     Format: One entry per line
+     Example:
+       user1:pass1
+       user2:pass2
+       user3:pass3
+
+4. Set start condition:
+
+   Immediate
+     Begins processing immediately after creation
+
+   Delayed
+     Waits specified seconds before auto-starting
+
+5. Click "Create Job"
+
+Job appears in table below with "Queued" state`
+		},
+		{
+			heading: 'Job Controls',
+			content: `Action buttons (rightmost column):
+
+Play (Green)
+  Available: Queued or Waiting states
+  Action: Start processing data
+  Effect: Changes state to Running
+
+Pause (Orange)
+  Available: Running state
+  Action: Temporarily halt processing
+  Effect: Changes state to Paused
+  Note: Preserves position, can resume later
+
+Resume (Green)
+  Available: Paused state
+  Action: Continue from paused position
+  Effect: Changes state to Running
+  Note: Maintains all statistics and progress
+
+Stop (Red)
+  Available: Running or Paused states
+  Action: Permanently terminate job
+  Effect: Changes state to Stopped
+  Warning: Cannot resume after stopping
+
+Delete (Gray)
+  Available: Any state except Running
+  Action: Remove job from list
+  Warning: Permanently deletes all job data`
+		},
+		{
+			heading: 'Job Lifecycle States',
+			content: `State transitions:
+
+Queued → Running → Completed
+   ↓         ↓
+Waiting   Paused → Stopped
+
+State definitions:
+
+Queued (Gray indicator)
+  Initial state after creation
+  No processing has started
+  Action required: Click Play to begin
+
+Waiting (Yellow indicator)
+  Delayed start countdown active
+  Will auto-transition to Running when timer expires
+  Can be started manually via Play button
+
+Running (Green indicator)
+  Actively processing data entries
+  Statistics updating in real-time
+  Thread pool executing pipeline iterations
+
+Paused (Orange indicator)
+  Temporarily suspended
+  Progress and statistics preserved
+  Can be resumed or stopped
+
+Completed (Blue indicator)
+  All data processed successfully
+  Final statistics available
+  No further actions possible
+
+Stopped (Red indicator)
+  Manually terminated before completion
+  Partial results available
+  Cannot be resumed`
+		},
+		{
+			heading: 'Statistics and Metrics',
+			content: `Real-time metrics (updated every second):
+
+Progress Bar
+  Visual representation: 0% to 100%
+  Calculation: (Processed / Total) * 100
+
+Processed / Total
+  Example: 1,250 / 10,000
+  Interpretation: 1,250 entries completed out of 10,000 total
+
+CPM (Checks Per Minute)
+  Execution throughput metric
+  Formula: (Processed / Elapsed Minutes)
+  Factors affecting CPM:
+    - Thread count
+    - Server response time
+    - Network latency
+    - Block delay settings
+
+Hits
+  Count of successful results
+  Based on KeyCheck block SUCCESS conditions
+  Examples: Valid credentials, successful logins, matches found
+
+Time Elapsed
+  Format: MM:SS or HH:MM:SS
+  Total job runtime including paused duration
+  Does not reset on pause/resume
+
+Performance optimization:
+
+Thread tuning
+  Start: 10-50 threads to baseline server behavior
+  Monitor: CPM and error rate
+  Adjust: Increase if CPM stable, decrease if errors spike
+
+Rate limiting
+  Symptom: CPM decreases as threads increase
+  Cause: Server-side rate limiting or connection pooling
+  Solution: Reduce threads, add delays between requests
+
+Error handling
+  High ban rate: Reduce threads, increase delays
+  High fail rate: Verify pipeline logic in debug mode
+  High retry rate: Check proxy quality and network stability`
+		},
+	];
 	let newJobName = $state('');
 	let newJobThreads = $state(100);
 	let newJobDataSource = $state('');
@@ -91,6 +271,13 @@
 			onclick={refreshJobs}
 		><RefreshCw size={11} />Refresh</button>
 		<div class="flex-1"></div>
+		<button
+			class="p-1 rounded hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"
+			onclick={() => { showHelp = true; }}
+			title="Help & Documentation"
+		>
+			<HelpCircle size={14} />
+		</button>
 		<span class="text-[10px] text-muted-foreground">{app.jobs.length} job{app.jobs.length !== 1 ? 's' : ''}</span>
 	</div>
 
@@ -210,3 +397,5 @@
 		{/if}
 	</div>
 </div>
+
+<HelpModal bind:open={showHelp} title="Jobs & Runner Guide" sections={helpSections} />

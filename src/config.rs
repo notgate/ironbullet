@@ -51,8 +51,8 @@ pub struct RecentConfigEntry {
     pub last_opened: String,
 }
 
-fn def_width() -> f64 { 1100.0 }
-fn def_height() -> f64 { 700.0 }
+fn def_width() -> f64 { 1318.0 }
+fn def_height() -> f64 { 946.0 }
 fn def_zoom() -> u32 { 100 }
 fn def_font_size() -> u32 { 12 }
 fn def_font_family() -> String { "Cascadia Code".into() }
@@ -65,8 +65,8 @@ fn def_show_palette() -> bool { true }
 impl Default for GuiConfig {
     fn default() -> Self {
         Self {
-            window_width: 1100.0,
-            window_height: 700.0,
+            window_width: 1318.0,
+            window_height: 946.0,
             window_x: None,
             window_y: None,
             zoom: 100,
@@ -89,7 +89,7 @@ impl Default for GuiConfig {
 
 pub fn config_dir() -> PathBuf {
     if let Some(appdata) = std::env::var_os("APPDATA") {
-        let dir = PathBuf::from(appdata).join("reqflow");
+        let dir = PathBuf::from(appdata).join("ironbullet");
         let _ = std::fs::create_dir_all(&dir);
         return dir;
     }

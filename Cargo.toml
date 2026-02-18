@@ -1,6 +1,6 @@
 [package]
-name = "reqflow"
-version = "0.1.0"
+name = "ironbullet"
+version = "0.2.0"
 edition = "2021"
 description = "Pipelined request automation & script builder"
 
@@ -23,7 +23,7 @@ sha2 = "0.10"
 md-5 = "0.10"
 hmac = "0.12"
 raw-window-handle = "0.6"
-reqwest = { version = "0.12", features = ["cookies", "gzip", "deflate", "brotli"] }
+reqwest = { version = "0.12", features = ["cookies", "gzip", "deflate", "brotli", "json", "stream"] }
 chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
 futures = "0.3"
 crc32fast = "1"
@@ -38,13 +38,17 @@ tokio-native-tls = "0.3"
 bcrypt = "0.16"
 aes-gcm = "0.10"
 zip = "2"
+image = { version = "0.25", default-features = false, features = ["png"] }
+chrono-tz = "0.10"
+phonenumber = "0.3"
+rquickjs = { version = "0.8", features = ["classes"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_Console"] }
 
 [dev-dependencies]
 tempfile = "3"
 
 [[bin]]
-name = "reqflow"
+name = "ironbullet"
 path = "src/main.rs"

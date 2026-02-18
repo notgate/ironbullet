@@ -141,6 +141,17 @@ impl VariableStore {
         result
     }
 
+    /// Resolve an input_var field: try variable lookup first, then interpolate as literal/template.
+    /// This allows users to type either a variable name ("myvar") or a raw value ("12345")
+    /// or a template with placeholders ("<myvar>_suffix").
+    pub fn resolve_input(&self, input_var: &str) -> String {
+        if let Some(val) = self.get(input_var) {
+            val
+        } else {
+            self.interpolate(input_var)
+        }
+    }
+
     /// Get all captures (variables marked as CAP)
     pub fn captures(&self) -> HashMap<String, String> {
         self.user_vars.iter()

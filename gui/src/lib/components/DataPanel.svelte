@@ -12,6 +12,24 @@
 	import Link from '@lucide/svelte/icons/link';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import ListIcon from '@lucide/svelte/icons/list';
+	import CheckCircle from '@lucide/svelte/icons/check-circle';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Filter from '@lucide/svelte/icons/filter';
+
+	// Placeholder for hits data (will be populated by backend)
+	interface HitRecord {
+		data: string;
+		type: string;
+		config: string;
+		date: string;
+		wordlist: string;
+		proxy: string;
+		captured: Record<string, string>;
+	}
+
+	let hitsData = $state<HitRecord[]>([]);
+	let autoRefreshHits = $state(true);
+	let hitsFilter = $state('');
 
 	function browseWordlist() {
 		send('browse_file', { field: 'wordlist' });
@@ -416,6 +434,154 @@
 				/>
 				<p class="text-[9px] text-muted-foreground mt-0.5">HTTP/2 SETTINGS frame + priority fingerprint</p>
 			</div>
+		</div>
+	</div>
+
+	<!-- Hits Database -->
+	<div>
+		<div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+			<CheckCircle size={11} />
+			Hits Database
+			<div class="flex-1"></div>
+			<button
+				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+				onclick={() => { autoRefreshHits = !autoRefreshHits; }}
+				title={autoRefreshHits ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+			>
+				<RefreshCw size={10} class={autoRefreshHits ? 'text-green' : ''} />
+			</button>
+		</div>
+		<div class="space-y-1.5">
+			<!-- Filter -->
+			<div class="flex gap-1">
+				<div class="relative flex-1">
+					<Filter size={10} class="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+					<input
+						type="text"
+						bind:value={hitsFilter}
+						placeholder="Filter hits by data, type, or config..."
+						class="w-full skeu-input text-[10px] pl-6"
+					/>
+				</div>
+				<button class="skeu-btn text-[10px] text-muted-foreground" onclick={() => { hitsFilter = ''; }}>
+					Clear
+				</button>
+			</div>
+
+			<!-- Hits Table -->
+			<div class="bg-background rounded border border-border overflow-hidden">
+				{#if hitsData.length === 0}
+					<div class="p-4 text-center text-[10px] text-muted-foreground">
+						No hits yet. Run a job to see results here.
+					</div>
+				{:else}
+					<div class="max-h-[300px] overflow-y-auto">
+						<table class="w-full text-[10px]">
+							<thead class="sticky top-0 bg-surface border-b border-border">
+								<tr class="text-[9px] uppercase tracking-wider text-muted-foreground">
+									<th class="text-left px-2 py-1 font-medium">Data</th>
+									<th class="text-left px-2 py-1 font-medium w-16">Type</th>
+									<th class="text-left px-2 py-1 font-medium w-24">Config</th>
+									<th class="text-left px-2 py-1 font-medium w-20">Date</th>
+									<th class="text-left px-2 py-1 font-medium w-24">Wordlist</th>
+									<th class="text-left px-2 py-1 font-medium w-24">Proxy</th>
+									<th class="text-left px-2 py-1 font-medium">Captured</th>
+									<th class="text-center px-2 py-1 font-medium w-16">Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each hitsData as hit}
+									<tr class="border-b border-border/30 hover:bg-accent/10 transition-colors">
+										<td class="px-2 py-1.5 font-mono text-foreground/90 truncate max-w-[150px]" title={hit.data}>
+											{hit.data}
+										</td>
+										<td class="px-2 py-1.5">
+											<span class="text-green text-[9px] font-medium uppercase tracking-wide">
+												{hit.type}
+											</span>
+										</td>
+										<td class="px-2 py-1.5 text-muted-foreground truncate" title={hit.config}>
+											{hit.config}
+										</td>
+										<td class="px-2 py-1.5 text-muted-foreground font-mono text-[9px]">
+											{new Date(hit.date).toLocaleTimeString()}
+										</td>
+										<td class="px-2 py-1.5 text-muted-foreground truncate" title={hit.wordlist}>
+											{hit.wordlist}
+										</td>
+										<td class="px-2 py-1.5 text-muted-foreground font-mono truncate" title={hit.proxy}>
+											{hit.proxy}
+										</td>
+										<td class="px-2 py-1.5">
+											{#if Object.keys(hit.captured).length > 0}
+												<div class="flex flex-wrap gap-0.5">
+													{#each Object.entries(hit.captured).slice(0, 2) as [key, value]}
+														<span class="text-[8px] bg-primary/10 text-primary px-1 py-0.5 rounded">
+															{key}: {value.length > 20 ? value.slice(0, 20) + '...' : value}
+														</span>
+													{/each}
+													{#if Object.keys(hit.captured).length > 2}
+														<span class="text-[8px] text-muted-foreground">
+															+{Object.keys(hit.captured).length - 2} more
+														</span>
+													{/if}
+												</div>
+											{:else}
+												<span class="text-muted-foreground/50 text-[9px]">None</span>
+											{/if}
+										</td>
+										<td class="px-2 py-1.5 text-center">
+											<div class="flex items-center justify-center gap-0.5">
+												<button
+													class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+													onclick={() => {
+														navigator.clipboard.writeText(hit.data);
+													}}
+													title="Copy data"
+												>
+													<Copy size={10} />
+												</button>
+												<button
+													class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-red transition-colors"
+													onclick={() => {
+														hitsData = hitsData.filter(h => h !== hit);
+													}}
+													title="Delete"
+												>
+													<Trash2 size={10} />
+												</button>
+											</div>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+					<div class="px-2 py-1.5 bg-surface border-t border-border flex items-center justify-between">
+						<span class="text-[9px] text-muted-foreground">
+							{hitsData.length} hit{hitsData.length !== 1 ? 's' : ''}
+						</span>
+						<div class="flex gap-1">
+							<button class="skeu-btn text-[9px] text-muted-foreground" onclick={() => { hitsData = []; }}>
+								Clear All
+							</button>
+							<button class="skeu-btn text-[9px]" onclick={() => {
+								const unique = new Map();
+								for (const hit of hitsData) {
+									unique.set(hit.data, hit);
+								}
+								hitsData = Array.from(unique.values());
+							}}>
+								Remove Duplicates
+							</button>
+						</div>
+					</div>
+				{/if}
+			</div>
+
+			<p class="text-[9px] text-muted-foreground">
+				Hits are successful results captured during job execution. Auto-refreshes when enabled.
+			</p>
 		</div>
 	</div>
 </div>
