@@ -216,7 +216,7 @@ body {
 	border-radius: var(--radius);
 	box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
 	color: var(--foreground);
-	font-size: 11px;
+	font-size: calc(11px * var(--font-scale, 1));
 	padding: 2px 6px;
 	outline: none;
 	transition: border-color 0.15s, box-shadow 0.15s;
@@ -239,7 +239,7 @@ body {
 	border-radius: var(--radius);
 	box-shadow: var(--btn-raised);
 	color: var(--foreground);
-	font-size: 11px;
+	font-size: calc(11px * var(--font-scale, 1));
 	padding: 2px 6px;
 	outline: none;
 	cursor: pointer;
@@ -299,7 +299,7 @@ body {
 	border-radius: var(--radius);
 	box-shadow: var(--btn-raised);
 	color: var(--foreground);
-	font-size: 11px;
+	font-size: calc(11px * var(--font-scale, 1));
 	padding: 2px 8px;
 	cursor: pointer;
 	transition: background 0.12s, box-shadow 0.12s, transform 0.08s;
@@ -427,7 +427,7 @@ select option:hover {
 	align-items: center;
 	gap: 6px;
 	padding: 3px 8px;
-	font-size: 10px;
+	font-size: calc(10px * var(--font-scale, 1));
 	color: var(--foreground);
 	border-radius: 2px;
 	cursor: default;
@@ -459,8 +459,8 @@ select option:hover {
 
 /* ===== bits-ui Tabs styling ===== */
 .tab-trigger {
-	padding: 3px 8px;
-	font-size: 10px;
+	padding: 6px 14px;
+	font-size: calc(11.5px * var(--font-scale, 1));
 	color: var(--muted-foreground);
 	background: transparent;
 	border: none;
@@ -480,7 +480,7 @@ select option:hover {
 /* ===== Toolbar menu button (for DropdownMenu triggers) ===== */
 .toolbar-trigger {
 	padding: 1px 6px;
-	font-size: 10px;
+	font-size: calc(10px * var(--font-scale, 1));
 	color: var(--muted-foreground);
 	border-radius: var(--radius);
 	cursor: pointer;
@@ -499,7 +499,7 @@ select option:hover {
 /* ===== Menu shortcut text ===== */
 .menu-shortcut {
 	margin-left: auto;
-	font-size: 9px;
+	font-size: calc(9px * var(--font-scale, 1));
 	color: var(--muted-foreground);
 }
 
@@ -556,3 +556,19 @@ input[type="range"]::-webkit-slider-thumb:active {
 	background-color: var(--primary);
 	animation: dropPulse 1s ease-in-out infinite;
 }
+
+/* ===== Font scaling: override Tailwind arbitrary text-[Npx] utilities ===== */
+[class*="text-[8px]"]  { font-size: calc(8px  * var(--font-scale, 1)) !important; }
+[class*="text-[9px]"]  { font-size: calc(9px  * var(--font-scale, 1)) !important; }
+[class*="text-[10px]"] { font-size: calc(10px * var(--font-scale, 1)) !important; }
+[class*="text-[11px]"] { font-size: calc(11px * var(--font-scale, 1)) !important; }
+[class*="text-[12px]"] { font-size: calc(12px * var(--font-scale, 1)) !important; }
+[class*="text-[13px]"] { font-size: calc(13px * var(--font-scale, 1)) !important; }
+[class*="text-[14px]"] { font-size: calc(14px * var(--font-scale, 1)) !important; }
+
+/* ===== Font scaling: override Tailwind named font-size classes ===== */
+.text-xs  { font-size: calc(12px * var(--font-scale, 1)) !important; line-height: calc(16px * var(--font-scale, 1)) !important; }
+.text-sm  { font-size: calc(14px * var(--font-scale, 1)) !important; line-height: calc(20px * var(--font-scale, 1)) !important; }
+.text-base { font-size: calc(16px * var(--font-scale, 1)) !important; line-height: calc(24px * var(--font-scale, 1)) !important; }
+.text-lg  { font-size: calc(18px * var(--font-scale, 1)) !important; line-height: calc(28px * var(--font-scale, 1)) !important; }
+.text-xl  { font-size: calc(20px * var(--font-scale, 1)) !important; line-height: calc(28px * var(--font-scale, 1)) !important; }

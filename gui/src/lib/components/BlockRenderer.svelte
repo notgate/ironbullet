@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { getBlockCssClass, getBlockColor, type Block } from '$lib/types';
-	import { app, pushUndo, toggleBlockSelection, isBlockSelected } from '$lib/state.svelte';
+	import { app, pushUndo, toggleBlockSelection, isBlockSelected, blockMatchesSearch, isBlockModified, toggleBlockCollapse, resolvePreviewVars } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import X from '@lucide/svelte/icons/x';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
 	let { block, index }: { block: Block; index: number } = $props();
 
@@ -12,6 +13,13 @@
 	let isRenaming = $derived(app.renamingBlockId === block.id);
 	let cssClass = $derived(getBlockCssClass(block.block_type));
 	let color = $derived(getBlockColor(block.block_type));
+	let isContainer = $derived(block.settings.type === 'IfElse' || block.settings.type === 'Loop' || block.settings.type === 'Group');
+	let isCollapsed = $derived(app.collapsedBlockIds.has(block.id));
+	let modified = $derived(isBlockModified(block));
+	let searchDimmed = $derived(app.pipelineSearchQuery && !blockMatchesSearch(block, app.pipelineSearchQuery));
+	let searchHighlight = $derived(app.pipelineSearchQuery && blockMatchesSearch(block, app.pipelineSearchQuery));
+
+	let previewSummary = $derived(app.previewMode ? getPreviewSummary() : '');
 
 	let renameValue = $state('');
 
@@ -24,15 +32,27 @@
 	}
 
 	function onDragStart(e: DragEvent) {
-		e.dataTransfer?.setData('application/x-block-index', String(index));
-		e.dataTransfer?.setData('application/x-block-id', block.id);
-		e.dataTransfer!.effectAllowed = 'move';
+		// Multi-select drag: if dragging a selected block and multiple are selected
+		if (isSelected && app.selectedBlockIds.length > 1) {
+			e.dataTransfer?.setData('application/x-block-ids', JSON.stringify(app.selectedBlockIds));
+			e.dataTransfer!.effectAllowed = 'move';
+			// Set drag image text
+			const el = document.createElement('div');
+			el.textContent = `${app.selectedBlockIds.length} blocks`;
+			el.style.cssText = 'position:fixed;left:-999px;padding:4px 8px;background:#333;color:#ccc;border-radius:4px;font-size:11px;';
+			document.body.appendChild(el);
+			e.dataTransfer?.setDragImage(el, 0, 0);
+			setTimeout(() => el.remove(), 0);
+		} else {
+			e.dataTransfer?.setData('application/x-block-index', String(index));
+			e.dataTransfer?.setData('application/x-block-id', block.id);
+			e.dataTransfer!.effectAllowed = 'move';
+		}
 	}
 
 	function onContextMenu(e: MouseEvent) {
 		e.preventDefault();
 		e.stopPropagation();
-		// If the right-clicked block isn't already selected, single-select it
 		if (!isBlockSelected(block.id)) {
 			toggleBlockSelection(block.id, false, false);
 		}
@@ -70,6 +90,34 @@
 	function onRenameKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
 		else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+	}
+
+	function handleCollapseToggle(e: MouseEvent) {
+		e.stopPropagation();
+		toggleBlockCollapse(block.id);
+	}
+
+	function getPreviewSummary(): string {
+		const s = block.settings as any;
+		const r = (v: string) => resolvePreviewVars(v, block.id);
+		switch (s.type) {
+			case 'HttpRequest': return `${s.method} ${r(s.url || '')}`;
+			case 'ParseLR': return `"${r(s.left)}" ... "${r(s.right)}" → ${s.output_var}`;
+			case 'ParseRegex': return `/${r(s.pattern)}/ → ${s.output_var}`;
+			case 'ParseJSON': return `${r(s.json_path)} → ${s.output_var}`;
+			case 'ParseCSS': return `${r(s.selector)} → ${s.output_var}`;
+			case 'SetVariable': return `${s.name} = ${r(s.value)}`;
+			case 'Log': return r(s.message);
+			case 'Webhook': return `${s.method} ${r(s.url || '')}`;
+			case 'Script': return r(s.code?.split('\n')[0]?.substring(0, 60) || '');
+			case 'IfElse': return `${r(s.condition.source)} ${s.condition.comparison} ${r(s.condition.value)}`;
+			case 'KeyCheck': return s.keychains.map((k: any) => `${k.conditions.map((c: any) => `${r(c.source)} ${c.comparison} ${r(c.value)}`).join(' AND ')} → ${k.result}`).join(' | ');
+			case 'NavigateTo': return r(s.url || '');
+			case 'TypeText': return `${r(s.selector)} ← "${r(s.text || '')}"`;
+			case 'ClickElement': return r(s.selector || '');
+			case 'TcpRequest': return `${r(s.host)}:${s.port} → ${r(s.send_data || '')}`;
+			default: return '';
+		}
 	}
 
 	function getBlockSummary(): string {
@@ -119,7 +167,7 @@
 			case 'ExecuteJs': return s.code?.split('\n')[0]?.substring(0, 40) || '(empty)';
 			case 'Group': {
 				const n = (s as any).blocks?.length || 0;
-				return `${n} block${n !== 1 ? 's' : ''}${(s as any).collapsed ? ' (collapsed)' : ''}`;
+				return `${n} block${n !== 1 ? 's' : ''}${isCollapsed ? ' (collapsed)' : ''}`;
 			}
 			default: return '';
 		}
@@ -128,8 +176,8 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="group {cssClass} bg-card rounded mb-0.5 transition-all cursor-pointer {block.disabled ? 'opacity-40' : ''}"
-	style="box-shadow: var(--btn-raised); {isSelected ? 'outline: 1.5px solid var(--primary); outline-offset: -1px;' : ''}"
+	class="group {cssClass} bg-card rounded mb-0.5 transition-all cursor-pointer {block.disabled ? 'opacity-40' : ''} {searchDimmed ? 'opacity-25' : ''}"
+	style="box-shadow: var(--btn-raised); {isSelected ? 'outline: 1.5px solid var(--primary); outline-offset: -1px;' : ''} {searchHighlight ? 'outline: 1.5px solid var(--green); outline-offset: -1px;' : ''}"
 	data-block-id={block.id}
 	onclick={handleClick}
 	oncontextmenu={onContextMenu}
@@ -137,6 +185,20 @@
 	ondragstart={onDragStart}
 >
 	<div class="flex items-center gap-2 px-2 py-1.5">
+		<!-- Change indicator dot -->
+		{#if modified && Object.keys(app.savedBlocksSnapshot).length > 0}
+			<span class="w-1.5 h-1.5 rounded-full bg-orange shrink-0" title="Modified since last save"></span>
+		{:else}
+			<span class="w-1.5 h-1.5 shrink-0"></span>
+		{/if}
+
+		<!-- Collapse toggle for container blocks -->
+		{#if isContainer}
+			<button class="p-0 shrink-0 text-muted-foreground hover:text-foreground transition-transform duration-150" style="transform: rotate({isCollapsed ? '0deg' : '90deg'})" onclick={handleCollapseToggle}>
+				<ChevronRight size={11} />
+			</button>
+		{/if}
+
 		<span class="text-[10px] text-muted-foreground w-4 text-right shrink-0">{index + 1}</span>
 		<div class="w-2.5 h-2.5 rounded-sm shrink-0" style="background: {color}"></div>
 
@@ -155,8 +217,8 @@
 			<span class="text-xs font-medium text-foreground flex-1 truncate">{block.label}</span>
 		{/if}
 
-		<span class="text-[10px] text-muted-foreground truncate max-w-[200px] hidden lg:block">
-			{getBlockSummary()}
+		<span class="text-[10px] truncate max-w-[200px] hidden lg:block {app.previewMode && previewSummary ? 'text-primary/80' : 'text-muted-foreground'}">
+			{app.previewMode && previewSummary ? previewSummary : getBlockSummary()}
 		</span>
 
 		<div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">

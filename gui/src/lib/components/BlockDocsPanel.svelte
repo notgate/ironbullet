@@ -11,10 +11,13 @@
 	import Puzzle from '@lucide/svelte/icons/puzzle';
 	import Play from '@lucide/svelte/icons/play';
 	import Shield from '@lucide/svelte/icons/shield';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Check from '@lucide/svelte/icons/check';
 
 	let searchQuery = $state('');
 	let selectedType = $state<string | null>(app.blockDocsInitialType);
 	let selectedGuide = $state<string | null>(null);
+	let copiedId = $state<string | null>(null);
 
 	const GUIDE_ICONS: Record<string, typeof Rocket> = {
 		'Rocket': Rocket,
@@ -92,13 +95,46 @@
 		return BLOCK_CATALOG.find(b => b.type === type)?.color || '#858585';
 	}
 
+	// ── Copy to clipboard with feedback ──
+	function copyCode(text: string, id: string) {
+		navigator.clipboard.writeText(text);
+		copiedId = id;
+		setTimeout(() => { if (copiedId === id) copiedId = null; }, 1500);
+	}
+
+	// ── Rust syntax highlighting ──
+	const RUST_KEYWORDS = /\b(let|mut|fn|pub|async|await|if|else|match|for|while|loop|return|use|self|super|crate|struct|enum|impl|trait|type|const|static|mod|ref|move|unsafe|where|as|in|true|false|Some|None|Ok|Err|String|Vec|Arc|Option|Result|Box|HashMap)\b/g;
+	const RUST_TYPES = /\b(i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64|usize|isize|bool|str|char|Self)\b/g;
+	const RUST_MACROS = /\b(\w+)!/g;
+
+	function highlightRust(code: string): string {
+		// Escape HTML first
+		let html = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		// Comments (// ...)
+		html = html.replace(/(\/\/[^\n]*)/g, '<span class="hl-comment">$1</span>');
+		// Strings ("..." and &"...")
+		html = html.replace(/("(?:[^"\\]|\\.)*")/g, '<span class="hl-string">$1</span>');
+		// Numbers
+		html = html.replace(/\b(\d+(?:\.\d+)?(?:_\d+)*)\b/g, '<span class="hl-number">$1</span>');
+		// Macros (word!)
+		html = html.replace(/\b(\w+)!/g, '<span class="hl-macro">$1</span>!');
+		// Types
+		html = html.replace(RUST_TYPES, '<span class="hl-type">$1</span>');
+		// Keywords
+		html = html.replace(RUST_KEYWORDS, '<span class="hl-keyword">$1</span>');
+		// Method calls (.method_name)
+		html = html.replace(/\.(\w+)\(/g, '.<span class="hl-fn">$1</span>(');
+		// Variable interpolation markers like <VAR>
+		html = html.replace(/&lt;(\w+(?:\.\w+)*)&gt;/g, '<span class="hl-var">&lt;$1&gt;</span>');
+		return html;
+	}
+
 	function generateFullMarkdown(): string {
-		let md = '# reqflow Documentation\n\n';
+		let md = '# Ironbullet Documentation\n\n';
 
 		// Guide sections
 		for (const guide of GUIDE_SECTIONS) {
 			md += `## ${guide.title}\n\n`;
-			// Strip HTML tags for markdown
 			const text = guide.content
 				.replace(/<h3[^>]*>(.*?)<\/h3>/g, '### $1\n\n')
 				.replace(/<p[^>]*>(.*?)<\/p>/gs, '$1\n\n')
@@ -118,13 +154,11 @@
 			md += text + '\n\n---\n\n';
 		}
 
-		// Block reference
 		md += '## Block Reference\n\n';
 		for (const doc of BLOCK_DOCS_FULL) {
 			md += `### ${doc.name}\n\n`;
 			md += `**Category:** ${doc.category}\n\n`;
 			md += `${doc.description}\n\n`;
-
 			if (doc.parameters.length > 0) {
 				md += '#### Parameters\n\n';
 				md += '| Name | Type | Required | Description | Default |\n';
@@ -134,23 +168,17 @@
 				}
 				md += '\n';
 			}
-
 			md += '#### Example\n\n';
 			md += '```\n' + doc.codeExample + '\n```\n\n';
-
 			if (doc.rustCode) {
 				md += '#### Rust Implementation\n\n';
 				md += '```rust\n' + doc.rustCode + '\n```\n\n';
 			}
-
 			if (doc.tips.length > 0) {
 				md += '#### Tips\n\n';
-				for (const tip of doc.tips) {
-					md += `- ${tip}\n`;
-				}
+				for (const tip of doc.tips) { md += `- ${tip}\n`; }
 				md += '\n';
 			}
-
 			md += '---\n\n';
 		}
 
@@ -163,11 +191,32 @@
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = 'reqflow-docs.md';
+		a.download = 'ironbullet-docs.md';
 		a.click();
 		URL.revokeObjectURL(url);
 	}
 </script>
+
+{#snippet codeBlock(code: string, id: string, lang?: 'rust' | 'plain')}
+	<div class="relative group/code">
+		<button
+			class="absolute top-1.5 right-1.5 p-1 rounded bg-[#2a2a2d] border border-border/50 text-muted-foreground hover:text-foreground hover:bg-[#3a3a3d] transition-all opacity-0 group-hover/code:opacity-100 z-10"
+			onclick={() => copyCode(code, id)}
+			title="Copy"
+		>
+			{#if copiedId === id}
+				<Check size={11} class="text-green" />
+			{:else}
+				<Copy size={11} />
+			{/if}
+		</button>
+		{#if lang === 'rust'}
+			<pre class="code-block select-text">{@html highlightRust(code)}</pre>
+		{:else}
+			<pre class="code-block select-text">{code}</pre>
+		{/if}
+	</div>
+{/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fixed inset-0 top-[28px] z-50 flex items-center justify-center" onkeydown={(e) => { if (e.key === 'Escape') close(); }}>
@@ -175,7 +224,7 @@
 	<div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick={close}></div>
 
 	<!-- Modal -->
-	<div class="relative w-[90vw] max-w-[1200px] h-[85vh] bg-surface border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden">
+	<div class="relative w-[90vw] max-w-[1200px] h-[85vh] bg-surface border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden" style="zoom: {app.zoom}">
 		<!-- Header -->
 		<div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface shrink-0">
 			<BookOpen size={18} class="text-muted-foreground" />
@@ -249,11 +298,11 @@
 			</div>
 
 			<!-- Content area -->
-			<div class="flex-1 overflow-y-auto px-6 py-4">
+			<div class="flex-1 overflow-y-auto px-6 py-4 select-text">
 				{#if activeGuide()}
 					<!-- Guide content -->
 					{@const guide = activeGuide()!}
-					<div class="max-w-3xl guide-content">
+					<div class="max-w-3xl guide-content select-text">
 						<h2 class="text-lg font-semibold text-foreground mb-4">{guide.title}</h2>
 						{@html guide.content}
 					</div>
@@ -315,7 +364,7 @@
 								Example
 							</summary>
 							<div class="mt-2">
-								<pre class="bg-[#1e1e1e] border border-border rounded p-3 text-[11px] font-mono text-foreground/90 overflow-x-auto whitespace-pre-wrap">{doc.codeExample}</pre>
+								{@render codeBlock(doc.codeExample, `${doc.type}-example`)}
 							</div>
 						</details>
 
@@ -327,7 +376,7 @@
 									Rust Implementation
 								</summary>
 								<div class="mt-2">
-									<pre class="bg-[#1e1e1e] border border-border rounded p-3 text-[11px] font-mono text-foreground/90 overflow-x-auto whitespace-pre-wrap">{doc.rustCode}</pre>
+									{@render codeBlock(doc.rustCode, `${doc.type}-rust`, 'rust')}
 								</div>
 							</details>
 						{/if}
@@ -387,16 +436,33 @@
 </div>
 
 <style>
-	.guide-content :global(h3) {
-		color: var(--foreground);
+	.code-block {
+		background: #1e1e1e;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 12px;
+		font-size: 11px;
+		font-family: var(--font-mono, monospace);
+		color: #cccccc;
+		overflow-x: auto;
+		white-space: pre-wrap;
+		line-height: 1.5;
+		user-select: text;
 	}
-	.guide-content :global(p) {
-		color: var(--muted-foreground);
-	}
-	.guide-content :global(li) {
-		color: var(--foreground);
-		opacity: 0.85;
-	}
+	/* Rust syntax highlighting — VS Code dark+ colors */
+	.code-block :global(.hl-keyword) { color: #c586c0; }
+	.code-block :global(.hl-type) { color: #4ec9b0; }
+	.code-block :global(.hl-string) { color: #ce9178; }
+	.code-block :global(.hl-number) { color: #b5cea8; }
+	.code-block :global(.hl-comment) { color: #6a9955; font-style: italic; }
+	.code-block :global(.hl-macro) { color: #dcdcaa; }
+	.code-block :global(.hl-fn) { color: #dcdcaa; }
+	.code-block :global(.hl-var) { color: #9cdcfe; font-weight: 600; }
+
+	.guide-content { user-select: text; }
+	.guide-content :global(h3) { color: var(--foreground); }
+	.guide-content :global(p) { color: var(--muted-foreground); }
+	.guide-content :global(li) { color: var(--foreground); opacity: 0.85; }
 	.guide-content :global(code) {
 		background: var(--accent);
 		padding: 1px 4px;
@@ -404,23 +470,10 @@
 		font-size: 10px;
 		font-family: var(--font-mono, monospace);
 	}
-	.guide-content :global(pre) {
-		color: var(--foreground);
-		opacity: 0.9;
-	}
-	.guide-content :global(pre code) {
-		background: none;
-		padding: 0;
-	}
-	.guide-content :global(table) {
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		overflow: hidden;
-	}
-	.guide-content :global(td) {
-		color: var(--foreground);
-		opacity: 0.85;
-	}
+	.guide-content :global(pre) { color: var(--foreground); opacity: 0.9; }
+	.guide-content :global(pre code) { background: none; padding: 0; }
+	.guide-content :global(table) { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+	.guide-content :global(td) { color: var(--foreground); opacity: 0.85; }
 	.guide-content :global(kbd) {
 		background: var(--accent);
 		padding: 1px 6px;
@@ -429,10 +482,6 @@
 		font-size: 10px;
 		font-family: var(--font-mono, monospace);
 	}
-	.guide-content :global(ol) {
-		list-style-type: decimal;
-	}
-	.guide-content :global(ul) {
-		list-style-type: disc;
-	}
+	.guide-content :global(ol) { list-style-type: decimal; }
+	.guide-content :global(ul) { list-style-type: disc; }
 </style>

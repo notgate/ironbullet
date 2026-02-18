@@ -210,7 +210,7 @@
 		padding: 0 8px;
 		min-width: 80px;
 		max-width: 180px;
-		font-size: 10px;
+		font-size: calc(10px * var(--font-scale, 1));
 		color: var(--muted-foreground);
 		cursor: pointer;
 		position: relative;

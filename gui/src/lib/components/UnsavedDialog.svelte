@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { app, closeTab, markTabSaved } from '$lib/state.svelte';
+	import { app, closeTab, markTabSaved, continueAppClose, cancelAppClose } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import AlertTriangle from '@lucide/svelte/icons/triangle-alert';
@@ -9,31 +9,53 @@
 
 	function onOpenChange(v: boolean) {
 		if (!v) {
-			app.showUnsavedDialog = false;
-			app.pendingCloseTabId = null;
+			if (app.pendingAppClose) {
+				cancelAppClose();
+			} else {
+				app.showUnsavedDialog = false;
+				app.pendingCloseTabId = null;
+			}
 		}
 	}
 
 	function handleSave() {
+		if (!app.pendingCloseTabId) return;
 		// Save then close
 		send('save_pipeline', {});
-		// After save completes, the tab will be marked saved via IPC callback
-		// For now, close optimistically
-		if (app.pendingCloseTabId) {
-			markTabSaved();
+		markTabSaved();
+		if (app.pendingAppClose) {
+			// Mark as saved (no longer dirty), then continue to next unsaved tab
+			const tab = app.configTabs.find(t => t.id === app.pendingCloseTabId);
+			if (tab) tab.isDirty = false;
+			app.showUnsavedDialog = false;
+			app.pendingCloseTabId = null;
+			continueAppClose();
+		} else {
 			closeTab(app.pendingCloseTabId);
 		}
 	}
 
 	function handleDiscard() {
-		if (app.pendingCloseTabId) {
+		if (!app.pendingCloseTabId) return;
+		if (app.pendingAppClose) {
+			// Mark as not dirty (discard changes), then continue to next unsaved tab
+			const tab = app.configTabs.find(t => t.id === app.pendingCloseTabId);
+			if (tab) tab.isDirty = false;
+			app.showUnsavedDialog = false;
+			app.pendingCloseTabId = null;
+			continueAppClose();
+		} else {
 			closeTab(app.pendingCloseTabId);
 		}
 	}
 
 	function handleCancel() {
-		app.showUnsavedDialog = false;
-		app.pendingCloseTabId = null;
+		if (app.pendingAppClose) {
+			cancelAppClose();
+		} else {
+			app.showUnsavedDialog = false;
+			app.pendingCloseTabId = null;
+		}
 	}
 </script>
 

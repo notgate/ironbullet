@@ -1,0 +1,651 @@
+use super::*;
+
+impl ExecutionContext {
+    // ── TCP Request ──
+
+    pub(super) async fn execute_tcp_request(&mut self, _block: &Block, settings: &TcpRequestSettings) -> crate::error::Result<()> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let host = self.variables.interpolate(&settings.host);
+        let data = self.variables.interpolate(&settings.data);
+        let timeout = std::time::Duration::from_millis(settings.timeout_ms);
+        let addr = format!("{}:{}", host, settings.port);
+
+        let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
+            .map_err(|_| crate::error::AppError::Pipeline(format!("TCP connect timeout: {}", addr)))?
+            .map_err(|e| crate::error::AppError::Pipeline(format!("TCP connect failed {}: {}", addr, e)))?;
+
+        let response_body = if settings.use_tls {
+            let connector = native_tls::TlsConnector::new()
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS init error: {}", e)))?;
+            let connector = tokio_native_tls::TlsConnector::from(connector);
+            let mut tls_stream = connector.connect(&host, stream).await
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake failed: {}", e)))?;
+
+            if !data.is_empty() {
+                tls_stream.write_all(data.as_bytes()).await
+                    .map_err(|e| crate::error::AppError::Pipeline(format!("TLS write error: {}", e)))?;
+                tls_stream.flush().await.ok();
+            }
+
+            let mut buf = vec![0u8; 65536];
+            match tokio::time::timeout(timeout, tls_stream.read(&mut buf)).await {
+                Ok(Ok(n)) => String::from_utf8_lossy(&buf[..n]).to_string(),
+                _ => String::new(),
+            }
+        } else {
+            let mut stream = stream;
+            if !data.is_empty() {
+                stream.write_all(data.as_bytes()).await
+                    .map_err(|e| crate::error::AppError::Pipeline(format!("TCP write error: {}", e)))?;
+                stream.flush().await.ok();
+            }
+
+            let mut buf = vec![0u8; 65536];
+            match tokio::time::timeout(timeout, stream.read(&mut buf)).await {
+                Ok(Ok(n)) => String::from_utf8_lossy(&buf[..n]).to_string(),
+                _ => String::new(),
+            }
+        };
+
+        self.variables.set_user(&settings.output_var, response_body.clone(), settings.capture);
+
+        if let Some(last) = self.block_results.last_mut() {
+            last.request = Some(RequestInfo {
+                method: if settings.use_tls { "TCP+TLS".into() } else { "TCP".into() },
+                url: addr,
+                headers: vec![],
+                body: data,
+            });
+            last.response = Some(ResponseInfo {
+                status_code: if response_body.is_empty() { 0 } else { 200 },
+                headers: std::collections::HashMap::new(),
+                body: response_body,
+                final_url: String::new(),
+                cookies: std::collections::HashMap::new(),
+                timing_ms: 0,
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── UDP Request ──
+
+    pub(super) async fn execute_udp_request(&mut self, _block: &Block, settings: &UdpRequestSettings) -> crate::error::Result<()> {
+        let host = self.variables.interpolate(&settings.host);
+        let data = self.variables.interpolate(&settings.data);
+        let timeout = std::time::Duration::from_millis(settings.timeout_ms);
+        let addr = format!("{}:{}", host, settings.port);
+
+        let socket = tokio::net::UdpSocket::bind("0.0.0.0:0").await
+            .map_err(|e| crate::error::AppError::Pipeline(format!("UDP bind error: {}", e)))?;
+
+        socket.send_to(data.as_bytes(), &addr).await
+            .map_err(|e| crate::error::AppError::Pipeline(format!("UDP send error: {}", e)))?;
+
+        let mut buf = vec![0u8; 65536];
+        let response_body = match tokio::time::timeout(timeout, socket.recv_from(&mut buf)).await {
+            Ok(Ok((n, _src))) => String::from_utf8_lossy(&buf[..n]).to_string(),
+            _ => String::new(),
+        };
+
+        self.variables.set_user(&settings.output_var, response_body.clone(), settings.capture);
+
+        if let Some(last) = self.block_results.last_mut() {
+            last.request = Some(RequestInfo {
+                method: "UDP".into(),
+                url: addr,
+                headers: vec![],
+                body: data,
+            });
+            last.response = Some(ResponseInfo {
+                status_code: if response_body.is_empty() { 0 } else { 200 },
+                headers: std::collections::HashMap::new(),
+                body: response_body,
+                final_url: String::new(),
+                cookies: std::collections::HashMap::new(),
+                timing_ms: 0,
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── FTP Request ──
+
+    pub(super) async fn execute_ftp_request(&mut self, _block: &Block, settings: &FtpRequestSettings) -> crate::error::Result<()> {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+        let host = self.variables.interpolate(&settings.host);
+        let username = self.variables.interpolate(&settings.username);
+        let password = self.variables.interpolate(&settings.password);
+        let command = self.variables.interpolate(&settings.command);
+        let timeout = std::time::Duration::from_millis(settings.timeout_ms);
+        let addr = format!("{}:{}", host, settings.port);
+
+        let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
+            .map_err(|_| crate::error::AppError::Pipeline(format!("FTP connect timeout: {}", addr)))?
+            .map_err(|e| crate::error::AppError::Pipeline(format!("FTP connect failed {}: {}", addr, e)))?;
+
+        let (reader, writer) = tokio::io::split(stream);
+        let mut reader = tokio::io::BufReader::new(reader);
+        let mut writer = writer;
+        let mut transcript = String::new();
+
+        // Read banner
+        let mut line = String::new();
+        if let Ok(Ok(n)) = tokio::time::timeout(timeout, reader.read_line(&mut line)).await {
+            if n > 0 { transcript.push_str(&format!("S: {}", line)); }
+        }
+
+        let commands = vec![
+            format!("USER {}", username),
+            format!("PASS {}", password),
+            command.clone(),
+            "QUIT".into(),
+        ];
+
+        let mut last_code: u16 = 0;
+        for cmd in &commands {
+            if cmd.is_empty() { continue; }
+            writer.write_all(format!("{}\r\n", cmd).as_bytes()).await.ok();
+            writer.flush().await.ok();
+            transcript.push_str(&format!("C: {}\r\n", cmd));
+
+            // Read FTP response (multi-line: "123-...\r\n123 ...\r\n")
+            loop {
+                line.clear();
+                match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
+                    Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                    Ok(Ok(_)) => {
+                        transcript.push_str(&format!("S: {}", line));
+                        if let Ok(code) = line.get(..3).unwrap_or("").parse::<u16>() {
+                            last_code = code;
+                        }
+                        if line.len() >= 4 && line.as_bytes()[3] != b'-' { break; }
+                    }
+                }
+            }
+        }
+
+        self.variables.set_user(&settings.output_var, transcript.clone(), settings.capture);
+
+        if let Some(last) = self.block_results.last_mut() {
+            last.request = Some(RequestInfo {
+                method: "FTP".into(),
+                url: addr,
+                headers: vec![],
+                body: commands.iter().filter(|c| !c.is_empty()).cloned().collect::<Vec<_>>().join("\r\n"),
+            });
+            last.response = Some(ResponseInfo {
+                status_code: last_code,
+                headers: std::collections::HashMap::new(),
+                body: transcript,
+                final_url: String::new(),
+                cookies: std::collections::HashMap::new(),
+                timing_ms: 0,
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── SSH Request (banner grab + auth attempt via raw protocol) ──
+
+    pub(super) async fn execute_ssh_request(&mut self, _block: &Block, settings: &SshRequestSettings) -> crate::error::Result<()> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let host = self.variables.interpolate(&settings.host);
+        let timeout = std::time::Duration::from_millis(settings.timeout_ms);
+        let addr = format!("{}:{}", host, settings.port);
+
+        let mut stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
+            .map_err(|_| crate::error::AppError::Pipeline(format!("SSH connect timeout: {}", addr)))?
+            .map_err(|e| crate::error::AppError::Pipeline(format!("SSH connect failed {}: {}", addr, e)))?;
+
+        // Read server banner (e.g., "SSH-2.0-OpenSSH_8.9p1\r\n")
+        let mut buf = vec![0u8; 4096];
+        let banner = match tokio::time::timeout(timeout, stream.read(&mut buf)).await {
+            Ok(Ok(n)) => String::from_utf8_lossy(&buf[..n]).to_string(),
+            _ => String::new(),
+        };
+
+        // Send client banner
+        stream.write_all(b"SSH-2.0-ReqFlow_1.0\r\n").await.ok();
+
+        let transcript = format!("S: {}\nC: SSH-2.0-ReqFlow_1.0\n\nNote: Full SSH auth requires ssh2 crate. Banner exchange completed.", banner.trim());
+        self.variables.set_user(&settings.output_var, transcript.clone(), settings.capture);
+
+        if let Some(last) = self.block_results.last_mut() {
+            last.request = Some(RequestInfo {
+                method: "SSH".into(),
+                url: addr,
+                headers: vec![],
+                body: format!("user={} command={}", settings.username, settings.command),
+            });
+            last.response = Some(ResponseInfo {
+                status_code: if banner.contains("SSH-2.0") { 200 } else { 0 },
+                headers: {
+                    let mut h = std::collections::HashMap::new();
+                    h.insert("Server-Banner".into(), banner.trim().to_string());
+                    h
+                },
+                body: transcript,
+                final_url: String::new(),
+                cookies: std::collections::HashMap::new(),
+                timing_ms: 0,
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── IMAP Request ──
+
+    pub(super) async fn execute_imap_request(&mut self, _block: &Block, settings: &ImapRequestSettings) -> crate::error::Result<()> {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+        let host = self.variables.interpolate(&settings.host);
+        let username = self.variables.interpolate(&settings.username);
+        let password = self.variables.interpolate(&settings.password);
+        let command = self.variables.interpolate(&settings.command);
+        let timeout = std::time::Duration::from_millis(settings.timeout_ms);
+        let addr = format!("{}:{}", host, settings.port);
+
+        let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
+            .map_err(|_| crate::error::AppError::Pipeline(format!("IMAP connect timeout: {}", addr)))?
+            .map_err(|e| crate::error::AppError::Pipeline(format!("IMAP connect failed {}: {}", addr, e)))?;
+
+        let mut transcript = String::new();
+        let mut last_ok = false;
+
+        if settings.use_tls {
+            let connector = native_tls::TlsConnector::new()
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
+            let connector = tokio_native_tls::TlsConnector::from(connector);
+            let tls = connector.connect(&host, stream).await
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake: {}", e)))?;
+            let (reader, writer) = tokio::io::split(tls);
+            let mut reader = tokio::io::BufReader::new(reader);
+            let mut writer = writer;
+
+            // Banner
+            let mut line = String::new();
+            if let Ok(Ok(n)) = tokio::time::timeout(timeout, reader.read_line(&mut line)).await {
+                if n > 0 { transcript.push_str(&format!("S: {}", line)); }
+            }
+
+            // LOGIN
+            let login_cmd = format!("a001 LOGIN {} {}", username, password);
+            writer.write_all(format!("{}\r\n", login_cmd).as_bytes()).await.ok();
+            writer.flush().await.ok();
+            transcript.push_str(&format!("C: a001 LOGIN {} ****\r\n", username));
+            loop {
+                line.clear();
+                match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
+                    Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                    Ok(Ok(_)) => {
+                        transcript.push_str(&format!("S: {}", line));
+                        if line.starts_with("a001 ") { last_ok = line.contains(" OK "); break; }
+                    }
+                }
+            }
+
+            // Extra command if provided and login succeeded
+            if last_ok && !command.is_empty() && command != "LOGIN" {
+                let extra = format!("a002 {}", command);
+                writer.write_all(format!("{}\r\n", extra).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: {}\r\n", extra));
+                loop {
+                    line.clear();
+                    match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
+                        Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                        Ok(Ok(_)) => {
+                            transcript.push_str(&format!("S: {}", line));
+                            if line.starts_with("a002 ") { break; }
+                        }
+                    }
+                }
+            }
+
+            // LOGOUT
+            writer.write_all(b"a003 LOGOUT\r\n").await.ok();
+            writer.flush().await.ok();
+        } else {
+            let (reader, writer) = tokio::io::split(stream);
+            let mut reader = tokio::io::BufReader::new(reader);
+            let mut writer = writer;
+
+            let mut line = String::new();
+            if let Ok(Ok(n)) = tokio::time::timeout(timeout, reader.read_line(&mut line)).await {
+                if n > 0 { transcript.push_str(&format!("S: {}", line)); }
+            }
+
+            let login_cmd = format!("a001 LOGIN {} {}", username, password);
+            writer.write_all(format!("{}\r\n", login_cmd).as_bytes()).await.ok();
+            writer.flush().await.ok();
+            transcript.push_str(&format!("C: a001 LOGIN {} ****\r\n", username));
+            loop {
+                line.clear();
+                match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
+                    Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                    Ok(Ok(_)) => {
+                        transcript.push_str(&format!("S: {}", line));
+                        if line.starts_with("a001 ") { last_ok = line.contains(" OK "); break; }
+                    }
+                }
+            }
+
+            if last_ok && !command.is_empty() && command != "LOGIN" {
+                let extra = format!("a002 {}", command);
+                writer.write_all(format!("{}\r\n", extra).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: {}\r\n", extra));
+                loop {
+                    line.clear();
+                    match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
+                        Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                        Ok(Ok(_)) => {
+                            transcript.push_str(&format!("S: {}", line));
+                            if line.starts_with("a002 ") { break; }
+                        }
+                    }
+                }
+            }
+
+            writer.write_all(b"a003 LOGOUT\r\n").await.ok();
+            writer.flush().await.ok();
+        }
+
+        self.variables.set_user(&settings.output_var, transcript.clone(), settings.capture);
+
+        if let Some(last) = self.block_results.last_mut() {
+            last.request = Some(RequestInfo {
+                method: "IMAP".into(),
+                url: addr,
+                headers: vec![],
+                body: format!("LOGIN {} ****\n{}", username, command),
+            });
+            last.response = Some(ResponseInfo {
+                status_code: if last_ok { 200 } else { 401 },
+                headers: std::collections::HashMap::new(),
+                body: transcript,
+                final_url: String::new(),
+                cookies: std::collections::HashMap::new(),
+                timing_ms: 0,
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── SMTP Request ──
+
+    pub(super) async fn execute_smtp_request(&mut self, _block: &Block, settings: &SmtpRequestSettings) -> crate::error::Result<()> {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+        let host = self.variables.interpolate(&settings.host);
+        let username = self.variables.interpolate(&settings.username);
+        let password = self.variables.interpolate(&settings.password);
+        let command = self.variables.interpolate(&settings.command);
+        let timeout = std::time::Duration::from_millis(settings.timeout_ms);
+        let addr = format!("{}:{}", host, settings.port);
+
+        let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
+            .map_err(|_| crate::error::AppError::Pipeline(format!("SMTP connect timeout: {}", addr)))?
+            .map_err(|e| crate::error::AppError::Pipeline(format!("SMTP connect failed {}: {}", addr, e)))?;
+
+        let mut transcript = String::new();
+        let mut auth_ok = false;
+
+        // Helper closure for reading SMTP multi-line responses
+        macro_rules! smtp_read {
+            ($reader:expr, $transcript:expr) => {{
+                let mut last_code: u16 = 0;
+                loop {
+                    let mut line = String::new();
+                    match tokio::time::timeout(std::time::Duration::from_secs(5), $reader.read_line(&mut line)).await {
+                        Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                        Ok(Ok(_)) => {
+                            $transcript.push_str(&format!("S: {}", line));
+                            if let Ok(c) = line.get(..3).unwrap_or("").parse::<u16>() { last_code = c; }
+                            if line.len() >= 4 && line.as_bytes()[3] != b'-' { break; }
+                        }
+                    }
+                }
+                last_code
+            }};
+        }
+
+        if settings.use_tls {
+            let connector = native_tls::TlsConnector::new()
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
+            let connector = tokio_native_tls::TlsConnector::from(connector);
+            let tls = connector.connect(&host, stream).await
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake: {}", e)))?;
+            let (reader, writer) = tokio::io::split(tls);
+            let mut reader = tokio::io::BufReader::new(reader);
+            let mut writer = writer;
+
+            smtp_read!(reader, transcript);
+
+            // EHLO
+            writer.write_all(format!("EHLO ironbullet\r\n").as_bytes()).await.ok();
+            writer.flush().await.ok();
+            transcript.push_str("C: EHLO ironbullet\r\n");
+            smtp_read!(reader, transcript);
+
+            // AUTH LOGIN
+            if !username.is_empty() {
+                use base64::Engine;
+                writer.write_all(b"AUTH LOGIN\r\n").await.ok();
+                writer.flush().await.ok();
+                transcript.push_str("C: AUTH LOGIN\r\n");
+                smtp_read!(reader, transcript);
+
+                let b64_user = base64::engine::general_purpose::STANDARD.encode(username.as_bytes());
+                writer.write_all(format!("{}\r\n", b64_user).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: {}\r\n", b64_user));
+                smtp_read!(reader, transcript);
+
+                let b64_pass = base64::engine::general_purpose::STANDARD.encode(password.as_bytes());
+                writer.write_all(format!("{}\r\n", b64_pass).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str("C: ****\r\n");
+                let code = smtp_read!(reader, transcript);
+                auth_ok = code == 235;
+            }
+
+            // Extra command
+            if !command.is_empty() && command != "EHLO" {
+                writer.write_all(format!("{}\r\n", command).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: {}\r\n", command));
+                smtp_read!(reader, transcript);
+            }
+
+            writer.write_all(b"QUIT\r\n").await.ok();
+            writer.flush().await.ok();
+        } else {
+            let (reader, writer) = tokio::io::split(stream);
+            let mut reader = tokio::io::BufReader::new(reader);
+            let mut writer = writer;
+
+            smtp_read!(reader, transcript);
+
+            writer.write_all(b"EHLO ironbullet\r\n").await.ok();
+            writer.flush().await.ok();
+            transcript.push_str("C: EHLO ironbullet\r\n");
+            smtp_read!(reader, transcript);
+
+            if !username.is_empty() {
+                use base64::Engine;
+                writer.write_all(b"AUTH LOGIN\r\n").await.ok();
+                writer.flush().await.ok();
+                transcript.push_str("C: AUTH LOGIN\r\n");
+                smtp_read!(reader, transcript);
+
+                let b64_user = base64::engine::general_purpose::STANDARD.encode(username.as_bytes());
+                writer.write_all(format!("{}\r\n", b64_user).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: {}\r\n", b64_user));
+                smtp_read!(reader, transcript);
+
+                let b64_pass = base64::engine::general_purpose::STANDARD.encode(password.as_bytes());
+                writer.write_all(format!("{}\r\n", b64_pass).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str("C: ****\r\n");
+                let code = smtp_read!(reader, transcript);
+                auth_ok = code == 235;
+            }
+
+            if !command.is_empty() && command != "EHLO" {
+                writer.write_all(format!("{}\r\n", command).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: {}\r\n", command));
+                smtp_read!(reader, transcript);
+            }
+
+            writer.write_all(b"QUIT\r\n").await.ok();
+            writer.flush().await.ok();
+        }
+
+        self.variables.set_user(&settings.output_var, transcript.clone(), settings.capture);
+
+        if let Some(last) = self.block_results.last_mut() {
+            last.request = Some(RequestInfo {
+                method: "SMTP".into(),
+                url: addr,
+                headers: vec![],
+                body: format!("AUTH {} ****", username),
+            });
+            last.response = Some(ResponseInfo {
+                status_code: if auth_ok { 235 } else { 535 },
+                headers: std::collections::HashMap::new(),
+                body: transcript,
+                final_url: String::new(),
+                cookies: std::collections::HashMap::new(),
+                timing_ms: 0,
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── POP3 Request ──
+
+    pub(super) async fn execute_pop_request(&mut self, _block: &Block, settings: &PopRequestSettings) -> crate::error::Result<()> {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+        let host = self.variables.interpolate(&settings.host);
+        let username = self.variables.interpolate(&settings.username);
+        let password = self.variables.interpolate(&settings.password);
+        let command = self.variables.interpolate(&settings.command);
+        let timeout = std::time::Duration::from_millis(settings.timeout_ms);
+        let addr = format!("{}:{}", host, settings.port);
+
+        let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
+            .map_err(|_| crate::error::AppError::Pipeline(format!("POP3 connect timeout: {}", addr)))?
+            .map_err(|e| crate::error::AppError::Pipeline(format!("POP3 connect failed {}: {}", addr, e)))?;
+
+        let mut transcript = String::new();
+        #[allow(unused_assignments)]
+        let mut auth_ok = false;
+
+        macro_rules! pop_read_line {
+            ($reader:expr, $transcript:expr) => {{
+                let mut line = String::new();
+                match tokio::time::timeout(std::time::Duration::from_secs(5), $reader.read_line(&mut line)).await {
+                    Ok(Ok(n)) if n > 0 => {
+                        $transcript.push_str(&format!("S: {}", line));
+                        line.starts_with("+OK")
+                    }
+                    _ => false,
+                }
+            }};
+        }
+
+        if settings.use_tls {
+            let connector = native_tls::TlsConnector::new()
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
+            let connector = tokio_native_tls::TlsConnector::from(connector);
+            let tls = connector.connect(&host, stream).await
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake: {}", e)))?;
+            let (reader, writer) = tokio::io::split(tls);
+            let mut reader = tokio::io::BufReader::new(reader);
+            let mut writer = writer;
+
+            pop_read_line!(reader, transcript); // Banner
+
+            writer.write_all(format!("USER {}\r\n", username).as_bytes()).await.ok();
+            writer.flush().await.ok();
+            transcript.push_str(&format!("C: USER {}\r\n", username));
+            pop_read_line!(reader, transcript);
+
+            writer.write_all(format!("PASS {}\r\n", password).as_bytes()).await.ok();
+            writer.flush().await.ok();
+            transcript.push_str("C: PASS ****\r\n");
+            auth_ok = pop_read_line!(reader, transcript);
+
+            if auth_ok && !command.is_empty() && command != "STAT" || command == "STAT" {
+                writer.write_all(format!("{}\r\n", command).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: {}\r\n", command));
+                pop_read_line!(reader, transcript);
+            }
+
+            writer.write_all(b"QUIT\r\n").await.ok();
+            writer.flush().await.ok();
+        } else {
+            let (reader, writer) = tokio::io::split(stream);
+            let mut reader = tokio::io::BufReader::new(reader);
+            let mut writer = writer;
+
+            pop_read_line!(reader, transcript);
+
+            writer.write_all(format!("USER {}\r\n", username).as_bytes()).await.ok();
+            writer.flush().await.ok();
+            transcript.push_str(&format!("C: USER {}\r\n", username));
+            pop_read_line!(reader, transcript);
+
+            writer.write_all(format!("PASS {}\r\n", password).as_bytes()).await.ok();
+            writer.flush().await.ok();
+            transcript.push_str("C: PASS ****\r\n");
+            auth_ok = pop_read_line!(reader, transcript);
+
+            if auth_ok && !command.is_empty() {
+                writer.write_all(format!("{}\r\n", command).as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: {}\r\n", command));
+                pop_read_line!(reader, transcript);
+            }
+
+            writer.write_all(b"QUIT\r\n").await.ok();
+            writer.flush().await.ok();
+        }
+
+        self.variables.set_user(&settings.output_var, transcript.clone(), settings.capture);
+
+        if let Some(last) = self.block_results.last_mut() {
+            last.request = Some(RequestInfo {
+                method: "POP3".into(),
+                url: addr,
+                headers: vec![],
+                body: format!("USER {} PASS ****", username),
+            });
+            last.response = Some(ResponseInfo {
+                status_code: if auth_ok { 200 } else { 401 },
+                headers: std::collections::HashMap::new(),
+                body: transcript,
+                final_url: String::new(),
+                cookies: std::collections::HashMap::new(),
+                timing_ms: 0,
+            });
+        }
+
+        Ok(())
+    }
+}

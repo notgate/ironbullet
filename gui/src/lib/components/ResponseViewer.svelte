@@ -6,6 +6,7 @@
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Check from '@lucide/svelte/icons/check';
 	import Search from '@lucide/svelte/icons/search';
+	import Shield from '@lucide/svelte/icons/shield';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
@@ -488,6 +489,13 @@
 				</select>
 			{/if}
 
+			<button
+				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
+				onclick={() => { app.showFingerprint = true; }}
+				title="Site Fingerprint"
+			>
+				<Shield size={12} />
+			</button>
 			<button
 				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
 				onclick={toggleSearch}

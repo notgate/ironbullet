@@ -61,7 +61,7 @@
 		};
 
 		// Custom dark theme matching our skeuomorphic UI
-		monaco.editor.defineTheme('reqflow-dark', {
+		monaco.editor.defineTheme('ironbullet-dark', {
 			base: 'vs-dark',
 			inherit: true,
 			rules: [
@@ -101,7 +101,7 @@
 		editor = monaco.editor.create(container, {
 			value: code || '// No blocks in pipeline\n// Add blocks to generate code',
 			language: 'rust',
-			theme: 'reqflow-dark',
+			theme: 'ironbullet-dark',
 			minimap: { enabled: false },
 			fontSize: 12,
 			fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
