@@ -39,7 +39,7 @@
 >
 	<span class="flex-1 px-2 text-[11px] text-muted-foreground tracking-wide flex items-center gap-1.5">
 		Ironbullet
-		<span class="text-muted-foreground/50 text-[10px]">0.1.0</span>
+		<span class="text-muted-foreground/50 text-[10px]">0.2.0</span>
 	</span>
 	<div class="chrome-btns flex h-full">
 		<button
