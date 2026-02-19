@@ -28,10 +28,18 @@
 	});
 
 	// Auto-refresh when pipeline changes (deep watch via serialization)
+	// Debounced to prevent UI freezes when clicking blocks rapidly
 	let pipelineHash = $derived(JSON.stringify(app.pipeline));
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
 		void pipelineHash;
-		send('generate_code', { pipeline: app.pipeline });
+		if (debounceTimer) clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(() => {
+			send('generate_code', { pipeline: app.pipeline });
+		}, 300); // Wait 300ms after last change before regenerating
+		return () => {
+			if (debounceTimer) clearTimeout(debounceTimer);
+		};
 	});
 
 	function refreshCode() {

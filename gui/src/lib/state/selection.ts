@@ -6,16 +6,22 @@ export function toggleBlockSelection(blockId: string, ctrl: boolean, shift: bool
 		const lastId = app.selectedBlockIds[app.selectedBlockIds.length - 1];
 		const lastIdx = app.pipeline.blocks.findIndex(b => b.id === lastId);
 		const clickIdx = app.pipeline.blocks.findIndex(b => b.id === blockId);
-		const [from, to] = lastIdx < clickIdx ? [lastIdx, clickIdx] : [clickIdx, lastIdx];
-		app.selectedBlockIds = app.pipeline.blocks.slice(from, to + 1).map(b => b.id);
-	} else if (ctrl) {
-		// Toggle individual
-		const idx = app.selectedBlockIds.indexOf(blockId);
-		if (idx >= 0) {
-			app.selectedBlockIds = app.selectedBlockIds.filter(id => id !== blockId);
+		if (lastIdx === -1 || clickIdx === -1) {
+			// Fallback to single select if indices not found
+			app.selectedBlockIds = [blockId];
 		} else {
-			app.selectedBlockIds = [...app.selectedBlockIds, blockId];
+			const [from, to] = lastIdx < clickIdx ? [lastIdx, clickIdx] : [clickIdx, lastIdx];
+			app.selectedBlockIds = app.pipeline.blocks.slice(from, to + 1).map(b => b.id);
 		}
+	} else if (ctrl) {
+		// Toggle individual - use Set for O(1) operations
+		const set = new Set(app.selectedBlockIds);
+		if (set.has(blockId)) {
+			set.delete(blockId);
+		} else {
+			set.add(blockId);
+		}
+		app.selectedBlockIds = Array.from(set);
 	} else {
 		// Single select
 		app.selectedBlockIds = [blockId];
@@ -23,6 +29,7 @@ export function toggleBlockSelection(blockId: string, ctrl: boolean, shift: bool
 }
 
 export function isBlockSelected(blockId: string): boolean {
+	// Direct check - reactive to app.selectedBlockIds changes
 	return app.selectedBlockIds.includes(blockId);
 }
 

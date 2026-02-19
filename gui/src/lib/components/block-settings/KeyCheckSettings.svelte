@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Block, KeyCondition, Keychain } from '$lib/types';
 	import SkeuSelect from '../SkeuSelect.svelte';
+	import VariableInput from '../VariableInput.svelte';
 	import { smallInputCls, labelCls, hasVars, COMPARISON_OPTIONS } from './shared';
 
 	let { block, updateSettings, embedBadge }: {
