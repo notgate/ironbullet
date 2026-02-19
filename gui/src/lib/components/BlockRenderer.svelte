@@ -9,21 +9,25 @@
 
 	let { block, index }: { block: Block; index: number } = $props();
 
+	// Cache static values to avoid recalculation
+	let cssClass = getBlockCssClass(block.block_type);
+	let color = getBlockColor(block.block_type);
+	let isContainer = block.settings.type === 'IfElse' || block.settings.type === 'Loop' || block.settings.type === 'Group';
+
+	// Only reactive values that actually need to be
 	let isSelected = $derived(isBlockSelected(block.id));
 	let isRenaming = $derived(app.renamingBlockId === block.id);
-	let cssClass = $derived(getBlockCssClass(block.block_type));
-	let color = $derived(getBlockColor(block.block_type));
-	let isContainer = $derived(block.settings.type === 'IfElse' || block.settings.type === 'Loop' || block.settings.type === 'Group');
 	let isCollapsed = $derived(app.collapsedBlockIds.has(block.id));
 	let modified = $derived(isBlockModified(block));
 	let searchDimmed = $derived(app.pipelineSearchQuery && !blockMatchesSearch(block, app.pipelineSearchQuery));
 	let searchHighlight = $derived(app.pipelineSearchQuery && blockMatchesSearch(block, app.pipelineSearchQuery));
-
 	let previewSummary = $derived(app.previewMode ? getPreviewSummary() : '');
 
 	let renameValue = $state('');
 
+	// Immediate, non-blocking selection
 	function handleClick(e: MouseEvent) {
+		e.stopPropagation();
 		const isMultiSelect = e.ctrlKey || e.metaKey || e.shiftKey;
 		toggleBlockSelection(block.id, e.ctrlKey || e.metaKey, e.shiftKey);
 		if (!isMultiSelect) {

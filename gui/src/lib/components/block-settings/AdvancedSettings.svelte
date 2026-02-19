@@ -2,6 +2,7 @@
 	import { app } from '$lib/state.svelte';
 	import type { Block } from '$lib/types';
 	import SkeuSelect from '../SkeuSelect.svelte';
+	import VariableInput from '../VariableInput.svelte';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';

@@ -332,9 +332,13 @@ fn run_gui() {
                     _ => {}
                 }
 
+                // Spawn IPC handlers async to prevent blocking the webview
                 let eval_proxy = proxy.clone();
-                ipc::handle_ipc_cmd(&cmd, &ipc_state, move |js| {
-                    let _ = eval_proxy.send_event(Evt::EvalJs(js));
+                let state_clone = ipc_state.clone();
+                tokio::spawn(async move {
+                    ipc::handle_ipc_cmd(&cmd, &state_clone, move |js| {
+                        let _ = eval_proxy.send_event(Evt::EvalJs(js));
+                    });
                 });
             }
         })
