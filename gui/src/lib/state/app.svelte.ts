@@ -23,7 +23,7 @@ interface AppState {
 	isRunning: boolean;
 	isPaused: boolean;
 	threadCount: number;
-	hits: Array<{ data_line: string; captures: Record<string, string>; proxy: string | null }>;
+	hits: Array<{ data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string }>;
 
 	// Debug
 	debugResult: BlockResult | null;
@@ -159,7 +159,7 @@ function createAppState(): AppState {
 	let isRunning = $state(false);
 	let isPaused = $state(false);
 	let threadCount = $state(100);
-	let hits = $state<Array<{ data_line: string; captures: Record<string, string>; proxy: string | null }>>([]);
+	let hits = $state<Array<{ data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string }>>([]);
 	let debugResult = $state<BlockResult | null>(null);
 	let debugResults = $state<BlockResult[]>([]);
 	let debugLog = $state<string[]>([]);

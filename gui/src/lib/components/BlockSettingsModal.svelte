@@ -38,7 +38,7 @@
 	const HTTP_TYPES = ['HttpRequest'];
 	const PARSE_TYPES = ['ParseLR', 'ParseJSON', 'ParseRegex', 'ParseCSS', 'ParseXPath', 'ParseCookie', 'LambdaParser'];
 	const KEYCHECK_TYPES = ['KeyCheck'];
-	const FUNCTION_TYPES = ['StringFunction', 'ListFunction', 'CryptoFunction', 'ConversionFunction', 'ByteArray', 'Constants', 'Dictionary', 'FloatFunction', 'IntegerFunction', 'TimeFunction', 'GenerateGUID', 'PhoneCountry'];
+	const FUNCTION_TYPES = ['StringFunction', 'ListFunction', 'CryptoFunction', 'ConversionFunction', 'ByteArray', 'Constants', 'Dictionary', 'FloatFunction', 'IntegerFunction', 'TimeFunction', 'GenerateGUID', 'PhoneCountry', 'DataConversion', 'FileSystem'];
 	const CONTROL_TYPES = ['IfElse', 'Loop', 'Delay', 'Script', 'Log', 'SetVariable', 'ClearCookies'];
 	const NETWORK_TYPES = ['Webhook', 'WebSocket', 'TcpRequest', 'UdpRequest', 'FtpRequest', 'SshRequest', 'ImapRequest', 'SmtpRequest', 'PopRequest'];
 	const BYPASS_TYPES = ['CaptchaSolver', 'CloudflareBypass', 'LaravelCsrf'];

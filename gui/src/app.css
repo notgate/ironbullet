@@ -140,6 +140,7 @@ body {
 .block-bypass { border-left: 2px solid var(--orange); }
 .block-browser { border-left: 2px solid var(--red); }
 .block-sensor { border-left: 2px solid #2dd4bf; }
+.block-data   { border-left: 2px solid #d4a96a; }
 
 /* ===== Zoom container ===== */
 .app-zoom-container {

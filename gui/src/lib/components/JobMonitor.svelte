@@ -2,6 +2,7 @@
 	import { app } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
 	import { fmt, formatDuration } from '$lib/utils';
+	import { onDestroy } from 'svelte';
 	import type { Job } from '$lib/types';
 	import SkeuSelect from './SkeuSelect.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -11,10 +12,52 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import HelpCircle from '@lucide/svelte/icons/help-circle';
+	import Database from '@lucide/svelte/icons/database';
 	import HelpModal from './HelpModal.svelte';
 
 	let showNewJob = $state(false);
 	let showHelp = $state(false);
+
+	// Poll stats for all running jobs every second
+	let statsInterval: ReturnType<typeof setInterval> | null = null;
+	$effect(() => {
+		const hasRunning = app.jobs.some((j: any) => j.state === 'Running');
+		if (hasRunning) {
+			if (!statsInterval) {
+				console.log('[JobMonitor] starting stats poll interval (1s)');
+				statsInterval = setInterval(() => {
+					for (const job of app.jobs) {
+						if ((job as any).state === 'Running') {
+							send('get_job_stats', { id: (job as any).id });
+						}
+					}
+				}, 1000);
+			}
+		} else {
+			if (statsInterval) {
+				console.log('[JobMonitor] no running jobs — clearing stats poll interval');
+				clearInterval(statsInterval);
+				statsInterval = null;
+			}
+		}
+	});
+
+	onDestroy(() => {
+		if (statsInterval) clearInterval(statsInterval);
+	});
+
+	function selectJob(id: string) {
+		const prev = app.activeJobId;
+		app.activeJobId = id;
+		console.log('[JobMonitor] selectJob:', id, '(was:', prev ?? 'none', ')');
+	}
+
+	function viewJobHits(id: string) {
+		app.activeJobId = id;
+		send('get_job_hits', { id });
+		app.bottomTab = 'data';
+		console.log('[JobMonitor] viewJobHits: switching to data tab for job', id);
+	}
 
 	const helpSections = [
 		{
@@ -271,6 +314,18 @@ Error handling
 			onclick={refreshJobs}
 		><RefreshCw size={11} />Refresh</button>
 		<div class="flex-1"></div>
+		{#if app.activeJobId}
+			{@const activeJob = app.jobs.find((j: any) => j.id === app.activeJobId)}
+			<div class="flex items-center gap-1 text-[10px] bg-primary/10 border border-primary/30 rounded px-1.5 py-0.5">
+				<Database size={9} class="text-primary" />
+				<span class="text-primary font-medium truncate max-w-[100px]">{activeJob ? (activeJob as any).name : app.activeJobId}</span>
+				<button
+					class="text-primary/60 hover:text-primary ml-0.5"
+					onclick={() => { console.log('[JobMonitor] cleared activeJobId'); app.activeJobId = null; }}
+					title="Deselect job"
+				>×</button>
+			</div>
+		{/if}
 		<button
 			class="p-1 rounded hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"
 			onclick={() => { showHelp = true; }}
@@ -356,8 +411,19 @@ Error handling
 				<tbody>
 					{#each app.jobs as job}
 						{@const pct = jobProgress(job)}
-						<tr class="border-b border-border/50 hover:bg-accent/20">
-							<td class="px-2 py-1 font-medium">{job.name}</td>
+						{@const isActive = app.activeJobId === (job as any).id}
+						<tr
+							class="border-b border-border/50 hover:bg-accent/20 cursor-pointer transition-colors {isActive ? 'bg-primary/8 border-l-2 border-l-primary' : ''}"
+							onclick={() => selectJob((job as any).id)}
+						>
+							<td class="px-2 py-1 font-medium">
+								<div class="flex items-center gap-1">
+									{#if isActive}
+										<span class="w-1 h-1 rounded-full bg-primary shrink-0"></span>
+									{/if}
+									{job.name}
+								</div>
+							</td>
 							<td class="px-2 py-1 {stateColor(job.state)}">
 								<span class="inline-block w-1.5 h-1.5 rounded-full mr-1 {job.state === 'Running' ? 'bg-green' : job.state === 'Paused' ? 'bg-orange' : job.state === 'Completed' ? 'bg-primary' : 'bg-muted-foreground'}"></span>
 								{job.state}
@@ -374,19 +440,24 @@ Error handling
 							<td class="px-2 py-1 text-right text-green">{job.stats ? fmt(job.stats.hits) : 0}</td>
 							<td class="px-2 py-1 text-right text-muted-foreground">{job.stats ? `${fmt(job.stats.processed)}/${fmt(job.stats.total)}` : '0/0'}</td>
 							<td class="px-2 py-1 text-right text-muted-foreground">{job.stats ? formatDuration(job.stats.elapsed_secs) : '0:00'}</td>
-							<td class="px-2 py-1 text-center">
+							<td class="px-2 py-1 text-center" onclick={(e) => e.stopPropagation()}>
 								<div class="flex items-center justify-center gap-0.5">
 									{#if job.state === 'Queued' || job.state === 'Waiting'}
-										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Start" onclick={() => startJob(job.id)}><Play size={11} /></button>
+										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Start" onclick={() => startJob((job as any).id)}><Play size={11} /></button>
 									{:else if job.state === 'Running'}
-										<button class="p-0.5 rounded hover:bg-secondary text-orange" title="Pause" onclick={() => pauseJob(job.id)}><Pause size={11} /></button>
-										<button class="p-0.5 rounded hover:bg-secondary text-red" title="Stop" onclick={() => stopJob(job.id)}><Square size={11} /></button>
+										<button class="p-0.5 rounded hover:bg-secondary text-orange" title="Pause" onclick={() => pauseJob((job as any).id)}><Pause size={11} /></button>
+										<button class="p-0.5 rounded hover:bg-secondary text-red" title="Stop" onclick={() => stopJob((job as any).id)}><Square size={11} /></button>
 									{:else if job.state === 'Paused'}
-										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Resume" onclick={() => resumeJob(job.id)}><Play size={11} /></button>
-										<button class="p-0.5 rounded hover:bg-secondary text-red" title="Stop" onclick={() => stopJob(job.id)}><Square size={11} /></button>
+										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Resume" onclick={() => resumeJob((job as any).id)}><Play size={11} /></button>
+										<button class="p-0.5 rounded hover:bg-secondary text-red" title="Stop" onclick={() => stopJob((job as any).id)}><Square size={11} /></button>
 									{/if}
+									<button
+										class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"
+										title="View hits in Data panel"
+										onclick={() => viewJobHits((job as any).id)}
+									><Database size={11} /></button>
 									{#if job.state !== 'Running'}
-										<button class="p-0.5 rounded hover:bg-secondary text-muted-foreground" title="Remove" onclick={() => removeJob(job.id)}><Trash2 size={11} /></button>
+										<button class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-red transition-colors" title="Remove" onclick={() => removeJob((job as any).id)}><Trash2 size={11} /></button>
 									{/if}
 								</div>
 							</td>

@@ -60,7 +60,9 @@ export type BlockSettings =
 	| { type: 'TimeFunction' } & TimeFunctionSettings
 	| { type: 'GenerateGUID' } & GenerateGUIDSettings
 	| { type: 'PhoneCountry' } & PhoneCountrySettings
-	| { type: 'LambdaParser' } & LambdaParserSettings;
+	| { type: 'LambdaParser' } & LambdaParserSettings
+	| { type: 'DataConversion' } & DataConversionSettings
+	| { type: 'FileSystem' } & FileSystemSettings;
 
 export interface HttpRequestSettings {
 	method: string;
@@ -575,6 +577,32 @@ export interface PhoneCountrySettings {
 export interface LambdaParserSettings {
 	input_var: string;
 	lambda_expression: string;
+	output_var: string;
+	capture: boolean;
+}
+
+export interface DataConversionSettings {
+	op: 'Base64ToBytes' | 'BytesToBase64' | 'Base64ToString' | 'BigIntToBytes' | 'BytesToBigInt'
+		| 'BinaryStringToBytes' | 'BytesToBinaryString' | 'HexToBytes' | 'BytesToHex'
+		| 'ReadableSize' | 'StringToBytes' | 'BytesToString' | 'IntToBytes'
+		| 'NumberToWords' | 'WordsToNumber' | 'SvgToPng';
+	input_var: string;
+	output_var: string;
+	encoding: string;
+	endianness: string;
+	byte_count: number;
+	capture: boolean;
+}
+
+export interface FileSystemSettings {
+	op: 'CreatePath' | 'FileAppend' | 'FileAppendLines' | 'FileCopy' | 'FileMove'
+		| 'FileDelete' | 'FileExists' | 'FileRead' | 'FileReadBytes' | 'FileReadLines'
+		| 'FileWrite' | 'FileWriteBytes' | 'FileWriteLines' | 'FolderDelete'
+		| 'FolderExists' | 'GetFilesInFolder';
+	path: string;
+	dest_path: string;
+	content: string;
+	encoding: string;
 	output_var: string;
 	capture: boolean;
 }

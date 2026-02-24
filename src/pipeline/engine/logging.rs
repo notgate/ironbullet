@@ -204,6 +204,15 @@ impl ExecutionContext {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();
                 format!("{} = {}", s.output_var, truncate_display(&val, 60))
             }
+            BlockSettings::DataConversion(s) => {
+                let val = self.variables.get(&s.output_var).unwrap_or_default();
+                format!("{:?}({}) → {} = {}", s.op, s.input_var, s.output_var, truncate_display(&val, 40))
+            }
+            BlockSettings::FileSystem(s) => {
+                let val = self.variables.get(&s.output_var).unwrap_or_default();
+                let out = if val.is_empty() { String::new() } else { format!(" → {} = {}", s.output_var, truncate_display(&val, 40)) };
+                format!("{:?}({}){}", s.op, s.path, out)
+            }
         }
     }
 }

@@ -7,12 +7,24 @@ const MUTATION_CMDS = new Set([
 	'move_blocks_to', 'group_blocks',
 ]);
 
+// High-frequency cmds to suppress from send() log
+const SILENT_SEND_CMDS = new Set(['get_runner_stats']);
+
 export function send(cmd: string, data: Record<string, unknown> = {}) {
 	const payload: Record<string, unknown> = { ...data, _tab_id: app.activeTabId };
 	if (MUTATION_CMDS.has(cmd)) {
 		// Send current blocks so Rust syncs before mutating (avoids cross-tab bleed)
 		payload._blocks = JSON.parse(JSON.stringify(app.pipeline.blocks));
 		payload._startup_blocks = JSON.parse(JSON.stringify(app.pipeline.startup_blocks));
+	}
+	if (!SILENT_SEND_CMDS.has(cmd)) {
+		// Log outgoing IPC (omit large _blocks payload for readability)
+		const logData: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(payload)) {
+			if (k === '_blocks' || k === '_startup_blocks') { logData[k] = `[${Array.isArray(v) ? (v as unknown[]).length : '?'} blocks]`; }
+			else { logData[k] = v; }
+		}
+		console.log(`[IPC] → ${cmd}`, logData);
 	}
 	window.ipc.postMessage(JSON.stringify({ cmd, data: payload }));
 }
@@ -43,6 +55,12 @@ export function onResponse(cmd: string, callback: (data: unknown) => void) {
 export function registerCallbacks() {
 	// Global IPC callback handler invoked by Rust via eval_js
 	(window as any).__ipc_callback = (resp: { cmd: string; success: boolean; data?: unknown; error?: string }) => {
+		// Debug: log every IPC response (suppress high-frequency polling cmds)
+		const SILENT_CMDS = new Set(['runner_stats']);
+		if (!SILENT_CMDS.has(resp.cmd)) {
+			console.log(`[IPC] ← ${resp.cmd}`, resp.success ? 'OK' : `ERR: ${resp.error}`, resp.data !== undefined ? resp.data : '');
+		}
+
 		// Route to specific handler
 		switch (resp.cmd) {
 			case 'config_loaded':
@@ -108,6 +126,9 @@ export function registerCallbacks() {
 					}
 				}
 				break;
+			case 'pipeline_updated':
+				console.log('[IPC] pipeline_updated: backend state synced');
+				break;
 			case 'code_generated':
 				if (resp.data) {
 					app.generatedCode = (resp.data as any).code || '';
@@ -152,14 +173,18 @@ export function registerCallbacks() {
 				toast(`Debug error: ${resp.error || 'Unknown error'}`, 'error');
 				break;
 			case 'runner_started':
+				console.log('[IPC] runner_started: setting isRunning=true');
+				app.isRunning = true;
 				toast('Runner started', 'info');
 				break;
 			case 'runner_stopped':
+				console.log('[IPC] runner_stopped: setting isRunning=false, isPaused=false');
 				toast('Runner stopped', 'info');
 				app.isRunning = false;
 				app.isPaused = false;
 				break;
 			case 'runner_error':
+				console.error('[IPC] runner_error:', resp.error);
 				toast(`Runner error: ${resp.error || 'Unknown error'}`, 'error');
 				app.isRunning = false;
 				app.isPaused = false;
@@ -208,18 +233,21 @@ export function registerCallbacks() {
 				break;
 			case 'job_created':
 				if (resp.data) {
+					console.log('[IPC] job_created:', (resp.data as any)?.id ?? 'no-id');
 					toast('Job created', 'success');
 					send('list_jobs');
 				}
 				break;
 			case 'jobs_list':
 				if (resp.data && Array.isArray(resp.data)) {
+					console.log('[IPC] jobs_list: received', (resp.data as any[]).length, 'jobs');
 					app.jobs = resp.data as any;
 				}
 				break;
 			case 'job_stats_update':
 				if (resp.data) {
 					const { id: jobId, stats: jobStats } = resp.data as any;
+					console.log(`[IPC] job_stats_update: job ${jobId}`, jobStats);
 					const job = app.jobs.find((j: any) => j.id === jobId);
 					if (job && jobStats) (job as any).stats = jobStats;
 				}
@@ -227,12 +255,22 @@ export function registerCallbacks() {
 			case 'runner_hit':
 				if (resp.data) {
 					const hit = resp.data as { data_line: string; captures: Record<string, string>; proxy: string | null };
-					app.hits = [...app.hits, hit];
+					const stamped = { ...hit, received_at: new Date().toISOString() };
+					app.hits = [...app.hits, stamped];
+					console.log(`[IPC] runner_hit: "${hit.data_line}" | captures: ${Object.keys(hit.captures).length} | proxy: ${hit.proxy ?? 'none'} | total hits: ${app.hits.length}`);
 				}
 				break;
-			case 'job_hits':
-				// Handled by registered callback
+			case 'job_hits': {
+				// Backend returns { id: string, hits: HitResult[] }
+				const jobHitsPayload = resp.data as { id: string; hits: Array<{ data_line: string; captures: Record<string, string>; proxy: string | null }> } | null;
+				if (jobHitsPayload && Array.isArray(jobHitsPayload.hits)) {
+					console.log(`[IPC] job_hits: job=${jobHitsPayload.id}, received ${jobHitsPayload.hits.length} hits — overwriting app.hits`);
+					app.hits = jobHitsPayload.hits.map(h => ({ ...h, received_at: new Date().toISOString() }));
+				} else {
+					console.warn('[IPC] job_hits: unexpected payload shape', resp.data);
+				}
 				break;
+			}
 			case 'plugin_blocks_loaded':
 				if (resp.data) {
 					const pd = resp.data as any;

@@ -26,7 +26,13 @@
 	});
 
 	function start() {
-		send('start_runner', { threads: app.threadCount, wordlist_path: app.wordlistPath, proxy_path: app.proxyPath });
+		console.log('[RunnerPanel] start_runner: threads=%d wordlist=%s proxy=%s', app.threadCount, app.wordlistPath, app.proxyPath);
+		send('start_runner', {
+			threads: app.threadCount,
+			wordlist_path: app.wordlistPath,
+			proxy_path: app.proxyPath,
+			pipeline: JSON.parse(JSON.stringify(app.pipeline)),
+		});
 		app.isRunning = true;
 	}
 
