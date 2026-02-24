@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
+	import { onDestroy } from 'svelte';
 	import SkeuSelect from './SkeuSelect.svelte';
 	import type { ProxySource } from '$lib/types';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -16,20 +17,76 @@
 	import Copy from '@lucide/svelte/icons/copy';
 	import Filter from '@lucide/svelte/icons/filter';
 
-	// Placeholder for hits data (will be populated by backend)
-	interface HitRecord {
-		data: string;
-		type: string;
-		config: string;
-		date: string;
-		wordlist: string;
-		proxy: string;
-		captured: Record<string, string>;
-	}
+	// Actual hit shape from backend (matches ipc.ts runner_hit + job_hits handlers)
+	type HitRecord = { data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string };
 
-	let hitsData = $state<HitRecord[]>([]);
 	let autoRefreshHits = $state(true);
 	let hitsFilter = $state('');
+
+	// Reactive filtered view of app.hits — no local copy, always live
+	let filteredHits = $derived<HitRecord[]>(
+		hitsFilter.trim()
+			? (app.hits as HitRecord[]).filter(h =>
+				h.data_line.toLowerCase().includes(hitsFilter.toLowerCase()) ||
+				Object.entries(h.captures).some(([k, v]) =>
+					k.toLowerCase().includes(hitsFilter.toLowerCase()) ||
+					v.toLowerCase().includes(hitsFilter.toLowerCase())
+				) ||
+				(h.proxy ?? '').toLowerCase().includes(hitsFilter.toLowerCase())
+			)
+			: app.hits as HitRecord[]
+	);
+
+	// Poll job hits when a job is active and auto-refresh is on
+	let jobHitsInterval: ReturnType<typeof setInterval> | null = null;
+	$effect(() => {
+		if (autoRefreshHits && app.activeJobId) {
+			console.log('[DataPanel] autoRefresh ON — starting job_hits poll for job:', app.activeJobId);
+			if (!jobHitsInterval) {
+				jobHitsInterval = setInterval(() => {
+					console.log('[DataPanel] polling get_job_hits for job:', app.activeJobId);
+					send('get_job_hits', { id: app.activeJobId as string });
+				}, 3000);
+			}
+		} else {
+			if (jobHitsInterval) {
+				console.log('[DataPanel] autoRefresh OFF or no active job — clearing poll interval');
+				clearInterval(jobHitsInterval);
+				jobHitsInterval = null;
+			}
+		}
+	});
+
+	onDestroy(() => {
+		if (jobHitsInterval) clearInterval(jobHitsInterval);
+	});
+
+	function clearAllHits() {
+		console.log('[DataPanel] clearAllHits: clearing', app.hits.length, 'hits from app.hits');
+		app.hits = [];
+	}
+
+	function removeDuplicates() {
+		const before = app.hits.length;
+		const seen = new Map<string, typeof app.hits[0]>();
+		for (const hit of app.hits) {
+			seen.set(hit.data_line, hit);
+		}
+		app.hits = Array.from(seen.values());
+		console.log('[DataPanel] removeDuplicates: removed', before - app.hits.length, 'duplicates, remaining:', app.hits.length);
+	}
+
+	function deleteHit(hit: HitRecord) {
+		const before = app.hits.length;
+		app.hits = app.hits.filter(h => h !== hit);
+		console.log('[DataPanel] deleteHit:', hit.data_line, '| remaining:', app.hits.length, '(was', before, ')');
+	}
+
+	function copyHit(hit: HitRecord) {
+		const text = [hit.data_line, ...Object.entries(hit.captures).map(([k, v]) => `${k}=${v}`)].join(' | ');
+		navigator.clipboard.writeText(text);
+		console.log('[DataPanel] copyHit:', text);
+	}
 
 	function browseWordlist() {
 		send('browse_file', { field: 'wordlist' });
@@ -264,11 +321,26 @@
 					</button>
 				</div>
 
-				<!-- Legacy file picker for quick add -->
+				<!-- Quick add proxy file → adds to proxy sources list -->
 				<div class="flex gap-1">
 					<input type="text" bind:value={app.proxyPath} placeholder="Quick add proxy file..."
 						class="flex-1 skeu-input text-[10px] font-mono" />
 					<button class="skeu-btn text-[10px]" onclick={browseProxies}>Browse</button>
+					<button
+						class="skeu-btn text-[10px]"
+						disabled={!app.proxyPath}
+						title="Add path as File proxy source"
+						onclick={() => {
+							if (!app.proxyPath) return;
+							const already = app.pipeline.proxy_settings.proxy_sources.some(s => s.source_type === 'File' && s.value === app.proxyPath);
+							if (already) { console.log('[DataPanel] proxy source already added:', app.proxyPath); return; }
+							app.pipeline.proxy_settings.proxy_sources = [
+								...app.pipeline.proxy_settings.proxy_sources,
+								{ source_type: 'File', value: app.proxyPath, refresh_interval_secs: 0 },
+							];
+							console.log('[DataPanel] added proxy source:', app.proxyPath, '| total sources:', app.pipeline.proxy_settings.proxy_sources.length);
+						}}
+					>+ Add</button>
 				</div>
 
 				{#if app.pipeline.proxy_settings.proxy_mode === 'CpmLimited'}
@@ -442,11 +514,12 @@
 		<div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
 			<CheckCircle size={11} />
 			Hits Database
+			<span class="text-[9px] text-muted-foreground/60 ml-1">({app.hits.length})</span>
 			<div class="flex-1"></div>
 			<button
 				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-				onclick={() => { autoRefreshHits = !autoRefreshHits; }}
-				title={autoRefreshHits ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+				onclick={() => { autoRefreshHits = !autoRefreshHits; console.log('[DataPanel] autoRefreshHits toggled:', !autoRefreshHits); }}
+				title={autoRefreshHits ? 'Auto-refresh ON (polling job hits every 3s)' : 'Auto-refresh OFF'}
 			>
 				<RefreshCw size={10} class={autoRefreshHits ? 'text-green' : ''} />
 			</button>
@@ -459,7 +532,7 @@
 					<input
 						type="text"
 						bind:value={hitsFilter}
-						placeholder="Filter hits by data, type, or config..."
+						placeholder="Filter by data, capture key/value, or proxy..."
 						class="w-full skeu-input text-[10px] pl-6"
 					/>
 				</div>
@@ -470,9 +543,9 @@
 
 			<!-- Hits Table -->
 			<div class="bg-background rounded border border-border overflow-hidden">
-				{#if hitsData.length === 0}
+				{#if filteredHits.length === 0}
 					<div class="p-4 text-center text-[10px] text-muted-foreground">
-						No hits yet. Run a job to see results here.
+						{hitsFilter ? 'No hits match the filter.' : 'No hits yet. Start the runner or a job to see results here.'}
 					</div>
 				{:else}
 					<div class="max-h-[300px] overflow-y-auto">
@@ -480,72 +553,54 @@
 							<thead class="sticky top-0 bg-surface border-b border-border">
 								<tr class="text-[9px] uppercase tracking-wider text-muted-foreground">
 									<th class="text-left px-2 py-1 font-medium">Data</th>
-									<th class="text-left px-2 py-1 font-medium w-16">Type</th>
-									<th class="text-left px-2 py-1 font-medium w-24">Config</th>
-									<th class="text-left px-2 py-1 font-medium w-20">Date</th>
-									<th class="text-left px-2 py-1 font-medium w-24">Wordlist</th>
-									<th class="text-left px-2 py-1 font-medium w-24">Proxy</th>
-									<th class="text-left px-2 py-1 font-medium">Captured</th>
-									<th class="text-center px-2 py-1 font-medium w-16">Actions</th>
+									<th class="text-left px-2 py-1 font-medium">Captures</th>
+									<th class="text-left px-2 py-1 font-medium w-28">Proxy</th>
+									<th class="text-left px-2 py-1 font-medium w-16">Time</th>
+									<th class="text-center px-2 py-1 font-medium w-12">Actions</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each hitsData as hit}
+								{#each filteredHits as hit}
 									<tr class="border-b border-border/30 hover:bg-accent/10 transition-colors">
-										<td class="px-2 py-1.5 font-mono text-foreground/90 truncate max-w-[150px]" title={hit.data}>
-											{hit.data}
+										<td class="px-2 py-1.5 font-mono text-foreground/90 truncate max-w-[150px]" title={hit.data_line}>
+											{hit.data_line}
 										</td>
 										<td class="px-2 py-1.5">
-											<span class="text-green text-[9px] font-medium uppercase tracking-wide">
-												{hit.type}
-											</span>
-										</td>
-										<td class="px-2 py-1.5 text-muted-foreground truncate" title={hit.config}>
-											{hit.config}
-										</td>
-										<td class="px-2 py-1.5 text-muted-foreground font-mono text-[9px]">
-											{new Date(hit.date).toLocaleTimeString()}
-										</td>
-										<td class="px-2 py-1.5 text-muted-foreground truncate" title={hit.wordlist}>
-											{hit.wordlist}
-										</td>
-										<td class="px-2 py-1.5 text-muted-foreground font-mono truncate" title={hit.proxy}>
-											{hit.proxy}
-										</td>
-										<td class="px-2 py-1.5">
-											{#if Object.keys(hit.captured).length > 0}
+											{#if Object.keys(hit.captures).length > 0}
 												<div class="flex flex-wrap gap-0.5">
-													{#each Object.entries(hit.captured).slice(0, 2) as [key, value]}
-														<span class="text-[8px] bg-primary/10 text-primary px-1 py-0.5 rounded">
-															{key}: {value.length > 20 ? value.slice(0, 20) + '...' : value}
+													{#each Object.entries(hit.captures).slice(0, 3) as [key, value]}
+														<span class="text-[8px] bg-primary/10 text-primary px-1 py-0.5 rounded font-mono">
+															{key}: {value.length > 24 ? value.slice(0, 24) + '…' : value}
 														</span>
 													{/each}
-													{#if Object.keys(hit.captured).length > 2}
+													{#if Object.keys(hit.captures).length > 3}
 														<span class="text-[8px] text-muted-foreground">
-															+{Object.keys(hit.captured).length - 2} more
+															+{Object.keys(hit.captures).length - 3} more
 														</span>
 													{/if}
 												</div>
 											{:else}
-												<span class="text-muted-foreground/50 text-[9px]">None</span>
+												<span class="text-muted-foreground/50 text-[9px]">—</span>
 											{/if}
+										</td>
+										<td class="px-2 py-1.5 text-muted-foreground font-mono text-[9px] truncate" title={hit.proxy ?? 'none'}>
+											{hit.proxy ?? '—'}
+										</td>
+										<td class="px-2 py-1.5 text-muted-foreground font-mono text-[9px]">
+											{new Date(hit.received_at).toLocaleTimeString()}
 										</td>
 										<td class="px-2 py-1.5 text-center">
 											<div class="flex items-center justify-center gap-0.5">
 												<button
 													class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-													onclick={() => {
-														navigator.clipboard.writeText(hit.data);
-													}}
-													title="Copy data"
+													onclick={() => copyHit(hit)}
+													title="Copy data + captures"
 												>
 													<Copy size={10} />
 												</button>
 												<button
 													class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-red transition-colors"
-													onclick={() => {
-														hitsData = hitsData.filter(h => h !== hit);
-													}}
+													onclick={() => deleteHit(hit)}
 													title="Delete"
 												>
 													<Trash2 size={10} />
@@ -559,19 +614,13 @@
 					</div>
 					<div class="px-2 py-1.5 bg-surface border-t border-border flex items-center justify-between">
 						<span class="text-[9px] text-muted-foreground">
-							{hitsData.length} hit{hitsData.length !== 1 ? 's' : ''}
+							{filteredHits.length}{hitsFilter ? ` of ${app.hits.length}` : ''} hit{filteredHits.length !== 1 ? 's' : ''}
 						</span>
 						<div class="flex gap-1">
-							<button class="skeu-btn text-[9px] text-muted-foreground" onclick={() => { hitsData = []; }}>
+							<button class="skeu-btn text-[9px] text-muted-foreground" onclick={clearAllHits}>
 								Clear All
 							</button>
-							<button class="skeu-btn text-[9px]" onclick={() => {
-								const unique = new Map();
-								for (const hit of hitsData) {
-									unique.set(hit.data, hit);
-								}
-								hitsData = Array.from(unique.values());
-							}}>
+							<button class="skeu-btn text-[9px]" onclick={removeDuplicates}>
 								Remove Duplicates
 							</button>
 						</div>
@@ -580,7 +629,7 @@
 			</div>
 
 			<p class="text-[9px] text-muted-foreground">
-				Hits are successful results captured during job execution. Auto-refreshes when enabled.
+				Live hits from runner appear instantly. Auto-refresh polls job hits every 3s when a job is active.
 			</p>
 		</div>
 	</div>

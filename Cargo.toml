@@ -42,6 +42,9 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 chrono-tz = "0.10"
 phonenumber = "0.3"
 rquickjs = { version = "0.8", features = ["classes"] }
+num-bigint = "0.4"
+num-traits = "0.2"
+resvg = "0.43"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_Console"] }

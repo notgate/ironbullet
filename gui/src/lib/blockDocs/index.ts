@@ -8,6 +8,7 @@ import { CONTROL_DOCS } from './control';
 import { UTILITY_DOCS } from './utilities';
 import { BYPASS_DOCS } from './bypass';
 import { BROWSER_DOCS } from './browser';
+import { DATA_DOCS } from './data';
 
 export { GUIDE_SECTIONS } from './guides';
 
@@ -20,6 +21,7 @@ export const BLOCK_DOCS_FULL = [
 	...UTILITY_DOCS,
 	...BYPASS_DOCS,
 	...BROWSER_DOCS,
+	...DATA_DOCS,
 ];
 
 export {
@@ -31,4 +33,5 @@ export {
 	UTILITY_DOCS,
 	BYPASS_DOCS,
 	BROWSER_DOCS,
+	DATA_DOCS,
 };

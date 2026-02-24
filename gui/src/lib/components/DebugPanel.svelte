@@ -134,9 +134,11 @@ Once all validations pass, you can create a job with confidence that the pipelin
 	let testProxy = $state('');
 
 	function runDebug() {
+		console.log('[DebugPanel] debug_pipeline: data="%s" proxy="%s"', testDataLine, testProxy || 'none');
 		send('debug_pipeline', {
 			test_data_line: testDataLine,
 			test_proxy: testProxy || null,
+			pipeline: JSON.parse(JSON.stringify(app.pipeline)),
 		});
 	}
 

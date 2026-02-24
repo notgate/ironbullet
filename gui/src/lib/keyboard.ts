@@ -36,7 +36,7 @@ export function createKeydownHandler(
 		if (e.ctrlKey && e.key === 'o') { e.preventDefault(); send('load_pipeline'); return; }
 		if (e.key === 'F1') { e.preventDefault(); app.showBlockDocs = true; app.blockDocsInitialType = null; return; }
 		if (e.ctrlKey && e.key === 'f') { e.preventDefault(); app.pipelineSearchFocused = true; return; }
-		if (e.key === 'F5') { e.preventDefault(); send('debug_pipeline'); return; }
+		if (e.key === 'F5') { e.preventDefault(); send('debug_pipeline', { pipeline: JSON.parse(JSON.stringify(app.pipeline)) }); return; }
 		if (e.ctrlKey && (e.key === '=' || e.key === '+')) { e.preventDefault(); zoomIn(); return; }
 		if (e.ctrlKey && e.key === '-') { e.preventDefault(); zoomOut(); return; }
 		if (e.ctrlKey && e.key === '0') { e.preventDefault(); zoomReset(); return; }

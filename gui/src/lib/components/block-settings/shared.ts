@@ -253,6 +253,27 @@ export const BLOCK_DOCS: Record<string, { summary: string; fields: Record<string
 			collapsed: 'Whether the group is visually collapsed in the editor.',
 		}
 	},
+	DataConversion: {
+		summary: 'Converts data between formats: Base64, Hex, Bytes, BigInteger, Binary, readable sizes, SVG→PNG, and number words.',
+		fields: {
+			op: 'Conversion operation to perform.',
+			input_var: 'Variable containing the input value.',
+			output_var: 'Variable to store the converted result.',
+			encoding: 'String encoding for StringToBytes / BytesToString operations (utf8, utf16, ascii).',
+			endianness: 'Byte order for IntToBytes / BigIntToBytes (big or little).',
+			byte_count: 'Number of output bytes for IntToBytes (1–8).',
+		}
+	},
+	FileSystem: {
+		summary: 'Performs file and folder operations: read, write, append, copy, move, delete, exists checks, and directory listing.',
+		fields: {
+			op: 'File system operation to perform.',
+			path: 'File or folder path. Supports <VAR> interpolation.',
+			dest_path: 'Destination path for Copy and Move operations.',
+			content: 'Content to write or append. Supports <VAR> interpolation.',
+			output_var: 'Variable to store the result (for read/exists/list operations).',
+		}
+	},
 };
 
 export function fieldHint(block: Block, field: string): string {
@@ -337,4 +358,50 @@ export const CRYPTO_FUNCTIONS = [
 
 export function getCryptoFuncMeta(ft: string) {
 	return CRYPTO_FUNCTIONS.find(f => f.value === ft) || CRYPTO_FUNCTIONS[0];
+}
+
+export const DATA_CONVERSION_OPS = [
+	{ value: 'Base64ToBytes',      label: 'Base64 → Bytes',         needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BytesToBase64',      label: 'Bytes → Base64',         needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'Base64ToString',     label: 'Base64 → String',        needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BigIntToBytes',      label: 'Big Integer → Bytes',    needsEncoding: false, needsEndian: true,  needsByteCount: false },
+	{ value: 'BytesToBigInt',      label: 'Bytes → Big Integer',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BinaryStringToBytes',label: 'Binary String → Bytes',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BytesToBinaryString',label: 'Bytes → Binary String',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'HexToBytes',         label: 'Hex → Bytes',            needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BytesToHex',         label: 'Bytes → Hex',            needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'ReadableSize',       label: 'Readable Size',          needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'StringToBytes',      label: 'String → Bytes',         needsEncoding: true,  needsEndian: false, needsByteCount: false },
+	{ value: 'BytesToString',      label: 'Bytes → String',         needsEncoding: true,  needsEndian: false, needsByteCount: false },
+	{ value: 'IntToBytes',         label: 'Int → Bytes',            needsEncoding: false, needsEndian: true,  needsByteCount: true  },
+	{ value: 'NumberToWords',      label: 'Number → Words',         needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'WordsToNumber',      label: 'Words → Number',         needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'SvgToPng',           label: 'SVG → PNG (base64)',     needsEncoding: false, needsEndian: false, needsByteCount: false },
+];
+
+export function getDataConversionMeta(op: string) {
+	return DATA_CONVERSION_OPS.find(o => o.value === op) || DATA_CONVERSION_OPS[0];
+}
+
+export const FILE_SYSTEM_OPS = [
+	{ value: 'CreatePath',       label: 'Create Path',           hasContent: false, hasDest: false, hasOutput: false },
+	{ value: 'FileAppend',       label: 'File Append',           hasContent: true,  hasDest: false, hasOutput: false },
+	{ value: 'FileAppendLines',  label: 'File Append Lines',     hasContent: true,  hasDest: false, hasOutput: false },
+	{ value: 'FileCopy',         label: 'File Copy',             hasContent: false, hasDest: true,  hasOutput: false },
+	{ value: 'FileMove',         label: 'File Move',             hasContent: false, hasDest: true,  hasOutput: false },
+	{ value: 'FileDelete',       label: 'File Delete',           hasContent: false, hasDest: false, hasOutput: false },
+	{ value: 'FileExists',       label: 'File Exists',           hasContent: false, hasDest: false, hasOutput: true  },
+	{ value: 'FileRead',         label: 'File Read',             hasContent: false, hasDest: false, hasOutput: true  },
+	{ value: 'FileReadBytes',    label: 'File Read Bytes',       hasContent: false, hasDest: false, hasOutput: true  },
+	{ value: 'FileReadLines',    label: 'File Read Lines',       hasContent: false, hasDest: false, hasOutput: true  },
+	{ value: 'FileWrite',        label: 'File Write',            hasContent: true,  hasDest: false, hasOutput: false },
+	{ value: 'FileWriteBytes',   label: 'File Write Bytes',      hasContent: true,  hasDest: false, hasOutput: false },
+	{ value: 'FileWriteLines',   label: 'File Write Lines',      hasContent: true,  hasDest: false, hasOutput: false },
+	{ value: 'FolderDelete',     label: 'Folder Delete',         hasContent: false, hasDest: false, hasOutput: false },
+	{ value: 'FolderExists',     label: 'Folder Exists',         hasContent: false, hasDest: false, hasOutput: true  },
+	{ value: 'GetFilesInFolder', label: 'Get Files in Folder',   hasContent: false, hasDest: false, hasOutput: true  },
+];
+
+export function getFileSystemMeta(op: string) {
+	return FILE_SYSTEM_OPS.find(o => o.value === op) || FILE_SYSTEM_OPS[0];
 }

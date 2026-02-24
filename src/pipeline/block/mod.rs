@@ -9,6 +9,7 @@ mod settings_bypass;
 mod settings_network;
 mod settings_akamai;
 mod settings_extended_functions;
+mod settings_data;
 
 pub use settings_http::*;
 pub use settings_parse::*;
@@ -21,6 +22,7 @@ pub use settings_bypass::*;
 pub use settings_network::*;
 pub use settings_akamai::*;
 pub use settings_extended_functions::*;
+pub use settings_data::*;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -127,6 +129,9 @@ pub enum BlockType {
     Group,
     // Extended functions
     ByteArray,
+    // Data conversion & file system
+    DataConversion,
+    FileSystem,
     Constants,
     Dictionary,
     FloatFunction,
@@ -200,6 +205,8 @@ impl BlockType {
             Self::GenerateGUID => "Generate GUID",
             Self::PhoneCountry => "Phone Country",
             Self::LambdaParser => "Lambda Parser",
+            Self::DataConversion => "Data Conversion",
+            Self::FileSystem => "File System",
         }
     }
 
@@ -212,6 +219,8 @@ impl BlockType {
             Self::ParseLR | Self::ParseRegex | Self::ParseJSON | Self::ParseCSS | Self::ParseXPath | Self::ParseCookie | Self::LambdaParser => "Parsing",
             Self::KeyCheck => "Checks",
             Self::StringFunction | Self::ListFunction | Self::CryptoFunction | Self::ConversionFunction | Self::DateFunction | Self::CookieContainer | Self::ByteArray | Self::Constants | Self::Dictionary | Self::FloatFunction | Self::IntegerFunction | Self::TimeFunction | Self::GenerateGUID | Self::PhoneCountry => "Functions",
+            Self::DataConversion => "Data",
+            Self::FileSystem => "FileSystem",
             Self::IfElse | Self::Loop | Self::Delay | Self::Script | Self::CaseSwitch | Self::Group => "Control",
             Self::Log | Self::SetVariable | Self::ClearCookies | Self::Webhook | Self::WebSocket => "Utilities",
             Self::BrowserOpen | Self::NavigateTo | Self::ClickElement | Self::TypeText | Self::WaitForElement | Self::GetElementText | Self::Screenshot | Self::ExecuteJs => "Browser",
@@ -229,6 +238,8 @@ impl BlockType {
             "Bypass" => "#e5c07b",
             "Browser" => "#e06c75",
             "Sensors" => "#2dd4bf",
+            "Data" => "#d4a96a",
+            "FileSystem" => "#d4a96a",
             _ => "#858585",
         }
     }
@@ -295,6 +306,8 @@ impl BlockType {
             Self::GenerateGUID => BlockSettings::GenerateGUID(GenerateGUIDSettings::default()),
             Self::PhoneCountry => BlockSettings::PhoneCountry(PhoneCountrySettings::default()),
             Self::LambdaParser => BlockSettings::LambdaParser(LambdaParserSettings::default()),
+            Self::DataConversion => BlockSettings::DataConversion(DataConversionSettings::default()),
+            Self::FileSystem => BlockSettings::FileSystem(FileSystemSettings::default()),
         }
     }
 }
@@ -373,4 +386,6 @@ pub enum BlockSettings {
     GenerateGUID(GenerateGUIDSettings),
     PhoneCountry(PhoneCountrySettings),
     LambdaParser(LambdaParserSettings),
+    DataConversion(DataConversionSettings),
+    FileSystem(FileSystemSettings),
 }

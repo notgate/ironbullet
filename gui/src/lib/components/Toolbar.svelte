@@ -149,11 +149,11 @@
 		<DropdownMenu.Trigger class="toolbar-trigger">Run</DropdownMenu.Trigger>
 		<DropdownMenu.Portal>
 			<DropdownMenu.Content class="menu-content" sideOffset={2} align="start">
-				<DropdownMenu.Item class="menu-item" onSelect={() => send('debug_pipeline')}>
+				<DropdownMenu.Item class="menu-item" onSelect={() => send('debug_pipeline', { pipeline: JSON.parse(JSON.stringify(app.pipeline)) })}>
 					Debug Run <span class="menu-shortcut">F5</span>
 				</DropdownMenu.Item>
 				<DropdownMenu.Separator class="menu-sep" />
-				<DropdownMenu.Item class="menu-item" onSelect={() => { send('start_runner', { threads: app.pipeline.runner_settings.threads, wordlist_path: app.wordlistPath, proxy_path: app.proxyPath }); app.isRunning = true; }}>
+				<DropdownMenu.Item class="menu-item" onSelect={() => { send('start_runner', { threads: app.pipeline.runner_settings.threads, wordlist_path: app.wordlistPath, proxy_path: app.proxyPath, pipeline: JSON.parse(JSON.stringify(app.pipeline)) }); app.isRunning = true; }}>
 					Start Runner
 				</DropdownMenu.Item>
 				<DropdownMenu.Item class="menu-item" onSelect={() => { send('stop_runner'); app.isRunning = false; app.isPaused = false; }} disabled={!app.isRunning}>
@@ -204,7 +204,7 @@
 		{:else}
 			<button
 				class="p-0.5 rounded transition-colors text-green hover:bg-secondary"
-				onclick={() => { send('start_runner', { threads: app.pipeline.runner_settings.threads, wordlist_path: app.wordlistPath, proxy_path: app.proxyPath }); app.isRunning = true; }}
+				onclick={() => { send('start_runner', { threads: app.pipeline.runner_settings.threads, wordlist_path: app.wordlistPath, proxy_path: app.proxyPath, pipeline: JSON.parse(JSON.stringify(app.pipeline)) }); app.isRunning = true; }}
 				title="Start Runner"
 			>
 				<Play size={12} />
@@ -212,7 +212,7 @@
 		{/if}
 		<button
 			class="p-0.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary"
-			onclick={() => send('debug_pipeline')}
+			onclick={() => send('debug_pipeline', { pipeline: JSON.parse(JSON.stringify(app.pipeline)) })}
 			title="Debug Run (F5)"
 		>
 			<Bug size={12} />

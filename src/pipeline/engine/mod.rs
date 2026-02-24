@@ -6,6 +6,7 @@ mod protocol;
 mod bypass;
 mod logging;
 mod helpers;
+mod data;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -444,6 +445,12 @@ impl ExecutionContext {
             }
             BlockSettings::LambdaParser(settings) => {
                 self.execute_lambda_parser(settings)
+            }
+            BlockSettings::DataConversion(settings) => {
+                self.execute_data_conversion(settings)
+            }
+            BlockSettings::FileSystem(settings) => {
+                self.execute_file_system(settings)
             }
         }
     }

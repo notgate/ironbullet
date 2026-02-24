@@ -17,8 +17,11 @@ pub(super) fn debug_pipeline(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let s = state.lock().await;
-            let blocks = s.pipeline.blocks.clone();
-            let data_settings = s.pipeline.data_settings.clone();
+            // If the frontend sends a full pipeline snapshot, use it (keeps settings in sync)
+            let frontend_pipeline = data.get("pipeline")
+                .and_then(|v| serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok());
+            let blocks = frontend_pipeline.as_ref().map(|p| p.blocks.clone()).unwrap_or_else(|| s.pipeline.blocks.clone());
+            let data_settings = frontend_pipeline.as_ref().map(|p| p.data_settings.clone()).unwrap_or_else(|| s.pipeline.data_settings.clone());
             let pm = s.plugin_manager.clone();
             drop(s); // Release lock before async execution
 
@@ -142,7 +145,10 @@ pub(super) fn start_runner(
 
             let (hits_tx, mut hits_rx) = tokio::sync::mpsc::channel::<HitResult>(1024);
 
-            let pipeline = s.pipeline.clone();
+            // Use frontend pipeline snapshot if provided (keeps runner_settings, proxy_settings, etc. in sync)
+            let pipeline = data.get("pipeline")
+                .and_then(|v| serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok())
+                .unwrap_or_else(|| s.pipeline.clone());
             let pm = s.plugin_manager.clone();
             let runner = Arc::new(RunnerOrchestrator::new(
                 pipeline,
