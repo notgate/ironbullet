@@ -96,8 +96,15 @@ export const BLOCK_DOCS: Record<string, { summary: string; fields: Record<string
 		fields: { key: 'Secret key required for HMAC and AES operations.' }
 	},
 	ConversionFunction: {
-		summary: 'Converts a variable between types (string, int, hex, base64, etc.).',
-		fields: {}
+		summary: 'Converts data between types and encodings: type casts, Base64, Hex, URL, HTML, Bytes, BigInt, Binary, readable sizes, number words, and SVG→PNG.',
+		fields: {
+			op: 'Conversion operation. Type casts: StringToInt, IntToFloat, etc. Encoding: Base64Encode/Decode, HexEncode/Decode, UrlEncode/Decode, HtmlEncode/Decode. Bytes: StringToBytes, BytesToString, IntToBytes, BytesToInt, BigIntToBytes, BytesToBigInt, BytesToBinaryString, BinaryStringToBytes. Formatting: ReadableSize, NumberToWords, WordsToNumber. Rendering: SvgToPng.',
+			input_var: 'Variable containing the input value.',
+			output_var: 'Variable to store the converted result.',
+			encoding: 'String encoding for StringToBytes / BytesToString (utf8, utf16).',
+			endianness: 'Byte order for IntToBytes / BigIntToBytes (big or little).',
+			byte_count: 'Number of output bytes for IntToBytes (1–8).',
+		}
 	},
 	IfElse: {
 		summary: 'Branches execution based on a condition. Blocks in the True branch run when the condition matches.',
@@ -253,17 +260,7 @@ export const BLOCK_DOCS: Record<string, { summary: string; fields: Record<string
 			collapsed: 'Whether the group is visually collapsed in the editor.',
 		}
 	},
-	DataConversion: {
-		summary: 'Converts data between formats: Base64, Hex, Bytes, BigInteger, Binary, readable sizes, SVG→PNG, and number words.',
-		fields: {
-			op: 'Conversion operation to perform.',
-			input_var: 'Variable containing the input value.',
-			output_var: 'Variable to store the converted result.',
-			encoding: 'String encoding for StringToBytes / BytesToString operations (utf8, utf16, ascii).',
-			endianness: 'Byte order for IntToBytes / BigIntToBytes (big or little).',
-			byte_count: 'Number of output bytes for IntToBytes (1–8).',
-		}
-	},
+
 	FileSystem: {
 		summary: 'Performs file and folder operations: read, write, append, copy, move, delete, exists checks, and directory listing.',
 		fields: {
@@ -360,28 +357,47 @@ export function getCryptoFuncMeta(ft: string) {
 	return CRYPTO_FUNCTIONS.find(f => f.value === ft) || CRYPTO_FUNCTIONS[0];
 }
 
-export const DATA_CONVERSION_OPS = [
-	{ value: 'Base64ToBytes',      label: 'Base64 → Bytes',         needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'BytesToBase64',      label: 'Bytes → Base64',         needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'Base64ToString',     label: 'Base64 → String',        needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'BigIntToBytes',      label: 'Big Integer → Bytes',    needsEncoding: false, needsEndian: true,  needsByteCount: false },
-	{ value: 'BytesToBigInt',      label: 'Bytes → Big Integer',    needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'BinaryStringToBytes',label: 'Binary String → Bytes',  needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'BytesToBinaryString',label: 'Bytes → Binary String',  needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'HexToBytes',         label: 'Hex → Bytes',            needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'BytesToHex',         label: 'Bytes → Hex',            needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'ReadableSize',       label: 'Readable Size',          needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'StringToBytes',      label: 'String → Bytes',         needsEncoding: true,  needsEndian: false, needsByteCount: false },
-	{ value: 'BytesToString',      label: 'Bytes → String',         needsEncoding: true,  needsEndian: false, needsByteCount: false },
-	{ value: 'IntToBytes',         label: 'Int → Bytes',            needsEncoding: false, needsEndian: true,  needsByteCount: true  },
-	{ value: 'NumberToWords',      label: 'Number → Words',         needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'WordsToNumber',      label: 'Words → Number',         needsEncoding: false, needsEndian: false, needsByteCount: false },
-	{ value: 'SvgToPng',           label: 'SVG → PNG (base64)',     needsEncoding: false, needsEndian: false, needsByteCount: false },
+export const CONVERSION_OPS = [
+	// Type casts
+	{ value: 'StringToInt',        label: 'String → Int',           category: 'Type Casts',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'IntToString',        label: 'Int → String',           category: 'Type Casts',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'StringToFloat',      label: 'String → Float',         category: 'Type Casts',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'FloatToString',      label: 'Float → String',         category: 'Type Casts',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BoolToString',       label: 'Bool → String',          category: 'Type Casts',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'StringToBool',       label: 'String → Bool',          category: 'Type Casts',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'IntToFloat',         label: 'Int → Float',            category: 'Type Casts',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'FloatToInt',         label: 'Float → Int',            category: 'Type Casts',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	// Encoding
+	{ value: 'Base64Encode',       label: 'Base64 Encode',          category: 'Encoding',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'Base64Decode',       label: 'Base64 Decode',          category: 'Encoding',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'HexEncode',          label: 'Hex Encode',             category: 'Encoding',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'HexDecode',          label: 'Hex Decode',             category: 'Encoding',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'UrlEncode',          label: 'URL Encode',             category: 'Encoding',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'UrlDecode',          label: 'URL Decode',             category: 'Encoding',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'HtmlEncode',         label: 'HTML Encode',            category: 'Encoding',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'HtmlDecode',         label: 'HTML Decode',            category: 'Encoding',    needsEncoding: false, needsEndian: false, needsByteCount: false },
+	// Bytes
+	{ value: 'StringToBytes',      label: 'String → Bytes',         category: 'Bytes',       needsEncoding: true,  needsEndian: false, needsByteCount: false },
+	{ value: 'BytesToString',      label: 'Bytes → String',         category: 'Bytes',       needsEncoding: true,  needsEndian: false, needsByteCount: false },
+	{ value: 'IntToBytes',         label: 'Int → Bytes',            category: 'Bytes',       needsEncoding: false, needsEndian: true,  needsByteCount: true  },
+	{ value: 'BytesToInt',         label: 'Bytes → Int',            category: 'Bytes',       needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BigIntToBytes',      label: 'BigInt → Bytes',         category: 'Bytes',       needsEncoding: false, needsEndian: true,  needsByteCount: false },
+	{ value: 'BytesToBigInt',      label: 'Bytes → BigInt',         category: 'Bytes',       needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BytesToBinaryString',label: 'Bytes → Binary String',  category: 'Bytes',       needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'BinaryStringToBytes',label: 'Binary String → Bytes',  category: 'Bytes',       needsEncoding: false, needsEndian: false, needsByteCount: false },
+	// Formatting
+	{ value: 'ReadableSize',       label: 'Readable Size',          category: 'Formatting',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'NumberToWords',      label: 'Number → Words',         category: 'Formatting',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'WordsToNumber',      label: 'Words → Number',         category: 'Formatting',  needsEncoding: false, needsEndian: false, needsByteCount: false },
+	{ value: 'SvgToPng',           label: 'SVG → PNG (base64)',     category: 'Rendering',   needsEncoding: false, needsEndian: false, needsByteCount: false },
 ];
 
-export function getDataConversionMeta(op: string) {
-	return DATA_CONVERSION_OPS.find(o => o.value === op) || DATA_CONVERSION_OPS[0];
+export function getConversionMeta(op: string) {
+	return CONVERSION_OPS.find(o => o.value === op) || CONVERSION_OPS[0];
 }
+
+/** @deprecated use getConversionMeta */
+export function getDataConversionMeta(op: string) { return getConversionMeta(op); }
 
 export const FILE_SYSTEM_OPS = [
 	{ value: 'CreatePath',       label: 'Create Path',           hasContent: false, hasDest: false, hasOutput: false },

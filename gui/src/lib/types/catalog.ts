@@ -57,7 +57,7 @@ export const BLOCK_CATALOG: BlockMeta[] = [
 	{ type: 'RandomData', label: 'Random Data', category: 'Utilities', color: '#858585', icon: 'dices' },
 	{ type: 'Plugin', label: 'Plugin Block', category: 'Utilities', color: '#858585', icon: 'plug' },
 	{ type: 'Group', label: 'Group', category: 'Control', color: '#dcdcaa', icon: 'folder' },
-	{ type: 'DataConversion', label: 'Data Conversion', category: 'Data', color: '#d4a96a', icon: 'arrow-right-left' },
+
 	{ type: 'FileSystem', label: 'File System', category: 'FileSystem', color: '#d4a96a', icon: 'folder-open' },
 	// Browser automation
 	{ type: 'BrowserOpen', label: 'Browser Open', category: 'Browser', color: '#e06c75', icon: 'monitor' },

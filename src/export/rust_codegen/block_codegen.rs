@@ -321,36 +321,98 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             }
         }
         BlockSettings::ConversionFunction(s) => {
-            let input = if vars.is_defined(&s.input_var) { var_name(&s.input_var) } else { "source".into() };
+            use crate::pipeline::block::settings_functions::ConversionOp;
+            let inp = if vars.is_defined(&s.input_var) { var_name(&s.input_var) } else { "source".into() };
             let letkw = vars.let_or_assign(&s.output_var);
             let vn = var_name(&s.output_var);
-            let from = s.from_type.as_str();
-            let to = s.to_type.as_str();
-            match (from, to) {
-                ("string", "int") => {
-                    code.push_str(&format!("{}{}{}= {}.parse::<i64>().unwrap_or(0).to_string();\n", pad, letkw, vn, input));
+            match s.op {
+                ConversionOp::StringToInt => code.push_str(&format!("{}{}{}= {}.trim().parse::<i64>().unwrap_or(0).to_string();\n", pad, letkw, vn, inp)),
+                ConversionOp::IntToString | ConversionOp::FloatToString | ConversionOp::BoolToString => code.push_str(&format!("{}{}{}= {}.trim().to_string();\n", pad, letkw, vn, inp)),
+                ConversionOp::StringToFloat => code.push_str(&format!("{}{}{}= {}.trim().parse::<f64>().unwrap_or(0.0).to_string();\n", pad, letkw, vn, inp)),
+                ConversionOp::StringToBool => code.push_str(&format!("{}{}{}= matches!({}.trim().to_lowercase().as_str(), \"true\" | \"1\" | \"yes\").to_string();\n", pad, letkw, vn, inp)),
+                ConversionOp::IntToFloat => code.push_str(&format!("{}{}{}= format!(\"{{:.1}}\", {}.trim().parse::<i64>().unwrap_or(0) as f64);\n", pad, letkw, vn, inp)),
+                ConversionOp::FloatToInt => code.push_str(&format!("{}{}{}= ({}.trim().parse::<f64>().unwrap_or(0.0) as i64).to_string();\n", pad, letkw, vn, inp)),
+                ConversionOp::Base64Encode => {
+                    code.push_str(&format!("{}use base64::Engine;\n", pad));
+                    code.push_str(&format!("{}{}{}= base64::engine::general_purpose::STANDARD.encode({}.as_bytes());\n", pad, letkw, vn, inp));
                 }
-                ("int", "string") | ("float", "string") => {
-                    code.push_str(&format!("{}{}{}= {}.to_string();\n", pad, letkw, vn, input));
+                ConversionOp::Base64Decode => {
+                    code.push_str(&format!("{}use base64::Engine;\n", pad));
+                    code.push_str(&format!("{}{}{}= String::from_utf8(base64::engine::general_purpose::STANDARD.decode({}.trim()).unwrap_or_default()).unwrap_or_default();\n", pad, letkw, vn, inp));
                 }
-                ("string", "float") => {
-                    code.push_str(&format!("{}{}{}= {}.parse::<f64>().unwrap_or(0.0).to_string();\n", pad, letkw, vn, input));
+                ConversionOp::HexEncode => code.push_str(&format!("{}{}{}= {}.bytes().map(|b| format!(\"{{:02x}}\", b)).collect::<String>();\n", pad, letkw, vn, inp)),
+                ConversionOp::HexDecode => {
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let h: String = {}.chars().filter(|c| c.is_ascii_hexdigit()).collect();\n", pad, inp));
+                    code.push_str(&format!("{}    let b: Vec<u8> = (0..h.len()).step_by(2).filter_map(|i| u8::from_str_radix(h.get(i..i+2)?, 16).ok()).collect();\n", pad));
+                    code.push_str(&format!("{}    String::from_utf8_lossy(&b).to_string()\n", pad));
+                    code.push_str(&format!("{}}};\n", pad));
                 }
-                ("hex", "string") => {
-                    code.push_str(&format!("{}{}{}= hex::decode(&{}).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();\n", pad, letkw, vn, input));
+                ConversionOp::UrlEncode => {
+                    code.push_str(&format!("{}{}{}= {}.bytes().map(|b| match b {{ b'A'..=b'Z'|b'a'..=b'z'|b'0'..=b'9'|b'-'|b'_'|b'.'|b'~' => (b as char).to_string(), _ => format!(\"%{{:02X}}\", b) }}).collect::<String>();\n", pad, letkw, vn, inp));
                 }
-                ("string", "hex") => {
-                    code.push_str(&format!("{}{}{}= hex::encode({}.as_bytes());\n", pad, letkw, vn, input));
+                ConversionOp::UrlDecode => {
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let mut out = String::new(); let b = {}.as_bytes(); let mut i = 0;\n", pad, inp));
+                    code.push_str(&format!("{}    while i < b.len() {{ if b[i] == b'%' && i+2 < b.len() {{ if let Ok(v) = u8::from_str_radix(std::str::from_utf8(&b[i+1..i+3]).unwrap_or(\"\"), 16) {{ out.push(v as char); i+=3; continue; }} }} if b[i]==b'+' {{ out.push(' '); }} else {{ out.push(b[i] as char); }} i+=1; }}\n", pad));
+                    code.push_str(&format!("{}    out\n", pad));
+                    code.push_str(&format!("{}}};\n", pad));
                 }
-                ("base64", "string") => {
-                    code.push_str(&format!("{}{}{}= String::from_utf8(base64::engine::general_purpose::STANDARD.decode(&{}).unwrap_or_default()).unwrap_or_default();\n", pad, letkw, vn, input));
+                ConversionOp::HtmlEncode => code.push_str(&format!("{}{}{}= {}.replace('&',\"&amp;\").replace('<',\"&lt;\").replace('>',\"&gt;\").replace('\"',\"&quot;\").replace('\\'',\"&#39;\");\n", pad, letkw, vn, inp)),
+                ConversionOp::HtmlDecode => code.push_str(&format!("{}{}{}= {}.replace(\"&amp;\",\"&\").replace(\"&lt;\",\"<\").replace(\"&gt;\",\">\").replace(\"&quot;\",\"\\\"\").replace(\"&#39;\",\"'\");\n", pad, letkw, vn, inp)),
+                ConversionOp::StringToBytes => code.push_str(&format!("{}{}{}= {}.bytes().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp)),
+                ConversionOp::BytesToString => code.push_str(&format!("{}{}{}= String::from_utf8({}.split(',').filter_map(|p| p.trim().parse::<u8>().ok()).collect::<Vec<_>>()).unwrap_or_default();\n", pad, letkw, vn, inp)),
+                ConversionOp::IntToBytes => code.push_str(&format!("{}{}{}= {}.trim().parse::<i64>().unwrap_or(0).to_be_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp)),
+                ConversionOp::BytesToInt => {
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let bv: Vec<u8> = {}.split(',').filter_map(|p| p.trim().parse().ok()).collect();\n", pad, inp));
+                    code.push_str(&format!("{}    let mut arr = [0u8;8]; let s = 8usize.saturating_sub(bv.len());\n", pad));
+                    code.push_str(&format!("{}    for (i,b) in bv.iter().enumerate() {{ arr[s+i] = *b; }}\n", pad));
+                    code.push_str(&format!("{}    i64::from_be_bytes(arr).to_string()\n", pad));
+                    code.push_str(&format!("{}}};\n", pad));
                 }
-                ("string", "base64") => {
-                    code.push_str(&format!("{}{}{}= base64::engine::general_purpose::STANDARD.encode({}.as_bytes());\n", pad, letkw, vn, input));
+                ConversionOp::BigIntToBytes => code.push_str(&format!("{}{}{}= {}.trim().parse::<i128>().map(|n| n.to_be_bytes().iter().skip_while(|&&b| b==0).map(|b| b.to_string()).collect::<Vec<_>>().join(\",\")).unwrap_or_default();\n", pad, letkw, vn, inp)),
+                ConversionOp::BytesToBigInt => {
+                    code.push_str(&format!("{}{}{}= {}.split(',').filter_map(|p| p.trim().parse::<u8>().ok()).fold(0i128, |acc,b| acc<<8|b as i128).to_string();\n", pad, letkw, vn, inp));
                 }
-                _ => {
-                    code.push_str(&format!("{}{}{}= {}.to_string(); // {}→{}\n", pad, letkw, vn, input, from, to));
+                ConversionOp::BytesToBinaryString => code.push_str(&format!("{}{}{}= {}.split(',').filter_map(|p| p.trim().parse::<u8>().ok()).map(|b| format!(\"{{:08b}}\",b)).collect::<Vec<_>>().join(\" \");\n", pad, letkw, vn, inp)),
+                ConversionOp::BinaryStringToBytes => code.push_str(&format!("{}{}{}= {}.split_whitespace().filter_map(|s| u8::from_str_radix(s,2).ok()).map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp)),
+                ConversionOp::ReadableSize => {
+                    code.push_str(&format!("{}{}{}= {{ let n={}.trim().parse::<u64>().unwrap_or(0); if n>=1_073_741_824 {{ format!(\"{{:.2}} GB\",n as f64/1_073_741_824.0) }} else if n>=1_048_576 {{ format!(\"{{:.2}} MB\",n as f64/1_048_576.0) }} else if n>=1_024 {{ format!(\"{{:.2}} KB\",n as f64/1024.0) }} else {{ format!(\"{{}} B\",n) }} }};\n", pad, letkw, vn, inp));
                 }
+                ConversionOp::NumberToWords => {
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    fn ntw(n: i64) -> String {{\n", pad));
+                    code.push_str(&format!("{}        if n < 0 {{ return format!(\"negative {{}}\", ntw(-n)); }}\n", pad));
+                    code.push_str(&format!("{}        if n == 0 {{ return \"zero\".into(); }}\n", pad));
+                    code.push_str(&format!("{}        const O: &[&str] = &[\"\",\"one\",\"two\",\"three\",\"four\",\"five\",\"six\",\"seven\",\"eight\",\"nine\",\"ten\",\"eleven\",\"twelve\",\"thirteen\",\"fourteen\",\"fifteen\",\"sixteen\",\"seventeen\",\"eighteen\",\"nineteen\"];\n", pad));
+                    code.push_str(&format!("{}        const T: &[&str] = &[\"\",\"\",\"twenty\",\"thirty\",\"forty\",\"fifty\",\"sixty\",\"seventy\",\"eighty\",\"ninety\"];\n", pad));
+                    code.push_str(&format!("{}        fn b1k(n:i64,o:&[&str],t:&[&str])->String{{ if n<20{{o[n as usize].into()}} else if n<100{{ let r=n%10; if r==0{{t[(n/10)as usize].into()}}else{{format!(\"{{}}-{{}}\",t[(n/10)as usize],o[r as usize])}}}}else{{let r=n%100;if r==0{{format!(\"{{}} hundred\",o[(n/100)as usize])}}else{{format!(\"{{}} hundred {{}}\",o[(n/100)as usize],b1k(r,o,t))}}}}}}\n", pad));
+                    code.push_str(&format!("{}        let mut p=Vec::new(); let mut r=n;\n", pad));
+                    code.push_str(&format!("{}        for (v,l) in &[(1_000_000_000_000i64,\"trillion\"),(1_000_000_000,\"billion\"),(1_000_000,\"million\"),(1_000,\"thousand\")] {{ if r>=*v {{ p.push(format!(\"{{}} {{}}\",b1k(r/v,O,T),l)); r%=v; }} }}\n", pad));
+                    code.push_str(&format!("{}        if r>0 {{ p.push(b1k(r,O,T)); }} p.join(\" \")\n", pad));
+                    code.push_str(&format!("{}    }}\n", pad));
+                    code.push_str(&format!("{}    ntw({}.trim().parse::<i64>().unwrap_or(0))\n", pad, inp));
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+                ConversionOp::WordsToNumber => {
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let low={}.trim().to_lowercase(); let neg=low.starts_with(\"negative \");\n", pad, inp));
+                    code.push_str(&format!("{}    let s=if neg{{&low[9..]}}else{{low.as_str()}};\n", pad));
+                    code.push_str(&format!("{}    const WM:&[(&str,i64)]=&[(\"zero\",0),(\"one\",1),(\"two\",2),(\"three\",3),(\"four\",4),(\"five\",5),(\"six\",6),(\"seven\",7),(\"eight\",8),(\"nine\",9),(\"ten\",10),(\"eleven\",11),(\"twelve\",12),(\"thirteen\",13),(\"fourteen\",14),(\"fifteen\",15),(\"sixteen\",16),(\"seventeen\",17),(\"eighteen\",18),(\"nineteen\",19),(\"twenty\",20),(\"thirty\",30),(\"forty\",40),(\"fifty\",50),(\"sixty\",60),(\"seventy\",70),(\"eighty\",80),(\"ninety\",90),(\"hundred\",100),(\"thousand\",1000),(\"million\",1_000_000),(\"billion\",1_000_000_000),(\"trillion\",1_000_000_000_000)];\n", pad));
+                    code.push_str(&format!("{}    let (mut tot,mut cur)=(0i64,0i64);\n", pad));
+                    code.push_str(&format!("{}    for t in s.split(|c:char|c==' '||c=='-').filter(|t|!t.is_empty()){{if let Some(&(_,v))=WM.iter().find(|(w,_)|*w==t){{if v==100{{cur*=100}}else if v>=1000{{tot+=cur*v;cur=0}}else{{cur+=v;}}}}}}\n", pad));
+                    code.push_str(&format!("{}    tot+=cur; (if neg{{-tot}}else{{tot}}).to_string()\n", pad));
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+                ConversionOp::SvgToPng => {
+                    code.push_str(&format!("{}// SvgToPng: use the resvg crate in your project\n", pad));
+                    code.push_str(&format!("{}// let {} = your_svg_to_png_fn(&{});\n", pad, vn, inp));
+                    code.push_str(&format!("{}{}{}= String::new(); // stub — add resvg to Cargo.toml\n", pad, letkw, vn));
+                }
+            }
+            if s.capture {
+                code.push_str(&format!("{}captures.insert(\"{}\".into(), {}.clone());\n", pad, escape_str(&s.output_var), vn));
             }
         }
         BlockSettings::DateFunction(s) => {
@@ -1181,66 +1243,6 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             code.push_str(&format!("{}    // LambdaParser: {}\n", pad, escape_str(&s.lambda_expression)));
             code.push_str(&format!("{}    {}.to_string() // Simplified lambda execution\n", pad, input));
             code.push_str(&format!("{}}};\n", pad));
-        }
-        BlockSettings::DataConversion(s) => {
-            // DataConversionOp and FileSystemOp are in scope via `use crate::pipeline::block::*`
-            let inp = if vars.is_defined(&s.input_var) { var_name(&s.input_var) } else { "source".into() };
-            let letkw = vars.let_or_assign(&s.output_var);
-            let vn = var_name(&s.output_var);
-            match s.op {
-                DataConversionOp::Base64ToBytes => {
-                    code.push_str(&format!("{}use base64::Engine;\n", pad));
-                    code.push_str(&format!("{}{}{}= base64::engine::general_purpose::STANDARD.decode({}.as_bytes()).unwrap_or_default().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::BytesToBase64 => {
-                    code.push_str(&format!("{}use base64::Engine;\n", pad));
-                    code.push_str(&format!("{}{}{}= base64::engine::general_purpose::STANDARD.encode({}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).collect::<Vec<_>>());\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::Base64ToString => {
-                    code.push_str(&format!("{}use base64::Engine;\n", pad));
-                    code.push_str(&format!("{}{}{}= String::from_utf8(base64::engine::general_purpose::STANDARD.decode({}.as_bytes()).unwrap_or_default()).unwrap_or_default();\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::HexToBytes => {
-                    code.push_str(&format!("{}{}{}= (0..{}.len()).step_by(2).filter_map(|i| u8::from_str_radix({}.get(i..i+2).unwrap_or(\"00\"), 16).ok()).map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp, inp));
-                }
-                DataConversionOp::BytesToHex => {
-                    code.push_str(&format!("{}{}{}= {}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).map(|b| format!(\"{{:02x}}\", b)).collect::<String>();\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::StringToBytes => {
-                    code.push_str(&format!("{}{}{}= {}.bytes().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::BytesToString => {
-                    code.push_str(&format!("{}{}{}= String::from_utf8({}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).collect::<Vec<_>>()).unwrap_or_default();\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::IntToBytes => {
-                    code.push_str(&format!("{}{}{}= {}.trim().parse::<i64>().map(|n| n.to_be_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\")).unwrap_or_default();\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::ReadableSize => {
-                    code.push_str(&format!("{}{}{}= {{ let n = {}.trim().parse::<u64>().unwrap_or(0); if n >= 1_073_741_824 {{ format!(\"{{:.2}} GB\", n as f64 / 1_073_741_824.0) }} else if n >= 1_048_576 {{ format!(\"{{:.2}} MB\", n as f64 / 1_048_576.0) }} else if n >= 1_024 {{ format!(\"{{:.2}} KB\", n as f64 / 1_024.0) }} else {{ format!(\"{{}} B\", n) }} }};\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::BigIntToBytes => {
-                    code.push_str(&format!("{}{}{}= {}.trim().parse::<i128>().map(|n| n.to_be_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\")).unwrap_or_default();\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::BytesToBigInt => {
-                    code.push_str(&format!("{}let _bytes_{}: Vec<u8> = {}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).collect();\n", pad, vn, inp));
-                    code.push_str(&format!("{}{}{}= _bytes_{}.iter().fold(0i128, |acc, &b| acc << 8 | b as i128).to_string();\n", pad, letkw, vn, vn));
-                }
-                DataConversionOp::BinaryStringToBytes => {
-                    code.push_str(&format!("{}{}{}= {}.split(' ').filter_map(|b| u8::from_str_radix(b.trim(), 2).ok()).map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::BytesToBinaryString => {
-                    code.push_str(&format!("{}{}{}= {}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).map(|b| format!(\"{{:08b}}\", b)).collect::<Vec<_>>().join(\" \");\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::NumberToWords => {
-                    code.push_str(&format!("{}{}{}= {}.trim().to_string(); // number-to-words requires an external crate\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::WordsToNumber => {
-                    code.push_str(&format!("{}{}{}= {}.trim().to_string(); // words-to-number requires an external crate\n", pad, letkw, vn, inp));
-                }
-                DataConversionOp::SvgToPng => {
-                    code.push_str(&format!("{}{}{}= String::new(); // SvgToPng requires resvg — use the runtime pipeline block\n", pad, letkw, vn));
-                }
-            }
         }
         BlockSettings::FileSystem(s) => {
             let path_expr = format!("\"{}\"", escape_str(&s.path));

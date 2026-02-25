@@ -4,6 +4,19 @@ use uuid::Uuid;
 
 use crate::pipeline::{OutputFormat, Pipeline, ProxySettings};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub enum JobType {
+    Config,
+    ProxyCheck,
+}
+
+impl Default for JobType {
+    fn default() -> Self { JobType::Config }
+}
+
+fn default_proxy_check_url() -> String { "http://www.google.com".into() }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub id: Uuid,
@@ -20,6 +33,12 @@ pub struct Job {
     pub started: Option<DateTime<Utc>>,
     pub completed: Option<DateTime<Utc>>,
     pub stats: super::RunnerStats,
+    #[serde(default)]
+    pub job_type: JobType,
+    #[serde(default = "default_proxy_check_url")]
+    pub proxy_check_url: String,
+    #[serde(default)]
+    pub proxy_check_list: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +137,9 @@ impl Default for Job {
                 active_threads: 0,
                 elapsed_secs: 0.0,
             },
+            job_type: JobType::Config,
+            proxy_check_url: default_proxy_check_url(),
+            proxy_check_list: String::new(),
         }
     }
 }

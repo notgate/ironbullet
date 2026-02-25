@@ -56,7 +56,7 @@ impl ExecutionContext {
             }
             BlockSettings::ConversionFunction(s) => {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();
-                format!("{}→{}({}) = {}", s.from_type, s.to_type, s.input_var, truncate_display(&val, 40))
+                format!("{:?}({}) → {} = {}", s.op, s.input_var, s.output_var, truncate_display(&val, 40))
             }
             BlockSettings::DateFunction(s) => {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();
@@ -203,10 +203,6 @@ impl ExecutionContext {
             BlockSettings::LambdaParser(s) => {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();
                 format!("{} = {}", s.output_var, truncate_display(&val, 60))
-            }
-            BlockSettings::DataConversion(s) => {
-                let val = self.variables.get(&s.output_var).unwrap_or_default();
-                format!("{:?}({}) → {} = {}", s.op, s.input_var, s.output_var, truncate_display(&val, 40))
             }
             BlockSettings::FileSystem(s) => {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();

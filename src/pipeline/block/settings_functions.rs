@@ -125,23 +125,76 @@ pub enum CryptoFnType {
 
 // ── Conversion Function ──
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub enum ConversionOp {
+    StringToInt,
+    IntToString,
+    StringToFloat,
+    FloatToString,
+    BoolToString,
+    StringToBool,
+    IntToFloat,
+    FloatToInt,
+    Base64Encode,
+    Base64Decode,
+    HexEncode,
+    HexDecode,
+    UrlEncode,
+    UrlDecode,
+    HtmlEncode,
+    HtmlDecode,
+    StringToBytes,
+    BytesToString,
+    IntToBytes,
+    BytesToInt,
+    BigIntToBytes,
+    BytesToBigInt,
+    BytesToBinaryString,
+    BinaryStringToBytes,
+    ReadableSize,
+    NumberToWords,
+    WordsToNumber,
+    SvgToPng,
+}
+
+impl Default for ConversionOp {
+    fn default() -> Self { ConversionOp::Base64Encode }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversionFunctionSettings {
+    #[serde(default)]
+    pub op: ConversionOp,
     pub input_var: String,
     pub output_var: String,
     pub capture: bool,
+    #[serde(default)]
+    pub encoding: String,
+    #[serde(default)]
+    pub endianness: String,
+    #[serde(default = "default_byte_count")]
+    pub byte_count: u32,
+    #[serde(default)]
     pub from_type: String,
+    #[serde(default)]
     pub to_type: String,
 }
+
+fn default_byte_count() -> u32 { 4 }
 
 impl Default for ConversionFunctionSettings {
     fn default() -> Self {
         Self {
+            op: ConversionOp::Base64Encode,
             input_var: String::new(),
             output_var: "CONVERTED".into(),
             capture: false,
-            from_type: "string".into(),
-            to_type: "int".into(),
+            encoding: "utf8".into(),
+            endianness: "big".into(),
+            byte_count: 4,
+            from_type: String::new(),
+            to_type: String::new(),
         }
     }
 }

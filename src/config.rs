@@ -57,7 +57,9 @@ fn def_zoom() -> u32 { 100 }
 fn def_font_size() -> u32 { 12 }
 fn def_font_family() -> String { "Cascadia Code".into() }
 fn def_max_threads() -> u32 { 100 }
-fn def_sidecar_path() -> String { "reqflow-sidecar.exe".into() }
+fn def_sidecar_path() -> String {
+    if cfg!(target_os = "windows") { "reqflow-sidecar.exe".into() } else { "reqflow-sidecar".into() }
+}
 fn def_left_panel_width() -> u32 { 200 }
 fn def_bottom_panel_height() -> u32 { 250 }
 fn def_show_palette() -> bool { true }
@@ -75,7 +77,7 @@ impl Default for GuiConfig {
             last_config_path: String::new(),
             recent_configs: Vec::new(),
             default_threads: 100,
-            sidecar_path: "reqflow-sidecar.exe".into(),
+            sidecar_path: def_sidecar_path(),
             left_panel_width: 200,
             bottom_panel_height: 250,
             show_block_palette: true,

@@ -446,9 +446,6 @@ impl ExecutionContext {
             BlockSettings::LambdaParser(settings) => {
                 self.execute_lambda_parser(settings)
             }
-            BlockSettings::DataConversion(settings) => {
-                self.execute_data_conversion(settings)
-            }
             BlockSettings::FileSystem(settings) => {
                 self.execute_file_system(settings)
             }

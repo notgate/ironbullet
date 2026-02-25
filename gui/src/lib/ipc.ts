@@ -213,7 +213,7 @@ export function registerCallbacks() {
 					console.log('[IPC] file_selected: field=', field, 'path=', path);
 					if (field === 'wordlist') app.wordlistPath = path;
 					else if (field === 'proxies') app.proxyPath = path;
-					else if (field === 'job_wordlist') app.pendingJobWordlist = { path, isFolder: false };
+					else if (field === 'job_wordlist' || field === 'proxy_check_list') app.pendingJobWordlist = { path, isFolder: false };
 				}
 				break;
 			case 'recent_configs':
@@ -253,6 +253,11 @@ export function registerCallbacks() {
 					toast('Job created', 'success');
 					send('list_jobs');
 				}
+				break;
+			case 'job_updated':
+				console.log('[IPC] job_updated:', (resp.data as any)?.id ?? 'no-id');
+				toast('Job updated', 'success');
+				send('list_jobs');
 				break;
 			case 'jobs_list':
 				if (resp.data && Array.isArray(resp.data)) {

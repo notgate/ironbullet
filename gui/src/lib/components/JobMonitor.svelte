@@ -15,6 +15,9 @@
 	import Database from '@lucide/svelte/icons/database';
 	import Folder from '@lucide/svelte/icons/folder';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import HelpModal from './HelpModal.svelte';
 
 	let showNewJob = $state(false);
@@ -63,90 +66,91 @@
 
 	const helpSections = [
 		{
-			heading: 'What are Jobs?',
-			content: `Jobs are pipeline execution instances that process data at scale. Each job:
+			heading: 'Overview',
+			content: `Jobs are pipeline execution instances that process data at scale.
 
-- Runs your configured pipeline against a data source
-- Uses multiple threads for parallel execution
-- Tracks real-time statistics (CPM, hits, progress, errors)
-- Operates independently with its own lifecycle and thread pool
+• Each job runs your \`pipeline\` against a \`data source\` using a configurable thread pool
+• Statistics update in real-time: CPM, hits, bans, fails, processed count, elapsed time
+• Two job types: \`Config Job\` (pipeline runner) and \`Proxy Check\` (latency/alive tester)
+• Jobs are independent — multiple can run simultaneously
+• Click any row to select it and view its hits in the \`Data\` tab`
+		},
+		{
+			heading: 'Job Types',
+			content: `\`Config Job\` — runs your pipeline against a wordlist
+• Standard mode: each data line is fed through the full block pipeline
+• Captures, hits, bans, and fails are tracked per run
+• Requires a pipeline to be loaded in the editor
 
-Architecture: Pipeline + Data Source + Thread Pool = Automated Job Processing`
+\`Proxy Check\` — tests a list of proxies against a URL
+• Each proxy in the list is tested with a HEAD request
+• Alive proxies appear as Hits with \`status=alive\` and \`latency_ms\` captures
+• Dead proxies are silently dropped (not tracked individually)
+• No pipeline required — select the type before creating`
 		},
 		{
 			heading: 'Creating a Job',
-			content: `Prerequisite: Debug your pipeline first (F5 or Debug panel)
+			content: `1. Click \`New Job\` to open the creation form
+2. Use the segmented selector to choose \`Config Job\` or \`Proxy Check\`
+3. Set a \`Name\` and \`Threads\` count
 
-Job creation workflow:
+For \`Config Job\`:
+• Select \`Data Source Type\`: \`File\`, \`Folder\`, or \`Inline\`
+• \`File\` — single .txt/.csv wordlist, one entry per line
+• \`Folder\` — all .txt, .csv, .lst, .dat files processed alphabetically
+• \`Inline\` — paste entries directly, one per line
+• Use the \`File\` and \`Folder\` browse buttons to pick paths
 
-1. Click "New Job" button
+For \`Proxy Check\`:
+• Browse or paste a path to a proxy list file
+• Set the \`Ping URL\` (default: \`http://www.google.com\`)
+• One proxy per line: \`host:port\` or \`http://host:port\`
 
-2. Configure job parameters:
-   Name
-     Descriptive identifier (e.g., "Gmail Check", "Site Login Test")
+4. Click \`Create Job\` — it appears with state \`Queued\``
+		},
+		{
+			heading: 'Editing Jobs',
+			content: `Click the \`✏ pencil\` icon on any stopped or paused job to edit it.
 
-   Threads
-     1-1000 parallel executions
-     Recommendation: Start low (10-50), increase based on performance
+Editable fields:
+• \`Name\` — rename the job
+• \`Threads\` — change thread count (takes effect on next start)
+• \`Wordlist / Data Source\` — change the input file path
+• \`Proxy List\` and \`Ping URL\` (for Proxy Check jobs)
 
-3. Select data source:
-
-   File
-     Full path to wordlist or CSV file
-     Example: C:\\data\\combo.txt
-     Format: One entry per line (user:pass)
-
-   Inline
-     Paste data directly into text area
-     Format: One entry per line
-     Example:
-       user1:pass1
-       user2:pass2
-       user3:pass3
-
-4. Set start condition:
-
-   Immediate
-     Begins processing immediately after creation
-
-   Delayed
-     Waits specified seconds before auto-starting
-
-5. Click "Create Job"
-
-Job appears in table below with "Queued" state`
+Note: Jobs must not be in \`Running\` state to edit. Stop or pause first.`
 		},
 		{
 			heading: 'Job Controls',
-			content: `Action buttons (rightmost column):
+			content: `Each row has action buttons on the right:
 
-Play (Green)
-  Available: Queued or Waiting states
-  Action: Start processing data
-  Effect: Changes state to Running
+\`▶ Play\` — start a Queued or Waiting job
+\`⏸ Pause\` — temporarily halt a Running job (resumes from same position)
+\`▶ Resume\` — continue a Paused job
+\`■ Stop\` — permanently stop a Running or Paused job
+\`✏ Edit\` — open the edit dialog (not available while Running)
+\`🗑 Delete\` — remove the job and all its data
 
-Pause (Orange)
-  Available: Running state
-  Action: Temporarily halt processing
-  Effect: Changes state to Paused
-  Note: Preserves position, can resume later
+Stats columns: \`CPM\` (checks per minute) • \`Hits\` • \`Processed/Total\` • \`Elapsed Time\``
+		},
+		{
+			heading: 'Hits Database',
+			content: `• All hits are stored in the \`Data\` tab and persisted in memory
+• Click a job row or the \`📊 database icon\` to view hits for that job
+• Export hits via the \`Data\` panel buttons: \`TXT\` or \`CSV\`
+• For advanced filtering and sorting, click \`Advanced\` or use the \`Hits\` menu in the toolbar
+• Proxy Check hits include captures: \`status=alive\` and \`latency_ms=NNN\``
+		},
+		{
+			heading: 'Thread Tuning',
+			content: `Start conservative and increase gradually:
 
-Resume (Green)
-  Available: Paused state
-  Action: Continue from paused position
-  Effect: Changes state to Running
-  Note: Maintains all statistics and progress
-
-Stop (Red)
-  Available: Running or Paused states
-  Action: Permanently terminate job
-  Effect: Changes state to Stopped
-  Warning: Cannot resume after stopping
-
-Delete (Gray)
-  Available: Any state except Running
-  Action: Remove job from list
-  Warning: Permanently deletes all job data`
+• Begin with \`10–50 threads\` to measure baseline server behavior
+• Watch \`CPM\` — if it scales linearly with threads, increase further
+• If CPM plateaus or drops as threads increase → rate limiting detected
+• High \`ban rate\`: reduce threads, check proxy quality
+• High \`fail rate\`: verify pipeline logic in \`Debug\` panel (F5)
+• High \`retry rate\`: check proxy quality and network stability`
 		},
 		{
 			heading: 'Job Lifecycle States',
@@ -237,34 +241,80 @@ Error handling
   High retry rate: Check proxy quality and network stability`
 		},
 	];
+	// New job form state
+	let newJobType = $state<'Config' | 'ProxyCheck'>('Config');
 	let newJobName = $state('');
 	let newJobThreads = $state(100);
 	let newJobDataSource = $state('');
 	let newJobDataType = $state<'File' | 'Folder' | 'Inline'>('File');
 	let newJobStartCondition = $state<'Immediate' | 'Delayed'>('Immediate');
 	let newJobDelaySecs = $state(0);
+	let proxyCheckUrl = $state('http://www.google.com');
+	let proxyCheckList = $state('');
+
+	// Edit job dialog state
+	let editingJob = $state<any>(null);
+	let showEditDialog = $state(false);
+	let editName = $state('');
+	let editThreads = $state(100);
+	let editDataSource = $state('');
+	let editProxyCheckUrl = $state('http://www.google.com');
+	let editProxyCheckList = $state('');
+
+	function openEditDialog(job: any) {
+		editingJob = job;
+		editName = job.name ?? '';
+		editThreads = job.thread_count ?? 100;
+		editDataSource = job.data_source?.value ?? '';
+		editProxyCheckUrl = job.proxy_check_url ?? 'http://www.google.com';
+		editProxyCheckList = job.proxy_check_list ?? '';
+		showEditDialog = true;
+		console.log('[JobMonitor] openEditDialog:', job.id, job.name);
+	}
+
+	function saveJobEdit() {
+		if (!editingJob) return;
+		send('update_job', {
+			id: editingJob.id,
+			name: editName,
+			thread_count: editThreads,
+			data_source: { source_type: editingJob.data_source?.source_type ?? 'File', value: editDataSource },
+			proxy_check_url: editProxyCheckUrl,
+			proxy_check_list: editProxyCheckList,
+		});
+		console.log('[JobMonitor] saveJobEdit:', editingJob.id);
+		showEditDialog = false;
+		editingJob = null;
+	}
 
 	// When a file/folder browse completes, auto-fill the new job form
 	$effect(() => {
 		const pick = app.pendingJobWordlist;
 		if (pick && showNewJob) {
-			newJobDataSource = pick.path;
-			newJobDataType = pick.isFolder ? 'Folder' : 'File';
-			console.log('[JobMonitor] pendingJobWordlist applied:', pick.path, 'isFolder:', pick.isFolder);
+			if (newJobType === 'ProxyCheck') {
+				proxyCheckList = pick.path;
+			} else {
+				newJobDataSource = pick.path;
+				newJobDataType = pick.isFolder ? 'Folder' : 'File';
+			}
+			console.log('[JobMonitor] pendingJobWordlist applied:', pick.path, 'type:', newJobType);
 			app.pendingJobWordlist = null;
 		}
 	});
 
 	function createJob() {
-		console.log('[JobMonitor] createJob: type=', newJobDataType, 'source=', newJobDataSource, 'threads=', newJobThreads);
+		console.log('[JobMonitor] createJob: jobType=', newJobType, 'dataType=', newJobDataType, 'threads=', newJobThreads);
 		send('create_job', {
-			name: newJobName || 'New Job',
+			name: newJobName || (newJobType === 'ProxyCheck' ? 'Proxy Check' : 'New Job'),
 			pipeline: JSON.parse(JSON.stringify(app.pipeline)),
 			thread_count: newJobThreads,
-			data_source: {
+			job_type: newJobType,
+			proxy_check_url: newJobType === 'ProxyCheck' ? proxyCheckUrl : undefined,
+			proxy_check_list: newJobType === 'ProxyCheck' ? proxyCheckList : undefined,
+			data_source: newJobType === 'Config' ? {
 				source_type: newJobDataType,
 				value: newJobDataSource,
-			},
+			} : { source_type: 'File', value: proxyCheckList },
 			start_condition: newJobStartCondition === 'Immediate'
 				? 'Immediate'
 				: { Delayed: { delay_secs: newJobDelaySecs } },
@@ -272,6 +322,7 @@ Error handling
 		showNewJob = false;
 		newJobName = '';
 		newJobDataSource = '';
+		proxyCheckList = '';
 	}
 
 	function refreshJobs() {
@@ -352,72 +403,94 @@ Error handling
 
 	<!-- New job form -->
 	{#if showNewJob}
-		<div class="px-3 py-2 bg-background border-b border-border">
+		<div class="px-3 py-2.5 bg-background border-b border-border space-y-2">
+			<!-- Job type segmented selector -->
+			<div class="flex rounded border border-border overflow-hidden text-[10px]">
+				<button
+					class="flex-1 py-1.5 flex items-center justify-center gap-1.5 transition-all duration-200 {newJobType === 'Config' ? 'bg-primary text-white font-medium' : 'bg-surface text-muted-foreground hover:bg-accent/30'}"
+					onclick={() => newJobType = 'Config'}
+				><FileText size={9} />Config Job</button>
+				<button
+					class="flex-1 py-1.5 flex items-center justify-center gap-1.5 transition-all duration-200 {newJobType === 'ProxyCheck' ? 'bg-primary text-white font-medium' : 'bg-surface text-muted-foreground hover:bg-accent/30'}"
+					onclick={() => newJobType = 'ProxyCheck'}
+				><ShieldCheck size={9} />Proxy Check</button>
+			</div>
+
 			<div class="grid grid-cols-2 gap-2 text-xs">
 				<div>
 					<label class="text-muted-foreground text-[10px]">Name</label>
-					<input type="text" bind:value={newJobName} placeholder="Job name" class="skeu-input w-full text-xs" />
+					<input type="text" bind:value={newJobName} placeholder={newJobType === 'ProxyCheck' ? 'Proxy Check' : 'Job name'} class="skeu-input w-full text-xs" />
 				</div>
 				<div>
 					<label class="text-muted-foreground text-[10px]">Threads</label>
 					<input type="number" min="1" max="1000" bind:value={newJobThreads} class="skeu-input w-full text-xs" />
 				</div>
-				<div>
-					<label class="text-muted-foreground text-[10px]">Data Source Type</label>
-					<SkeuSelect
-						value={newJobDataType}
-						onValueChange={(v) => { newJobDataType = v as any; }}
-						options={[{value:'File',label:'File'},{value:'Folder',label:'Folder (all .txt/.csv)'},{value:'Inline',label:'Inline'}]}
-						class="text-xs w-full"
-					/>
-				</div>
-				<div>
-					<label class="text-muted-foreground text-[10px]">Start Condition</label>
-					<SkeuSelect
-						value={newJobStartCondition}
-						onValueChange={(v) => { newJobStartCondition = v as any; }}
-						options={[{value:'Immediate',label:'Immediate'},{value:'Delayed',label:'Delayed'}]}
-						class="text-xs w-full"
-					/>
-				</div>
-				<div class="col-span-2">
-					<label class="text-muted-foreground text-[10px]">
-						{newJobDataType === 'File' ? 'Wordlist File' : newJobDataType === 'Folder' ? 'Wordlist Folder' : 'Data (one per line)'}
-					</label>
-					{#if newJobDataType === 'Inline'}
-						<textarea bind:value={newJobDataSource} rows={3} class="skeu-input w-full text-xs font-mono" placeholder="line1&#10;line2"></textarea>
-					{:else}
-						<div class="flex gap-1">
-							<input
-								type="text"
-								bind:value={newJobDataSource}
-								placeholder={newJobDataType === 'Folder' ? 'Path to folder containing wordlists...' : 'Path to wordlist file...'}
-								class="skeu-input flex-1 text-xs font-mono"
-							/>
-							<button
-								class="skeu-btn text-[10px] flex items-center gap-1 shrink-0"
-								title="Browse for a wordlist file"
-								onclick={() => send('browse_file', { field: 'job_wordlist' })}
-							><FileText size={10} />File</button>
-							<button
-								class="skeu-btn text-[10px] flex items-center gap-1 shrink-0"
-								title="Browse for a folder containing wordlists"
-								onclick={() => send('browse_folder', { field: 'job_folder' })}
-							><Folder size={10} />Folder</button>
-						</div>
-						{#if newJobDataType === 'Folder'}
-							<p class="text-[9px] text-muted-foreground mt-0.5">All .txt, .csv, .lst, .dat files in the folder will be processed in alphabetical order.</p>
-						{/if}
-					{/if}
-				</div>
-				{#if newJobStartCondition === 'Delayed'}
+
+				{#if newJobType === 'Config'}
 					<div>
-						<label class="text-muted-foreground text-[10px]">Delay (seconds)</label>
-						<input type="number" min="0" bind:value={newJobDelaySecs} class="skeu-input w-full text-xs" />
+						<label class="text-muted-foreground text-[10px]">Data Source Type</label>
+						<SkeuSelect
+							value={newJobDataType}
+							onValueChange={(v) => { newJobDataType = v as any; }}
+							options={[{value:'File',label:'File'},{value:'Folder',label:'Folder (all .txt/.csv)'},{value:'Inline',label:'Inline'}]}
+							class="text-xs w-full"
+						/>
+					</div>
+					<div>
+						<label class="text-muted-foreground text-[10px]">Start Condition</label>
+						<SkeuSelect
+							value={newJobStartCondition}
+							onValueChange={(v) => { newJobStartCondition = v as any; }}
+							options={[{value:'Immediate',label:'Immediate'},{value:'Delayed',label:'Delayed'}]}
+							class="text-xs w-full"
+						/>
+					</div>
+					<div class="col-span-2">
+						<label class="text-muted-foreground text-[10px]">
+							{newJobDataType === 'File' ? 'Wordlist File' : newJobDataType === 'Folder' ? 'Wordlist Folder' : 'Data (one per line)'}
+						</label>
+						{#if newJobDataType === 'Inline'}
+							<textarea bind:value={newJobDataSource} rows={3} class="skeu-input w-full text-xs font-mono" placeholder="line1&#10;line2"></textarea>
+						{:else}
+							<div class="flex gap-1">
+								<input
+									type="text"
+									bind:value={newJobDataSource}
+									placeholder={newJobDataType === 'Folder' ? 'Path to folder...' : 'Path to wordlist file...'}
+									class="skeu-input flex-1 text-xs font-mono"
+								/>
+								<button class="skeu-btn text-[10px] flex items-center gap-1 shrink-0" onclick={() => send('browse_file', { field: 'job_wordlist' })} title="Browse file"><FileText size={10} />File</button>
+								<button class="skeu-btn text-[10px] flex items-center gap-1 shrink-0" onclick={() => send('browse_folder', { field: 'job_folder' })} title="Browse folder"><Folder size={10} />Folder</button>
+							</div>
+							{#if newJobDataType === 'Folder'}
+								<p class="text-[9px] text-muted-foreground mt-0.5">All .txt, .csv, .lst, .dat files processed alphabetically.</p>
+							{/if}
+						{/if}
+					</div>
+					{#if newJobStartCondition === 'Delayed'}
+						<div>
+							<label class="text-muted-foreground text-[10px]">Delay (seconds)</label>
+							<input type="number" min="0" bind:value={newJobDelaySecs} class="skeu-input w-full text-xs" />
+						</div>
+					{/if}
+				{:else}
+					<!-- Proxy Check fields -->
+					<div class="col-span-2">
+						<label class="text-muted-foreground text-[10px]">Proxy List File</label>
+						<div class="flex gap-1">
+							<input type="text" bind:value={proxyCheckList} placeholder="Path to proxy list file..." class="skeu-input flex-1 text-xs font-mono" />
+							<button class="skeu-btn text-[10px] flex items-center gap-1 shrink-0" onclick={() => send('browse_file', { field: 'job_wordlist' })} title="Browse"><FileText size={10} />Browse</button>
+						</div>
+						<p class="text-[9px] text-muted-foreground mt-0.5">One proxy per line: <code class="font-mono">host:port</code> or <code class="font-mono">http://host:port</code></p>
+					</div>
+					<div class="col-span-2">
+						<label class="text-muted-foreground text-[10px]">Ping URL</label>
+						<input type="text" bind:value={proxyCheckUrl} placeholder="http://www.google.com" class="skeu-input w-full text-xs font-mono" />
+						<p class="text-[9px] text-muted-foreground mt-0.5">Alive proxies will appear as Hits. Dead proxies are silently dropped.</p>
 					</div>
 				{/if}
 			</div>
-			<div class="flex items-center gap-2 mt-2">
+			<div class="flex items-center gap-2 mt-1">
 				<button class="skeu-btn text-xs text-green" onclick={createJob}>Create Job</button>
 				<button class="skeu-btn text-xs text-muted-foreground" onclick={() => { showNewJob = false; }}>Cancel</button>
 			</div>
@@ -493,6 +566,11 @@ Error handling
 										onclick={() => viewJobHits((job as any).id)}
 									><Database size={11} /></button>
 									{#if job.state !== 'Running'}
+										<button
+											class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-blue transition-colors"
+											title="Edit job"
+											onclick={() => openEditDialog(job)}
+										><Pencil size={11} /></button>
 										<button class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-red transition-colors" title="Remove" onclick={() => removeJob((job as any).id)}><Trash2 size={11} /></button>
 									{/if}
 								</div>
@@ -504,5 +582,56 @@ Error handling
 		{/if}
 	</div>
 </div>
+
+<!-- Edit Job Dialog -->
+<Dialog.Root bind:open={showEditDialog}>
+	<Dialog.Content class="max-w-sm p-0 gap-0" showCloseButton={false}>
+		<div class="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+			<Pencil size={13} class="text-primary" />
+			<Dialog.Title class="text-sm font-semibold">Edit Job</Dialog.Title>
+			<div class="flex-1"></div>
+			<button class="p-1 rounded hover:bg-accent/20 text-muted-foreground" onclick={() => showEditDialog = false}>✕</button>
+		</div>
+		<div class="p-4 space-y-3">
+			{#if editingJob?.state === 'Running'}
+				<p class="text-xs text-amber-400 bg-amber-400/10 rounded px-2 py-1.5 border border-amber-400/20">Stop the job before making changes.</p>
+			{:else}
+				<div>
+					<label class="text-[10px] text-muted-foreground">Job Name</label>
+					<input type="text" bind:value={editName} class="skeu-input w-full text-xs mt-0.5" />
+				</div>
+				<div>
+					<label class="text-[10px] text-muted-foreground">Threads</label>
+					<input type="number" min="1" max="1000" bind:value={editThreads} class="skeu-input w-full text-xs mt-0.5" />
+				</div>
+				{#if editingJob?.job_type === 'ProxyCheck'}
+					<div>
+						<label class="text-[10px] text-muted-foreground">Proxy List File</label>
+						<div class="flex gap-1 mt-0.5">
+							<input type="text" bind:value={editProxyCheckList} placeholder="Path to proxy list..." class="skeu-input flex-1 text-xs font-mono" />
+							<button class="skeu-btn text-[10px]" onclick={() => send('browse_file', { field: 'job_wordlist' })}>Browse</button>
+						</div>
+					</div>
+					<div>
+						<label class="text-[10px] text-muted-foreground">Ping URL</label>
+						<input type="text" bind:value={editProxyCheckUrl} class="skeu-input w-full text-xs font-mono mt-0.5" />
+					</div>
+				{:else}
+					<div>
+						<label class="text-[10px] text-muted-foreground">Wordlist / Data Source</label>
+						<div class="flex gap-1 mt-0.5">
+							<input type="text" bind:value={editDataSource} placeholder="Path to wordlist..." class="skeu-input flex-1 text-xs font-mono" />
+							<button class="skeu-btn text-[10px]" onclick={() => send('browse_file', { field: 'job_wordlist' })}>Browse</button>
+						</div>
+					</div>
+				{/if}
+				<div class="flex gap-2 pt-1">
+					<button class="skeu-btn text-xs text-green flex-1" onclick={saveJobEdit}>Save Changes</button>
+					<button class="skeu-btn text-xs text-muted-foreground" onclick={() => showEditDialog = false}>Cancel</button>
+				</div>
+			{/if}
+		</div>
+	</Dialog.Content>
+</Dialog.Root>
 
 <HelpModal bind:open={showHelp} title="Jobs & Runner Guide" sections={helpSections} />

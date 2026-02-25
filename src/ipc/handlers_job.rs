@@ -20,16 +20,20 @@ pub(super) fn create_job(
             } else {
                 Job::default()
             };
-            // Override name if provided
             if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
                 job.name = name.to_string();
             }
-            // Override config path if provided
             if let Some(path) = data.get("config_path").and_then(|v| v.as_str()) {
                 job.config_path = Some(path.to_string());
                 if let Ok(rfx) = RfxConfig::load_from_file(path) {
                     job.pipeline = rfx.pipeline;
                 }
+            }
+            if let Some(url) = data.get("proxy_check_url").and_then(|v| v.as_str()) {
+                if !url.is_empty() { job.proxy_check_url = url.to_string(); }
+            }
+            if let Some(list) = data.get("proxy_check_list").and_then(|v| v.as_str()) {
+                if !list.is_empty() { job.proxy_check_list = list.to_string(); }
             }
             let id = s.job_manager.add_job(job);
             let resp = IpcResponse::ok("job_created", serde_json::json!({ "id": id.to_string() }));
@@ -93,6 +97,38 @@ pub(super) fn start_job(
                     return;
                 }
             };
+
+            // Proxy check jobs bypass the sidecar and runner entirely
+            let is_proxy_check = s.job_manager.get_job_mut(uuid)
+                .map(|j| j.job_type == ironbullet::runner::job::JobType::ProxyCheck)
+                .unwrap_or(false);
+
+            if is_proxy_check {
+                let pc_rx = s.job_manager.start_proxy_check_job(uuid, inner_handle.clone());
+                drop(s);
+                if let Some(mut hits_rx) = pc_rx {
+                    let state2 = state.clone();
+                    let state3 = state.clone();
+                    let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(64);
+                    inner_handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
+                    let js_tx2 = js_tx.clone();
+                    inner_handle.spawn(async move {
+                        while let Some(hit) = hits_rx.recv().await {
+                            let mut s = state2.lock().await;
+                            s.job_manager.add_hit(uuid, hit);
+                            let jobs = s.job_manager.list_jobs();
+                            let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
+                            let _ = js_tx2.send(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())).await;
+                        }
+                        let mut s = state3.lock().await;
+                        if let Some(job) = s.job_manager.get_job_mut(uuid) {
+                            job.state = ironbullet::runner::job::JobState::Completed;
+                            job.completed = Some(chrono::Utc::now());
+                        }
+                    });
+                }
+                return;
+            }
 
             // Start sidecar if needed
             let sidecar_path = resolve_sidecar_path(&s.config.sidecar_path);
@@ -284,6 +320,43 @@ pub(super) fn get_job_hits(
                     eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
                 }
             }
+        });
+    }
+}
+
+pub(super) fn update_job(
+    state: Arc<Mutex<AppState>>,
+    data: serde_json::Value,
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        handle.spawn(async move {
+            let mut s = state.lock().await;
+            let id_str = data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if let Ok(uuid) = uuid::Uuid::parse_str(&id_str) {
+                if let Some(job) = s.job_manager.get_job_mut(uuid) {
+                    if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
+                        job.name = name.to_string();
+                    }
+                    if let Some(tc) = data.get("thread_count").and_then(|v| v.as_u64()) {
+                        job.thread_count = tc as usize;
+                    }
+                    if let Some(ds) = data.get("data_source") {
+                        if let Ok(new_ds) = serde_json::from_value::<ironbullet::runner::job::DataSource>(ds.clone()) {
+                            job.data_source = new_ds;
+                        }
+                    }
+                    if let Some(url) = data.get("proxy_check_url").and_then(|v| v.as_str()) {
+                        job.proxy_check_url = url.to_string();
+                    }
+                    if let Some(list) = data.get("proxy_check_list").and_then(|v| v.as_str()) {
+                        job.proxy_check_list = list.to_string();
+                    }
+                }
+            }
+            let resp = IpcResponse::ok("job_updated", serde_json::json!({ "id": id_str }));
+            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
     }
 }
