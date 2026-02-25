@@ -205,3 +205,38 @@ pub(super) fn get_recent_configs(
         });
     }
 }
+
+pub(super) fn setup_default_dirs(
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        handle.spawn(async move {
+            // Create default dirs next to the executable
+            let base = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+            let dirs = ["wordlists", "proxies", "configs", "results"];
+            let mut created: Vec<String> = Vec::new();
+            let mut paths: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+            for name in &dirs {
+                let dir = base.join(name);
+                if !dir.exists() {
+                    if let Ok(()) = std::fs::create_dir_all(&dir) {
+                        created.push(name.to_string());
+                    }
+                }
+                paths.insert(name.to_string(), dir.display().to_string());
+            }
+
+            let resp = IpcResponse::ok("dirs_created", serde_json::json!({
+                "created": created,
+                "paths": paths,
+            }));
+            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+        });
+    }
+}

@@ -13,6 +13,8 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import HelpCircle from '@lucide/svelte/icons/help-circle';
 	import Database from '@lucide/svelte/icons/database';
+	import Folder from '@lucide/svelte/icons/folder';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import HelpModal from './HelpModal.svelte';
 
 	let showNewJob = $state(false);
@@ -238,14 +240,26 @@ Error handling
 	let newJobName = $state('');
 	let newJobThreads = $state(100);
 	let newJobDataSource = $state('');
-	let newJobDataType = $state<'File' | 'Inline'>('File');
+	let newJobDataType = $state<'File' | 'Folder' | 'Inline'>('File');
 	let newJobStartCondition = $state<'Immediate' | 'Delayed'>('Immediate');
 	let newJobDelaySecs = $state(0);
 
+	// When a file/folder browse completes, auto-fill the new job form
+	$effect(() => {
+		const pick = app.pendingJobWordlist;
+		if (pick && showNewJob) {
+			newJobDataSource = pick.path;
+			newJobDataType = pick.isFolder ? 'Folder' : 'File';
+			console.log('[JobMonitor] pendingJobWordlist applied:', pick.path, 'isFolder:', pick.isFolder);
+			app.pendingJobWordlist = null;
+		}
+	});
+
 	function createJob() {
+		console.log('[JobMonitor] createJob: type=', newJobDataType, 'source=', newJobDataSource, 'threads=', newJobThreads);
 		send('create_job', {
 			name: newJobName || 'New Job',
-			pipeline: app.pipeline,
+			pipeline: JSON.parse(JSON.stringify(app.pipeline)),
 			thread_count: newJobThreads,
 			data_source: {
 				source_type: newJobDataType,
@@ -353,7 +367,7 @@ Error handling
 					<SkeuSelect
 						value={newJobDataType}
 						onValueChange={(v) => { newJobDataType = v as any; }}
-						options={[{value:'File',label:'File'},{value:'Inline',label:'Inline'}]}
+						options={[{value:'File',label:'File'},{value:'Folder',label:'Folder (all .txt/.csv)'},{value:'Inline',label:'Inline'}]}
 						class="text-xs w-full"
 					/>
 				</div>
@@ -367,11 +381,33 @@ Error handling
 					/>
 				</div>
 				<div class="col-span-2">
-					<label class="text-muted-foreground text-[10px]">{newJobDataType === 'File' ? 'File Path' : 'Data (one per line)'}</label>
+					<label class="text-muted-foreground text-[10px]">
+						{newJobDataType === 'File' ? 'Wordlist File' : newJobDataType === 'Folder' ? 'Wordlist Folder' : 'Data (one per line)'}
+					</label>
 					{#if newJobDataType === 'Inline'}
 						<textarea bind:value={newJobDataSource} rows={3} class="skeu-input w-full text-xs font-mono" placeholder="line1&#10;line2"></textarea>
 					{:else}
-						<input type="text" bind:value={newJobDataSource} placeholder="C:\path\to\wordlist.txt" class="skeu-input w-full text-xs font-mono" />
+						<div class="flex gap-1">
+							<input
+								type="text"
+								bind:value={newJobDataSource}
+								placeholder={newJobDataType === 'Folder' ? 'Path to folder containing wordlists...' : 'Path to wordlist file...'}
+								class="skeu-input flex-1 text-xs font-mono"
+							/>
+							<button
+								class="skeu-btn text-[10px] flex items-center gap-1 shrink-0"
+								title="Browse for a wordlist file"
+								onclick={() => send('browse_file', { field: 'job_wordlist' })}
+							><FileText size={10} />File</button>
+							<button
+								class="skeu-btn text-[10px] flex items-center gap-1 shrink-0"
+								title="Browse for a folder containing wordlists"
+								onclick={() => send('browse_folder', { field: 'job_folder' })}
+							><Folder size={10} />Folder</button>
+						</div>
+						{#if newJobDataType === 'Folder'}
+							<p class="text-[9px] text-muted-foreground mt-0.5">All .txt, .csv, .lst, .dat files in the folder will be processed in alphabetical order.</p>
+						{/if}
 					{/if}
 				</div>
 				{#if newJobStartCondition === 'Delayed'}

@@ -182,8 +182,8 @@ pub(super) fn browse_file(
             let field = data.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let mut dialog = rfd::FileDialog::new();
             dialog = match field.as_str() {
-                "wordlist" => dialog.set_title("Select Wordlist")
-                    .add_filter("Text files", &["txt", "csv", "lst"])
+                "wordlist" | "job_wordlist" => dialog.set_title("Select Wordlist")
+                    .add_filter("Text files", &["txt", "csv", "lst", "dat"])
                     .add_filter("All files", &["*"]),
                 "proxies" => dialog.set_title("Select Proxy File")
                     .add_filter("Text files", &["txt", "csv", "lst"])

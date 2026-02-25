@@ -28,6 +28,7 @@
 	import Onboarding from '$lib/components/Onboarding.svelte';
 	import SecurityAlertDialog from '$lib/components/SecurityAlertDialog.svelte';
 	import FingerprintDialog from '$lib/components/FingerprintDialog.svelte';
+	import HitsDialog from '$lib/components/HitsDialog.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
@@ -196,6 +197,7 @@
 <Onboarding />
 <SecurityAlertDialog />
 <FingerprintDialog />
+<HitsDialog />
 <Toast />
 
 <ContextMenu />

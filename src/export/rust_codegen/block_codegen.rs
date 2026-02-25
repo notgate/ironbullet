@@ -1183,12 +1183,132 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             code.push_str(&format!("{}}};\n", pad));
         }
         BlockSettings::DataConversion(s) => {
+            // DataConversionOp and FileSystemOp are in scope via `use crate::pipeline::block::*`
+            let inp = if vars.is_defined(&s.input_var) { var_name(&s.input_var) } else { "source".into() };
             let letkw = vars.let_or_assign(&s.output_var);
             let vn = var_name(&s.output_var);
-            code.push_str(&format!("{}{}{}= String::new(); // DataConversion::{:?} (runtime op)\n", pad, letkw, vn, s.op));
+            match s.op {
+                DataConversionOp::Base64ToBytes => {
+                    code.push_str(&format!("{}use base64::Engine;\n", pad));
+                    code.push_str(&format!("{}{}{}= base64::engine::general_purpose::STANDARD.decode({}.as_bytes()).unwrap_or_default().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::BytesToBase64 => {
+                    code.push_str(&format!("{}use base64::Engine;\n", pad));
+                    code.push_str(&format!("{}{}{}= base64::engine::general_purpose::STANDARD.encode({}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).collect::<Vec<_>>());\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::Base64ToString => {
+                    code.push_str(&format!("{}use base64::Engine;\n", pad));
+                    code.push_str(&format!("{}{}{}= String::from_utf8(base64::engine::general_purpose::STANDARD.decode({}.as_bytes()).unwrap_or_default()).unwrap_or_default();\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::HexToBytes => {
+                    code.push_str(&format!("{}{}{}= (0..{}.len()).step_by(2).filter_map(|i| u8::from_str_radix({}.get(i..i+2).unwrap_or(\"00\"), 16).ok()).map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp, inp));
+                }
+                DataConversionOp::BytesToHex => {
+                    code.push_str(&format!("{}{}{}= {}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).map(|b| format!(\"{{:02x}}\", b)).collect::<String>();\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::StringToBytes => {
+                    code.push_str(&format!("{}{}{}= {}.bytes().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::BytesToString => {
+                    code.push_str(&format!("{}{}{}= String::from_utf8({}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).collect::<Vec<_>>()).unwrap_or_default();\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::IntToBytes => {
+                    code.push_str(&format!("{}{}{}= {}.trim().parse::<i64>().map(|n| n.to_be_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\")).unwrap_or_default();\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::ReadableSize => {
+                    code.push_str(&format!("{}{}{}= {{ let n = {}.trim().parse::<u64>().unwrap_or(0); if n >= 1_073_741_824 {{ format!(\"{{:.2}} GB\", n as f64 / 1_073_741_824.0) }} else if n >= 1_048_576 {{ format!(\"{{:.2}} MB\", n as f64 / 1_048_576.0) }} else if n >= 1_024 {{ format!(\"{{:.2}} KB\", n as f64 / 1_024.0) }} else {{ format!(\"{{}} B\", n) }} }};\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::BigIntToBytes => {
+                    code.push_str(&format!("{}{}{}= {}.trim().parse::<i128>().map(|n| n.to_be_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\")).unwrap_or_default();\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::BytesToBigInt => {
+                    code.push_str(&format!("{}let _bytes_{}: Vec<u8> = {}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).collect();\n", pad, vn, inp));
+                    code.push_str(&format!("{}{}{}= _bytes_{}.iter().fold(0i128, |acc, &b| acc << 8 | b as i128).to_string();\n", pad, letkw, vn, vn));
+                }
+                DataConversionOp::BinaryStringToBytes => {
+                    code.push_str(&format!("{}{}{}= {}.split(' ').filter_map(|b| u8::from_str_radix(b.trim(), 2).ok()).map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::BytesToBinaryString => {
+                    code.push_str(&format!("{}{}{}= {}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).map(|b| format!(\"{{:08b}}\", b)).collect::<Vec<_>>().join(\" \");\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::NumberToWords => {
+                    code.push_str(&format!("{}{}{}= {}.trim().to_string(); // number-to-words requires an external crate\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::WordsToNumber => {
+                    code.push_str(&format!("{}{}{}= {}.trim().to_string(); // words-to-number requires an external crate\n", pad, letkw, vn, inp));
+                }
+                DataConversionOp::SvgToPng => {
+                    code.push_str(&format!("{}{}{}= String::new(); // SvgToPng requires resvg — use the runtime pipeline block\n", pad, letkw, vn));
+                }
+            }
         }
         BlockSettings::FileSystem(s) => {
-            code.push_str(&format!("{}// FileSystem::{:?} on \"{}\"\n", pad, s.op, escape_str(&s.path)));
+            let path_expr = format!("\"{}\"", escape_str(&s.path));
+            let dest_expr = format!("\"{}\"", escape_str(&s.dest_path));
+            let content_expr = if vars.is_defined(&s.content) { var_name(&s.content) } else { format!("\"{}\"", escape_str(&s.content)) };
+            match s.op {
+                FileSystemOp::FileRead => {
+                    let letkw = vars.let_or_assign(&s.output_var);
+                    let vn = var_name(&s.output_var);
+                    code.push_str(&format!("{}{}{}= std::fs::read_to_string({}).unwrap_or_default();\n", pad, letkw, vn, path_expr));
+                }
+                FileSystemOp::FileReadBytes => {
+                    let letkw = vars.let_or_assign(&s.output_var);
+                    let vn = var_name(&s.output_var);
+                    code.push_str(&format!("{}{}{}= std::fs::read({}).unwrap_or_default().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(\",\");\n", pad, letkw, vn, path_expr));
+                }
+                FileSystemOp::FileReadLines => {
+                    let letkw = vars.let_or_assign(&s.output_var);
+                    let vn = var_name(&s.output_var);
+                    code.push_str(&format!("{}{}{}= std::fs::read_to_string({}).unwrap_or_default().lines().collect::<Vec<_>>().join(\"\\n\");\n", pad, letkw, vn, path_expr));
+                }
+                FileSystemOp::FileWrite => {
+                    code.push_str(&format!("{}std::fs::write({}, &{}).ok();\n", pad, path_expr, content_expr));
+                }
+                FileSystemOp::FileWriteBytes => {
+                    code.push_str(&format!("{}let _wb: Vec<u8> = {}.split(',').filter_map(|s| s.trim().parse::<u8>().ok()).collect();\n", pad, content_expr));
+                    code.push_str(&format!("{}std::fs::write({}, &_wb).ok();\n", pad, path_expr));
+                }
+                FileSystemOp::FileWriteLines => {
+                    code.push_str(&format!("{}std::fs::write({}, {}.lines().collect::<Vec<_>>().join(\"\\n\")).ok();\n", pad, path_expr, content_expr));
+                }
+                FileSystemOp::FileAppend => {
+                    code.push_str(&format!("{}{{ use std::io::Write; if let Ok(mut _f) = std::fs::OpenOptions::new().append(true).create(true).open({}) {{ writeln!(_f, \"{{}}\", {}).ok(); }} }}\n", pad, path_expr, content_expr));
+                }
+                FileSystemOp::FileAppendLines => {
+                    code.push_str(&format!("{}{{ use std::io::Write; if let Ok(mut _f) = std::fs::OpenOptions::new().append(true).create(true).open({}) {{ for line in {}.lines() {{ writeln!(_f, \"{{}}\", line).ok(); }} }} }}\n", pad, path_expr, content_expr));
+                }
+                FileSystemOp::FileDelete => {
+                    code.push_str(&format!("{}std::fs::remove_file({}).ok();\n", pad, path_expr));
+                }
+                FileSystemOp::FileCopy => {
+                    code.push_str(&format!("{}std::fs::copy({}, {}).ok();\n", pad, path_expr, dest_expr));
+                }
+                FileSystemOp::FileMove => {
+                    code.push_str(&format!("{}std::fs::rename({}, {}).ok();\n", pad, path_expr, dest_expr));
+                }
+                FileSystemOp::FileExists => {
+                    let letkw = vars.let_or_assign(&s.output_var);
+                    let vn = var_name(&s.output_var);
+                    code.push_str(&format!("{}{}{}= std::path::Path::new({}).is_file().to_string();\n", pad, letkw, vn, path_expr));
+                }
+                FileSystemOp::FolderExists => {
+                    let letkw = vars.let_or_assign(&s.output_var);
+                    let vn = var_name(&s.output_var);
+                    code.push_str(&format!("{}{}{}= std::path::Path::new({}).is_dir().to_string();\n", pad, letkw, vn, path_expr));
+                }
+                FileSystemOp::FolderDelete => {
+                    code.push_str(&format!("{}std::fs::remove_dir_all({}).ok();\n", pad, path_expr));
+                }
+                FileSystemOp::CreatePath => {
+                    code.push_str(&format!("{}std::fs::create_dir_all({}).ok();\n", pad, path_expr));
+                }
+                FileSystemOp::GetFilesInFolder => {
+                    let letkw = vars.let_or_assign(&s.output_var);
+                    let vn = var_name(&s.output_var);
+                    code.push_str(&format!("{}{}{}= std::fs::read_dir({}).map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path().display().to_string()).collect::<Vec<_>>().join(\"\\n\")).unwrap_or_default();\n", pad, letkw, vn, path_expr));
+                }
+            }
         }
     }
 

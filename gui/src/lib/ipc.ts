@@ -129,6 +129,18 @@ export function registerCallbacks() {
 			case 'pipeline_updated':
 				console.log('[IPC] pipeline_updated: backend state synced');
 				break;
+			case 'dirs_created': {
+				const dc = resp.data as { created: string[]; paths: Record<string, string> } | null;
+				if (dc) {
+					console.log('[IPC] dirs_created:', dc.created.length, 'created, paths:', dc.paths);
+					app.setupDirsDone = true;
+					app.setupDirsPaths = dc.paths;
+					// Pre-fill default paths if not already set
+					if (!app.wordlistPath && dc.paths['wordlists']) app.wordlistPath = dc.paths['wordlists'];
+					if (!app.proxyPath && dc.paths['proxies']) app.proxyPath = dc.paths['proxies'];
+				}
+				break;
+			}
 			case 'code_generated':
 				if (resp.data) {
 					app.generatedCode = (resp.data as any).code || '';
@@ -198,8 +210,10 @@ export function registerCallbacks() {
 			case 'file_selected':
 				if (resp.data) {
 					const { field, path } = resp.data as { field: string; path: string };
+					console.log('[IPC] file_selected: field=', field, 'path=', path);
 					if (field === 'wordlist') app.wordlistPath = path;
 					else if (field === 'proxies') app.proxyPath = path;
+					else if (field === 'job_wordlist') app.pendingJobWordlist = { path, isFolder: false };
 				}
 				break;
 			case 'recent_configs':
@@ -219,10 +233,12 @@ export function registerCallbacks() {
 			case 'folder_selected':
 				if (resp.data) {
 					const { field: folderField, path: folderPath } = resp.data as { field: string; path: string };
+					console.log('[IPC] folder_selected: field=', folderField, 'path=', folderPath);
 					if (folderField === 'collections') app.collectionsPath = folderPath;
 					else if (folderField === 'wordlist_dir') app.defaultWordlistPath = folderPath;
 					else if (folderField === 'proxy_dir') app.defaultProxyPath = folderPath;
 					else if (folderField === 'plugins') (app.config as any).plugins_path = folderPath;
+					else if (folderField === 'job_folder') app.pendingJobWordlist = { path: folderPath, isFolder: true };
 				}
 				break;
 			case 'import_success':

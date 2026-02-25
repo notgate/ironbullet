@@ -16,6 +16,32 @@
 	import CheckCircle from '@lucide/svelte/icons/check-circle';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Filter from '@lucide/svelte/icons/filter';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Download from '@lucide/svelte/icons/download';
+
+	function exportHitsTxt() {
+		const lines = filteredHits.map(h => {
+			const caps = Object.entries(h.captures).map(([k, v]) => `${k}=${v}`).join(' | ');
+			return caps ? `${h.data_line} | ${caps}` : h.data_line;
+		});
+		const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+		const a = document.createElement('a'); a.href = url; a.download = 'hits.txt'; a.click();
+		URL.revokeObjectURL(url);
+		console.log('[DataPanel] exported', filteredHits.length, 'hits as TXT');
+	}
+
+	function exportHitsCsv() {
+		const rows = [['Data', 'Captures', 'Proxy', 'Received']];
+		for (const h of filteredHits) {
+			const caps = Object.entries(h.captures).map(([k, v]) => `${k}=${v}`).join('; ');
+			const esc = (s: string) => s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+			rows.push([esc(h.data_line), esc(caps), esc(h.proxy ?? ''), esc(h.received_at)]);
+		}
+		const url = URL.createObjectURL(new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' }));
+		const a = document.createElement('a'); a.href = url; a.download = 'hits.csv'; a.click();
+		URL.revokeObjectURL(url);
+		console.log('[DataPanel] exported', filteredHits.length, 'hits as CSV');
+	}
 
 	// Actual hit shape from backend (matches ipc.ts runner_hit + job_hits handlers)
 	type HitRecord = { data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string };
@@ -517,6 +543,17 @@
 			<span class="text-[9px] text-muted-foreground/60 ml-1">({app.hits.length})</span>
 			<div class="flex-1"></div>
 			<button
+				class="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary transition-colors"
+				onclick={() => { app.showHitsDialog = true; }}
+				title="Open advanced Hits Browser"
+			><ExternalLink size={10} /></button>
+			<button
+				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+				onclick={exportHitsTxt}
+				disabled={app.hits.length === 0}
+				title="Export hits as TXT"
+			><Download size={10} /></button>
+			<button
 				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
 				onclick={() => { autoRefreshHits = !autoRefreshHits; console.log('[DataPanel] autoRefreshHits toggled:', !autoRefreshHits); }}
 				title={autoRefreshHits ? 'Auto-refresh ON (polling job hits every 3s)' : 'Auto-refresh OFF'}
@@ -616,13 +653,12 @@
 						<span class="text-[9px] text-muted-foreground">
 							{filteredHits.length}{hitsFilter ? ` of ${app.hits.length}` : ''} hit{filteredHits.length !== 1 ? 's' : ''}
 						</span>
-						<div class="flex gap-1">
-							<button class="skeu-btn text-[9px] text-muted-foreground" onclick={clearAllHits}>
-								Clear All
-							</button>
-							<button class="skeu-btn text-[9px]" onclick={removeDuplicates}>
-								Remove Duplicates
-							</button>
+						<div class="flex gap-1 flex-wrap">
+							<button class="skeu-btn text-[9px] text-muted-foreground" onclick={clearAllHits}>Clear All</button>
+							<button class="skeu-btn text-[9px]" onclick={removeDuplicates}>Dedup</button>
+							<button class="skeu-btn text-[9px]" onclick={exportHitsTxt}>TXT</button>
+							<button class="skeu-btn text-[9px]" onclick={exportHitsCsv}>CSV</button>
+							<button class="skeu-btn text-[9px] text-primary" onclick={() => app.showHitsDialog = true}>Advanced</button>
 						</div>
 					</div>
 				{/if}
