@@ -283,6 +283,10 @@ pub fn handle_ipc_cmd(
             handlers_job::get_job_stats(state, data, eval_js);
             None
         }
+        "update_job" => {
+            handlers_job::update_job(state, data, eval_js);
+            None
+        }
         "get_job_hits" => {
             handlers_job::get_job_hits(state, data, eval_js);
             None

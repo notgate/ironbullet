@@ -1,16 +1,16 @@
 use super::*;
 
-fn parse_bytes(s: &str) -> Vec<u8> {
+pub(super) fn parse_bytes(s: &str) -> Vec<u8> {
     s.split(',')
         .filter_map(|p| p.trim().parse::<u8>().ok())
         .collect()
 }
 
-fn bytes_to_csv(bytes: &[u8]) -> String {
+pub(super) fn bytes_to_csv(bytes: &[u8]) -> String {
     bytes.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",")
 }
 
-fn number_to_words(n: i64) -> String {
+pub(super) fn number_to_words(n: i64) -> String {
     if n < 0 {
         return format!("negative {}", number_to_words(-n));
     }
@@ -55,7 +55,7 @@ fn number_to_words(n: i64) -> String {
     parts.join(" ")
 }
 
-fn words_to_number(s: &str) -> i64 {
+pub(super) fn words_to_number(s: &str) -> i64 {
     let s = s.trim().to_lowercase();
     let is_negative = s.starts_with("negative ");
     let s = s.trim_start_matches("negative ").trim();
@@ -92,7 +92,7 @@ fn words_to_number(s: &str) -> i64 {
     if is_negative { -total } else { total }
 }
 
-fn readable_size(bytes: i64) -> String {
+pub(super) fn readable_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB", "PB"];
     if bytes < 0 { return format!("{} B", bytes); }
     let mut val = bytes as f64;
@@ -109,151 +109,6 @@ fn readable_size(bytes: i64) -> String {
 }
 
 impl ExecutionContext {
-    pub(super) fn execute_data_conversion(&mut self, settings: &DataConversionSettings) -> crate::error::Result<()> {
-        let input = self.variables.resolve_input(&settings.input_var);
-
-        let result = match settings.op {
-            DataConversionOp::HexToBytes => {
-                let hex = input.chars().filter(|c| c.is_ascii_hexdigit()).collect::<String>();
-                let bytes: Vec<u8> = (0..hex.len())
-                    .step_by(2)
-                    .filter_map(|i| u8::from_str_radix(&hex[i..i+2], 16).ok())
-                    .collect();
-                bytes_to_csv(&bytes)
-            }
-            DataConversionOp::BytesToHex => {
-                let bytes = parse_bytes(&input);
-                bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>()
-            }
-            DataConversionOp::Base64ToBytes => {
-                use base64::Engine;
-                match base64::engine::general_purpose::STANDARD.decode(input.trim()) {
-                    Ok(bytes) => bytes_to_csv(&bytes),
-                    Err(_) => String::new(),
-                }
-            }
-            DataConversionOp::BytesToBase64 => {
-                use base64::Engine;
-                let bytes = parse_bytes(&input);
-                base64::engine::general_purpose::STANDARD.encode(&bytes)
-            }
-            DataConversionOp::Base64ToString => {
-                use base64::Engine;
-                match base64::engine::general_purpose::STANDARD.decode(input.trim()) {
-                    Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
-                    Err(_) => String::new(),
-                }
-            }
-            DataConversionOp::StringToBytes => {
-                let bytes: Vec<u8> = match settings.encoding.as_str() {
-                    "utf16" | "utf-16" => {
-                        let utf16: Vec<u16> = input.encode_utf16().collect();
-                        utf16.iter().flat_map(|u| u.to_be_bytes()).collect()
-                    }
-                    "ascii" => input.bytes().map(|b| b & 0x7F).collect(),
-                    _ => input.into_bytes(),
-                };
-                bytes_to_csv(&bytes)
-            }
-            DataConversionOp::BytesToString => {
-                let bytes = parse_bytes(&input);
-                match settings.encoding.as_str() {
-                    "utf16" | "utf-16" => {
-                        let u16s: Vec<u16> = bytes.chunks(2)
-                            .filter_map(|c| if c.len() == 2 { Some(u16::from_be_bytes([c[0], c[1]])) } else { None })
-                            .collect();
-                        String::from_utf16_lossy(&u16s)
-                    }
-                    _ => String::from_utf8_lossy(&bytes).to_string(),
-                }
-            }
-            DataConversionOp::BigIntToBytes => {
-                use num_bigint::BigInt;
-                use std::str::FromStr;
-                match BigInt::from_str(input.trim()) {
-                    Ok(n) => {
-                        let (_, bytes) = n.to_bytes_be();
-                        bytes_to_csv(&bytes)
-                    }
-                    Err(_) => String::new(),
-                }
-            }
-            DataConversionOp::BytesToBigInt => {
-                use num_bigint::BigUint;
-                let bytes = parse_bytes(&input);
-                BigUint::from_bytes_be(&bytes).to_string()
-            }
-            DataConversionOp::BinaryStringToBytes => {
-                let cleaned: String = input.chars().filter(|c| *c == '0' || *c == '1').collect();
-                let bytes: Vec<u8> = cleaned.as_bytes().chunks(8)
-                    .filter_map(|chunk| {
-                        let s = std::str::from_utf8(chunk).ok()?;
-                        u8::from_str_radix(s, 2).ok()
-                    })
-                    .collect();
-                bytes_to_csv(&bytes)
-            }
-            DataConversionOp::BytesToBinaryString => {
-                let bytes = parse_bytes(&input);
-                bytes.iter().map(|b| format!("{:08b}", b)).collect::<Vec<_>>().join(" ")
-            }
-            DataConversionOp::ReadableSize => {
-                let n: i64 = input.trim().parse().unwrap_or(0);
-                readable_size(n)
-            }
-            DataConversionOp::IntToBytes => {
-                let n: i64 = input.trim().parse().unwrap_or(0);
-                let count = settings.byte_count.clamp(1, 8) as usize;
-                let all_bytes = if settings.endianness == "little" {
-                    n.to_le_bytes()
-                } else {
-                    n.to_be_bytes()
-                };
-                let bytes = if settings.endianness == "little" {
-                    all_bytes[..count].to_vec()
-                } else {
-                    all_bytes[8 - count..].to_vec()
-                };
-                bytes_to_csv(&bytes)
-            }
-            DataConversionOp::NumberToWords => {
-                let n: i64 = input.trim().parse().unwrap_or(0);
-                number_to_words(n)
-            }
-            DataConversionOp::WordsToNumber => {
-                words_to_number(&input).to_string()
-            }
-            DataConversionOp::SvgToPng => {
-                use resvg::usvg;
-                use resvg::tiny_skia;
-                use base64::Engine;
-
-                let mut opt = usvg::Options::default();
-                opt.fontdb_mut().load_system_fonts();
-                match usvg::Tree::from_str(&input, &opt) {
-                    Ok(tree) => {
-                        let size = tree.size();
-                        let width = (size.width().ceil() as u32).max(1);
-                        let height = (size.height().ceil() as u32).max(1);
-                        if let Some(mut pixmap) = tiny_skia::Pixmap::new(width, height) {
-                            resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
-                            match pixmap.encode_png() {
-                                Ok(png_bytes) => base64::engine::general_purpose::STANDARD.encode(&png_bytes),
-                                Err(_) => String::new(),
-                            }
-                        } else {
-                            String::new()
-                        }
-                    }
-                    Err(_) => String::new(),
-                }
-            }
-        };
-
-        self.variables.set_user(&settings.output_var, result, settings.capture);
-        Ok(())
-    }
-
     pub(super) fn execute_file_system(&mut self, settings: &FileSystemSettings) -> crate::error::Result<()> {
         let path = self.variables.interpolate(&settings.path);
         let dest = self.variables.interpolate(&settings.dest_path);

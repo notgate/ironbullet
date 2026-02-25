@@ -210,3 +210,80 @@ impl JobManager {
         }
     }
 }
+
+impl JobManager {
+    pub fn start_proxy_check_job(
+        &mut self,
+        id: Uuid,
+        handle: tokio::runtime::Handle,
+    ) -> Option<tokio::sync::mpsc::Receiver<HitResult>> {
+        use crate::runner::job::JobType;
+        let job = self.jobs.iter_mut().find(|j| j.id == id)?;
+        if job.job_type != JobType::ProxyCheck { return None; }
+        let proxy_list_path = job.proxy_check_list.clone();
+        let check_url = job.proxy_check_url.clone();
+        let thread_count = job.thread_count.max(1);
+        job.state = JobState::Running;
+        job.started = Some(Utc::now());
+
+        let proxies: Vec<String> = if proxy_list_path.is_empty() {
+            Vec::new()
+        } else {
+            std::fs::read_to_string(&proxy_list_path)
+                .unwrap_or_default()
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| l.trim().to_string())
+                .collect()
+        };
+
+        let (hits_tx, hits_rx) = tokio::sync::mpsc::channel::<HitResult>(1024);
+
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(thread_count));
+
+        for proxy in proxies {
+            let tx = hits_tx.clone();
+            let url = check_url.clone();
+            let sem = semaphore.clone();
+            handle.spawn(async move {
+                let _permit = sem.acquire().await.ok();
+                let start = std::time::Instant::now();
+                let proxy_url = if proxy.starts_with("http://") || proxy.starts_with("https://") || proxy.starts_with("socks5://") {
+                    proxy.clone()
+                } else {
+                    format!("http://{}", proxy)
+                };
+                let result = reqwest::Client::builder()
+                    .proxy(reqwest::Proxy::all(&proxy_url).unwrap_or_else(|_| reqwest::Proxy::all("http://127.0.0.1:1").unwrap()))
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .ok()
+                    .map(|c| {
+                        let url2 = url.clone();
+                        tokio::spawn(async move { c.get(&url2).send().await })
+                    });
+
+                let is_alive = if let Some(fut) = result {
+                    fut.await.ok().and_then(|r| r.ok()).is_some()
+                } else {
+                    false
+                };
+
+                let latency_ms = start.elapsed().as_millis();
+
+                if is_alive {
+                    let mut captures = std::collections::HashMap::new();
+                    captures.insert("status".into(), "alive".into());
+                    captures.insert("latency_ms".into(), latency_ms.to_string());
+                    let _ = tx.send(HitResult {
+                        data_line: proxy,
+                        captures,
+                        proxy: None,
+                    }).await;
+                }
+            });
+        }
+
+        Some(hits_rx)
+    }
+}

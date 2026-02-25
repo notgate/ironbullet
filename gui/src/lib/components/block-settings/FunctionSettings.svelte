@@ -8,8 +8,7 @@
 		STRING_FUNCTIONS, getStringFuncMeta,
 		LIST_FUNCTIONS, getListFuncMeta,
 		CRYPTO_FUNCTIONS, getCryptoFuncMeta,
-		CONVERSION_TYPE_OPTIONS,
-		DATA_CONVERSION_OPS, getDataConversionMeta,
+		CONVERSION_OPS, getConversionMeta,
 		FILE_SYSTEM_OPS, getFileSystemMeta,
 	} from './shared';
 
@@ -139,33 +138,49 @@
 
 <!-- ===================== CONVERSION FUNCTION ===================== -->
 {:else if block.settings.type === 'ConversionFunction'}
+	{@const convMeta = getConversionMeta(block.settings.op)}
 	<div class="space-y-1.5">
+		<div>
+			<label class={labelCls}>Operation</label>
+			<SkeuSelect value={block.settings.op ?? 'Base64Encode'}
+				onValueChange={(v) => updateSettings('op', v)}
+				options={CONVERSION_OPS.map(o => ({ value: o.value, label: `[${o.category}] ${o.label}` }))}
+				class="w-full mt-0.5"
+			/>
+		</div>
 		<div>
 			<label class={labelCls}>Input variable</label>
 			<VariableInput value={block.settings.input_var} class={inputCls}
 				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
 		</div>
-		<div class="flex gap-2 items-end">
-			<div class="flex-1">
-				<label class={labelCls}>From type</label>
-				<SkeuSelect value={block.settings.from_type}
-					onValueChange={(v) => updateSettings('from_type', v)}
-					options={CONVERSION_TYPE_OPTIONS}
+		{#if convMeta.needsEncoding}
+			<div>
+				<label class={labelCls}>Encoding</label>
+				<SkeuSelect value={block.settings.encoding ?? 'utf8'}
+					onValueChange={(v) => updateSettings('encoding', v)}
+					options={[{value:'utf8',label:'UTF-8'},{value:'utf16',label:'UTF-16 BE'}]}
 					class="w-full mt-0.5"
 				/>
 			</div>
-			<div class="flex items-center pb-1 text-muted-foreground">
-				<ArrowRight size={14} />
-			</div>
-			<div class="flex-1">
-				<label class={labelCls}>To type</label>
-				<SkeuSelect value={block.settings.to_type}
-					onValueChange={(v) => updateSettings('to_type', v)}
-					options={CONVERSION_TYPE_OPTIONS}
+		{/if}
+		{#if convMeta.needsEndian}
+			<div>
+				<label class={labelCls}>Byte order</label>
+				<SkeuSelect value={block.settings.endianness ?? 'big'}
+					onValueChange={(v) => updateSettings('endianness', v)}
+					options={[{value:'big',label:'Big-endian'},{value:'little',label:'Little-endian'}]}
 					class="w-full mt-0.5"
 				/>
 			</div>
-		</div>
+		{/if}
+		{#if convMeta.needsByteCount}
+			<div>
+				<label class={labelCls}>Byte count (1–8)</label>
+				<input type="number" min="1" max="8" value={block.settings.byte_count ?? 4}
+					class={inputCls}
+					oninput={(e) => updateSettings('byte_count', parseInt((e.target as HTMLInputElement).value) || 4)} />
+			</div>
+		{/if}
 		<div class="flex gap-2">
 			<div class="flex-1">
 				<label class={labelCls}>Output var</label>
@@ -495,49 +510,45 @@
 	</div>
 {/if}
 
-<!-- ===================== DATA CONVERSION ===================== -->
-{#if block.settings.type === 'DataConversion'}
-	{@const meta = getDataConversionMeta(block.settings.op)}
+<!-- ===================== FILE SYSTEM ===================== -->
+{#if block.settings.type === 'FileSystem'}
+	{@const fsOp = block.settings.op}
+	{@const needsDest = ['FileCopy','FileMove'].includes(fsOp)}
+	{@const needsContent = ['FileWrite','FileWriteBytes','FileWriteLines','FileAppend','FileAppendLines'].includes(fsOp)}
+	{@const needsPath = true}
 	<div class="space-y-1.5">
 		<div>
 			<label class={labelCls}>Operation</label>
 			<SkeuSelect value={block.settings.op}
 				onValueChange={(v) => updateSettings('op', v)}
-				options={DATA_CONVERSION_OPS.map(o => ({ value: o.value, label: o.label }))}
+				options={FILE_SYSTEM_OPS.map(o => ({ value: o.value, label: o.label }))}
 				class="w-full mt-0.5"
 			/>
 		</div>
-		<div>
-			<label class={labelCls}>Input variable</label>
-			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" class={inputCls}
-				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
-		</div>
-		{#if meta.needsEncoding}
+		{#if needsPath}
 			<div>
-				<label class={labelCls}>Encoding</label>
-				<SkeuSelect value={block.settings.encoding}
-					onValueChange={(v) => updateSettings('encoding', v)}
-					options={[{value:'utf8',label:'UTF-8'},{value:'utf16',label:'UTF-16 BE'},{value:'ascii',label:'ASCII'}]}
-					class="w-full mt-0.5"
-				/>
+				<label class={labelCls}>{needsDest ? 'Source path' : 'Path'}</label>
+				<VariableInput value={block.settings.path} placeholder="/path/to/file.txt or <VAR>" class={inputCls}
+					oninput={(e) => updateSettings('path', (e.target as HTMLInputElement).value)} />
+				<p class="text-[9px] text-muted-foreground mt-0.5">Use <code class="font-mono">&lt;VARNAME&gt;</code> for dynamic paths from variables</p>
 			</div>
 		{/if}
-		{#if meta.needsEndian}
+		{#if needsDest}
 			<div>
-				<label class={labelCls}>Byte order</label>
-				<SkeuSelect value={block.settings.endianness}
-					onValueChange={(v) => updateSettings('endianness', v)}
-					options={[{value:'big',label:'Big-endian'},{value:'little',label:'Little-endian'}]}
-					class="w-full mt-0.5"
-				/>
+				<label class={labelCls}>Destination path</label>
+				<VariableInput value={block.settings.dest_path} placeholder="/path/to/dest.txt or <VAR>" class={inputCls}
+					oninput={(e) => updateSettings('dest_path', (e.target as HTMLInputElement).value)} />
 			</div>
 		{/if}
-		{#if meta.needsByteCount}
+		{#if needsContent}
 			<div>
-				<label class={labelCls}>Byte count (1–8)</label>
-				<input type="number" min="1" max="8" value={block.settings.byte_count}
-					class={inputCls}
-					oninput={(e) => updateSettings('byte_count', parseInt((e.target as HTMLInputElement).value) || 4)} />
+				<label class={labelCls}>Content <span class="text-muted-foreground/60">(or variable name)</span></label>
+				<textarea rows="3" value={block.settings.content}
+					class="w-full skeu-input font-mono mt-0.5 resize-y text-xs"
+					placeholder="Text to write, or a variable name like OUTPUT"
+					oninput={(e) => updateSettings('content', (e.target as HTMLTextAreaElement).value)}
+				></textarea>
+				<p class="text-[9px] text-muted-foreground mt-0.5">If the value matches a variable name, that variable's value is used.</p>
 			</div>
 		{/if}
 		<div class="flex gap-2">
@@ -551,54 +562,5 @@
 				CAP
 			</label>
 		</div>
-	</div>
-{/if}
-
-<!-- ===================== FILE SYSTEM ===================== -->
-{#if block.settings.type === 'FileSystem'}
-	{@const meta = getFileSystemMeta(block.settings.op)}
-	<div class="space-y-1.5">
-		<div>
-			<label class={labelCls}>Operation</label>
-			<SkeuSelect value={block.settings.op}
-				onValueChange={(v) => updateSettings('op', v)}
-				options={FILE_SYSTEM_OPS.map(o => ({ value: o.value, label: o.label }))}
-				class="w-full mt-0.5"
-			/>
-		</div>
-		<div>
-			<label class={labelCls}>Path</label>
-			<VariableInput value={block.settings.path} placeholder="/path/to/file.txt" class={inputCls}
-				oninput={(e) => updateSettings('path', (e.target as HTMLInputElement).value)} />
-		</div>
-		{#if meta.hasDest}
-			<div>
-				<label class={labelCls}>Destination path</label>
-				<VariableInput value={block.settings.dest_path} placeholder="/path/to/dest.txt" class={inputCls}
-					oninput={(e) => updateSettings('dest_path', (e.target as HTMLInputElement).value)} />
-			</div>
-		{/if}
-		{#if meta.hasContent}
-			<div>
-				<label class={labelCls}>Content</label>
-				<textarea rows="3" value={block.settings.content}
-					class="w-full skeu-input font-mono mt-0.5 resize-y text-xs"
-					oninput={(e) => updateSettings('content', (e.target as HTMLTextAreaElement).value)}
-				></textarea>
-			</div>
-		{/if}
-		{#if meta.hasOutput}
-			<div class="flex gap-2">
-				<div class="flex-1">
-					<label class={labelCls}>Output var</label>
-					<VariableInput value={block.settings.output_var} class={inputCls}
-						oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} />
-				</div>
-				<label class="flex items-center gap-1 text-xs text-foreground pt-4">
-					<input type="checkbox" checked={block.settings.capture} onchange={() => updateSettings('capture', !block!.settings.capture)} class="skeu-checkbox" />
-					CAP
-				</label>
-			</div>
-		{/if}
 	</div>
 {/if}

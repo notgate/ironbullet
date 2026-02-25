@@ -1,7 +1,7 @@
 mod settings_http;
 mod settings_parse;
 mod settings_check;
-mod settings_functions;
+pub mod settings_functions;
 mod settings_control;
 mod settings_browser;
 mod settings_protocol;
@@ -129,8 +129,7 @@ pub enum BlockType {
     Group,
     // Extended functions
     ByteArray,
-    // Data conversion & file system
-    DataConversion,
+    // File system
     FileSystem,
     Constants,
     Dictionary,
@@ -205,7 +204,6 @@ impl BlockType {
             Self::GenerateGUID => "Generate GUID",
             Self::PhoneCountry => "Phone Country",
             Self::LambdaParser => "Lambda Parser",
-            Self::DataConversion => "Data Conversion",
             Self::FileSystem => "File System",
         }
     }
@@ -219,7 +217,6 @@ impl BlockType {
             Self::ParseLR | Self::ParseRegex | Self::ParseJSON | Self::ParseCSS | Self::ParseXPath | Self::ParseCookie | Self::LambdaParser => "Parsing",
             Self::KeyCheck => "Checks",
             Self::StringFunction | Self::ListFunction | Self::CryptoFunction | Self::ConversionFunction | Self::DateFunction | Self::CookieContainer | Self::ByteArray | Self::Constants | Self::Dictionary | Self::FloatFunction | Self::IntegerFunction | Self::TimeFunction | Self::GenerateGUID | Self::PhoneCountry => "Functions",
-            Self::DataConversion => "Data",
             Self::FileSystem => "FileSystem",
             Self::IfElse | Self::Loop | Self::Delay | Self::Script | Self::CaseSwitch | Self::Group => "Control",
             Self::Log | Self::SetVariable | Self::ClearCookies | Self::Webhook | Self::WebSocket => "Utilities",
@@ -306,7 +303,6 @@ impl BlockType {
             Self::GenerateGUID => BlockSettings::GenerateGUID(GenerateGUIDSettings::default()),
             Self::PhoneCountry => BlockSettings::PhoneCountry(PhoneCountrySettings::default()),
             Self::LambdaParser => BlockSettings::LambdaParser(LambdaParserSettings::default()),
-            Self::DataConversion => BlockSettings::DataConversion(DataConversionSettings::default()),
             Self::FileSystem => BlockSettings::FileSystem(FileSystemSettings::default()),
         }
     }
@@ -386,6 +382,5 @@ pub enum BlockSettings {
     GenerateGUID(GenerateGUIDSettings),
     PhoneCountry(PhoneCountrySettings),
     LambdaParser(LambdaParserSettings),
-    DataConversion(DataConversionSettings),
     FileSystem(FileSystemSettings),
 }

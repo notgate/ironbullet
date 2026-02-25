@@ -37,7 +37,7 @@ export type BlockType =
 	| 'RandomUserAgent' | 'OcrCaptcha' | 'RecaptchaInvisible' | 'XacfSensor'
 	| 'RandomData' | 'DataDomeSensor' | 'Plugin' | 'AkamaiV3Sensor' | 'Group'
 	| 'ByteArray' | 'Constants' | 'Dictionary' | 'FloatFunction' | 'IntegerFunction' | 'TimeFunction' | 'GenerateGUID' | 'PhoneCountry' | 'LambdaParser'
-	| 'DataConversion' | 'FileSystem';
+	| 'FileSystem';
 
 export type BotStatus = 'None' | 'Success' | 'Fail' | 'Ban' | 'Retry' | 'Error' | 'Custom';
 export type Comparison = 'Contains' | 'NotContains' | 'EqualTo' | 'NotEqualTo' | 'MatchesRegex' | 'GreaterThan' | 'LessThan' | 'Exists' | 'NotExists';
