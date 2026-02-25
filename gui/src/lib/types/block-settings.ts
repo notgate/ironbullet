@@ -254,6 +254,8 @@ export interface FtpRequestSettings {
 	username: string;
 	password: string;
 	command: string;
+	/** Remote path for RETR, STOR, DELE, MKD, RMD, CWD actions */
+	remote_path: string;
 	output_var: string;
 	timeout_ms: number;
 	capture: boolean;
@@ -277,6 +279,10 @@ export interface ImapRequestSettings {
 	password: string;
 	use_tls: boolean;
 	command: string;
+	/** Mailbox for SELECT / FETCH / SEARCH actions */
+	mailbox: string;
+	/** Message number for FETCH action */
+	message_num: number;
 	output_var: string;
 	timeout_ms: number;
 	capture: boolean;
@@ -289,6 +295,12 @@ export interface SmtpRequestSettings {
 	password: string;
 	use_tls: boolean;
 	command: string;
+	/** "VERIFY" or "SEND_EMAIL" */
+	action: string;
+	from: string;
+	to: string;
+	subject: string;
+	body_template: string;
 	output_var: string;
 	timeout_ms: number;
 	capture: boolean;
@@ -301,6 +313,8 @@ export interface PopRequestSettings {
 	password: string;
 	use_tls: boolean;
 	command: string;
+	/** Message number for RETR / DELE actions */
+	message_num: number;
 	output_var: string;
 	timeout_ms: number;
 	capture: boolean;

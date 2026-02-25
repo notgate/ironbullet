@@ -86,13 +86,7 @@
 				</div>
 			</div>
 		{/if}
-		<div class="flex items-center gap-2">
-			<span class="text-[11px] text-muted-foreground">Timeout:</span>
-			<input type="number" value={block.settings.timeout_ms}
-				class="w-20 skeu-input text-[11px]"
-				oninput={(e) => updateSettings('timeout_ms', parseInt((e.target as HTMLInputElement).value))} />
-			<span class="text-[10px] text-muted-foreground">ms</span>
-		</div>
+		<div class="flex items-center gap-2"><span class="text-[11px] text-muted-foreground">Timeout:</span><input type="number" value={block.settings.timeout_ms} class="w-20 skeu-input text-[11px]" oninput={(e) => updateSettings('timeout_ms', parseInt((e.target as HTMLInputElement).value))} /><span class="text-[10px] text-muted-foreground">ms</span></div>
 	</div>
 
 <!-- ===================== TCP REQUEST ===================== -->
@@ -126,21 +120,224 @@
 		<div class="flex items-center gap-2"><span class="text-[11px] text-muted-foreground">Timeout:</span><input type="number" value={block.settings.timeout_ms} class="w-20 skeu-input text-[11px]" oninput={(e) => updateSettings('timeout_ms', parseInt((e.target as HTMLInputElement).value))} /><span class="text-[10px] text-muted-foreground">ms</span></div>
 	</div>
 
-<!-- ===================== FTP / SSH / IMAP / SMTP / POP ===================== -->
-{:else if block.settings.type === 'FtpRequest' || block.settings.type === 'SshRequest' || block.settings.type === 'ImapRequest' || block.settings.type === 'SmtpRequest' || block.settings.type === 'PopRequest'}
+<!-- ===================== FTP REQUEST ===================== -->
+{:else if block.settings.type === 'FtpRequest'}
 	<div class="space-y-1.5">
 		<div class="flex gap-2">
-			<div class="flex-1"><label class={labelCls}>Host</label><VariableInput value={block.settings.host} placeholder="mail.example.com" class={inputCls} oninput={(e) => updateSettings('host', (e.target as HTMLInputElement).value)} /></div>
+			<div class="flex-1"><label class={labelCls}>Host</label><VariableInput value={block.settings.host} placeholder="ftp.example.com" class={inputCls} oninput={(e) => updateSettings('host', (e.target as HTMLInputElement).value)} /></div>
 			<div class="w-20"><label class={labelCls}>Port</label><input type="number" value={block.settings.port} class={inputCls} oninput={(e) => updateSettings('port', parseInt((e.target as HTMLInputElement).value))} /></div>
 		</div>
 		<div class="flex gap-2">
-			<div class="flex-1"><label class={labelCls}>Username</label><VariableInput value={block.settings.username} placeholder="input.USER" class={inputCls} oninput={(e) => updateSettings('username', (e.target as HTMLInputElement).value)} /></div>
-			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="input.PASS" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
+			<div class="flex-1"><label class={labelCls}>Username</label><VariableInput value={block.settings.username} placeholder="<USER>" class={inputCls} oninput={(e) => updateSettings('username', (e.target as HTMLInputElement).value)} /></div>
+			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="<PASS>" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
 		</div>
-		<div><label class={labelCls}>Command</label><VariableInput value={block.settings.command} class={inputCls} oninput={(e) => updateSettings('command', (e.target as HTMLInputElement).value)} /></div>
-		{'use_tls' in block.settings ? '' : ''}
-		{#if 'use_tls' in block.settings}
-			<label class="flex items-center gap-2 text-[11px] text-foreground"><input type="checkbox" checked={block.settings.use_tls} onchange={() => updateSettings('use_tls', !(block!.settings as any).use_tls)} class="skeu-checkbox" /> Use TLS</label>
+		<div>
+			<label class={labelCls}>Action</label>
+			<SkeuSelect value={block.settings.command || 'LIST'}
+				onValueChange={(v) => updateSettings('command', v)}
+				options={[
+					{value:'LIST',label:'LIST — List directory'},
+					{value:'RETR',label:'RETR — Download file'},
+					{value:'STOR',label:'STOR — Upload file'},
+					{value:'DELE',label:'DELE — Delete file'},
+					{value:'MKD',label:'MKD — Create directory'},
+					{value:'RMD',label:'RMD — Remove directory'},
+					{value:'PWD',label:'PWD — Print working directory'},
+					{value:'CWD',label:'CWD — Change directory'},
+				]}
+				class="w-full mt-0.5"
+			/>
+		</div>
+		{#if ['RETR','STOR','DELE','MKD','RMD','CWD'].includes(block.settings.command || '')}
+			<div class="relative">
+				<label class={labelCls}>Remote Path</label>
+				<VariableInput value={block.settings.remote_path || ''} placeholder="/path/to/file" class={inputCls}
+					oninput={(e) => updateSettings('remote_path', (e.target as HTMLInputElement).value)} />
+				{@render embedBadge(block.settings.remote_path)}
+			</div>
+		{/if}
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Output var</label><VariableInput value={block.settings.output_var} class={inputCls} oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} /></div>
+			<label class="flex items-center gap-1 text-xs text-foreground pt-4"><input type="checkbox" checked={block.settings.capture} onchange={() => updateSettings('capture', !block!.settings.capture)} class="skeu-checkbox" /> CAP</label>
+		</div>
+		<div class="flex items-center gap-2"><span class="text-[11px] text-muted-foreground">Timeout:</span><input type="number" value={block.settings.timeout_ms} class="w-20 skeu-input text-[11px]" oninput={(e) => updateSettings('timeout_ms', parseInt((e.target as HTMLInputElement).value))} /><span class="text-[10px] text-muted-foreground">ms</span></div>
+	</div>
+
+<!-- ===================== SSH REQUEST ===================== -->
+{:else if block.settings.type === 'SshRequest'}
+	<div class="space-y-1.5">
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Host</label><VariableInput value={block.settings.host} placeholder="ssh.example.com" class={inputCls} oninput={(e) => updateSettings('host', (e.target as HTMLInputElement).value)} /></div>
+			<div class="w-20"><label class={labelCls}>Port</label><input type="number" value={block.settings.port} class={inputCls} oninput={(e) => updateSettings('port', parseInt((e.target as HTMLInputElement).value))} /></div>
+		</div>
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Username</label><VariableInput value={block.settings.username} placeholder="<USER>" class={inputCls} oninput={(e) => updateSettings('username', (e.target as HTMLInputElement).value)} /></div>
+			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="<PASS>" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
+		</div>
+		<div>
+			<label class={labelCls}>Action</label>
+			<SkeuSelect value={block.settings.command || 'banner'}
+				onValueChange={(v) => updateSettings('command', v)}
+				options={[
+					{value:'banner',label:'Banner Grab — Read SSH version string'},
+					{value:'auth_check',label:'Auth Check — Attempt login handshake'},
+					{value:'exec',label:'Execute Command — Banner exchange + command'},
+				]}
+				class="w-full mt-0.5"
+			/>
+		</div>
+		{#if block.settings.command === 'exec'}
+			<div class="relative">
+				<label class={labelCls}>Shell Command</label>
+				<VariableInput value={block.settings.ssh_cmd || ''} placeholder="whoami" class={inputCls}
+					oninput={(e) => updateSettings('ssh_cmd', (e.target as HTMLInputElement).value)} />
+				<p class="text-[9px] text-muted-foreground mt-0.5">Note: Full execution requires ssh2 crate. Banner exchange is performed.</p>
+			</div>
+		{/if}
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Output var</label><VariableInput value={block.settings.output_var} class={inputCls} oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} /></div>
+			<label class="flex items-center gap-1 text-xs text-foreground pt-4"><input type="checkbox" checked={block.settings.capture} onchange={() => updateSettings('capture', !block!.settings.capture)} class="skeu-checkbox" /> CAP</label>
+		</div>
+		<div class="flex items-center gap-2"><span class="text-[11px] text-muted-foreground">Timeout:</span><input type="number" value={block.settings.timeout_ms} class="w-20 skeu-input text-[11px]" oninput={(e) => updateSettings('timeout_ms', parseInt((e.target as HTMLInputElement).value))} /><span class="text-[10px] text-muted-foreground">ms</span></div>
+	</div>
+
+<!-- ===================== IMAP REQUEST ===================== -->
+{:else if block.settings.type === 'ImapRequest'}
+	<div class="space-y-1.5">
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Host</label><VariableInput value={block.settings.host} placeholder="imap.gmail.com" class={inputCls} oninput={(e) => updateSettings('host', (e.target as HTMLInputElement).value)} /></div>
+			<div class="w-20"><label class={labelCls}>Port</label><input type="number" value={block.settings.port} class={inputCls} oninput={(e) => updateSettings('port', parseInt((e.target as HTMLInputElement).value))} /></div>
+		</div>
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Username</label><VariableInput value={block.settings.username} placeholder="<USER>" class={inputCls} oninput={(e) => updateSettings('username', (e.target as HTMLInputElement).value)} /></div>
+			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="<PASS>" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
+		</div>
+		<label class="flex items-center gap-2 text-[11px] text-foreground"><input type="checkbox" checked={block.settings.use_tls} onchange={() => updateSettings('use_tls', !block!.settings.use_tls)} class="skeu-checkbox" /> Use TLS</label>
+		<div>
+			<label class={labelCls}>Action</label>
+			<SkeuSelect value={block.settings.command || 'LOGIN'}
+				onValueChange={(v) => updateSettings('command', v)}
+				options={[
+					{value:'LOGIN',label:'Login — Verify credentials'},
+					{value:'SELECT',label:'SELECT — Open mailbox'},
+					{value:'FETCH',label:'FETCH — Retrieve message'},
+					{value:'LIST "" "*"',label:'LIST — List all mailboxes'},
+					{value:'SEARCH ALL',label:'SEARCH — Search all messages'},
+				]}
+				class="w-full mt-0.5"
+			/>
+		</div>
+		{#if ['SELECT','FETCH','SEARCH ALL'].includes(block.settings.command || '')}
+			<div>
+				<label class={labelCls}>Mailbox</label>
+				<VariableInput value={block.settings.mailbox || 'INBOX'} placeholder="INBOX" class={inputCls}
+					oninput={(e) => updateSettings('mailbox', (e.target as HTMLInputElement).value)} />
+			</div>
+		{/if}
+		{#if block.settings.command === 'FETCH'}
+			<div>
+				<label class={labelCls}>Message #</label>
+				<input type="number" value={block.settings.message_num || 1} min="1" class={inputCls}
+					oninput={(e) => updateSettings('message_num', parseInt((e.target as HTMLInputElement).value))} />
+			</div>
+		{/if}
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Output var</label><VariableInput value={block.settings.output_var} class={inputCls} oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} /></div>
+			<label class="flex items-center gap-1 text-xs text-foreground pt-4"><input type="checkbox" checked={block.settings.capture} onchange={() => updateSettings('capture', !block!.settings.capture)} class="skeu-checkbox" /> CAP</label>
+		</div>
+		<div class="flex items-center gap-2"><span class="text-[11px] text-muted-foreground">Timeout:</span><input type="number" value={block.settings.timeout_ms} class="w-20 skeu-input text-[11px]" oninput={(e) => updateSettings('timeout_ms', parseInt((e.target as HTMLInputElement).value))} /><span class="text-[10px] text-muted-foreground">ms</span></div>
+	</div>
+
+<!-- ===================== SMTP REQUEST ===================== -->
+{:else if block.settings.type === 'SmtpRequest'}
+	<div class="space-y-1.5">
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Host</label><VariableInput value={block.settings.host} placeholder="smtp.gmail.com" class={inputCls} oninput={(e) => updateSettings('host', (e.target as HTMLInputElement).value)} /></div>
+			<div class="w-20"><label class={labelCls}>Port</label><input type="number" value={block.settings.port} class={inputCls} oninput={(e) => updateSettings('port', parseInt((e.target as HTMLInputElement).value))} /></div>
+		</div>
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Username</label><VariableInput value={block.settings.username} placeholder="<USER>" class={inputCls} oninput={(e) => updateSettings('username', (e.target as HTMLInputElement).value)} /></div>
+			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="<PASS>" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
+		</div>
+		<label class="flex items-center gap-2 text-[11px] text-foreground"><input type="checkbox" checked={block.settings.use_tls} onchange={() => updateSettings('use_tls', !block!.settings.use_tls)} class="skeu-checkbox" /> Use TLS</label>
+		<div>
+			<label class={labelCls}>Action</label>
+			<SkeuSelect value={block.settings.action || 'VERIFY'}
+				onValueChange={(v) => updateSettings('action', v)}
+				options={[
+					{value:'VERIFY',label:'Verify Credentials — Check login only'},
+					{value:'SEND_EMAIL',label:'Send Email — Full mail delivery'},
+				]}
+				class="w-full mt-0.5"
+			/>
+		</div>
+		{#if (block.settings.action || 'VERIFY') === 'SEND_EMAIL'}
+			<div class="relative">
+				<label class={labelCls}>From</label>
+				<VariableInput value={block.settings.from || ''} placeholder="sender@example.com or leave blank for username" class={inputCls}
+					oninput={(e) => updateSettings('from', (e.target as HTMLInputElement).value)} />
+				{@render embedBadge(block.settings.from)}
+			</div>
+			<div class="relative">
+				<label class={labelCls}>To (comma separated)</label>
+				<VariableInput value={block.settings.to || ''} placeholder="recipient@example.com" class={inputCls}
+					oninput={(e) => updateSettings('to', (e.target as HTMLInputElement).value)} />
+				{@render embedBadge(block.settings.to)}
+			</div>
+			<div class="relative">
+				<label class={labelCls}>Subject</label>
+				<VariableInput value={block.settings.subject || ''} placeholder="Email subject" class={inputCls}
+					oninput={(e) => updateSettings('subject', (e.target as HTMLInputElement).value)} />
+				{@render embedBadge(block.settings.subject)}
+			</div>
+			<div class="relative">
+				<label class={labelCls}>Body</label>
+				<textarea value={block.settings.body_template || ''} placeholder="Email body content..."
+					class="w-full skeu-input text-[11px] font-mono min-h-[80px] resize-y mt-0.5"
+					oninput={(e) => updateSettings('body_template', (e.target as HTMLTextAreaElement).value)}></textarea>
+				{@render embedBadge(block.settings.body_template)}
+			</div>
+		{/if}
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Output var</label><VariableInput value={block.settings.output_var} class={inputCls} oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} /></div>
+			<label class="flex items-center gap-1 text-xs text-foreground pt-4"><input type="checkbox" checked={block.settings.capture} onchange={() => updateSettings('capture', !block!.settings.capture)} class="skeu-checkbox" /> CAP</label>
+		</div>
+		<div class="flex items-center gap-2"><span class="text-[11px] text-muted-foreground">Timeout:</span><input type="number" value={block.settings.timeout_ms} class="w-20 skeu-input text-[11px]" oninput={(e) => updateSettings('timeout_ms', parseInt((e.target as HTMLInputElement).value))} /><span class="text-[10px] text-muted-foreground">ms</span></div>
+	</div>
+
+<!-- ===================== POP REQUEST ===================== -->
+{:else if block.settings.type === 'PopRequest'}
+	<div class="space-y-1.5">
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Host</label><VariableInput value={block.settings.host} placeholder="pop.gmail.com" class={inputCls} oninput={(e) => updateSettings('host', (e.target as HTMLInputElement).value)} /></div>
+			<div class="w-20"><label class={labelCls}>Port</label><input type="number" value={block.settings.port} class={inputCls} oninput={(e) => updateSettings('port', parseInt((e.target as HTMLInputElement).value))} /></div>
+		</div>
+		<div class="flex gap-2">
+			<div class="flex-1"><label class={labelCls}>Username</label><VariableInput value={block.settings.username} placeholder="<USER>" class={inputCls} oninput={(e) => updateSettings('username', (e.target as HTMLInputElement).value)} /></div>
+			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="<PASS>" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
+		</div>
+		<label class="flex items-center gap-2 text-[11px] text-foreground"><input type="checkbox" checked={block.settings.use_tls} onchange={() => updateSettings('use_tls', !block!.settings.use_tls)} class="skeu-checkbox" /> Use TLS</label>
+		<div>
+			<label class={labelCls}>Action</label>
+			<SkeuSelect value={block.settings.command || 'STAT'}
+				onValueChange={(v) => updateSettings('command', v)}
+				options={[
+					{value:'STAT',label:'STAT — Mailbox statistics'},
+					{value:'LIST',label:'LIST — List messages'},
+					{value:'RETR',label:'RETR — Retrieve message'},
+					{value:'DELE',label:'DELE — Delete message'},
+					{value:'NOOP',label:'NOOP — Keep-alive ping'},
+					{value:'RSET',label:'RSET — Reset deletions'},
+				]}
+				class="w-full mt-0.5"
+			/>
+		</div>
+		{#if ['RETR','DELE'].includes(block.settings.command || '')}
+			<div>
+				<label class={labelCls}>Message #</label>
+				<input type="number" value={block.settings.message_num || 1} min="1" class={inputCls}
+					oninput={(e) => updateSettings('message_num', parseInt((e.target as HTMLInputElement).value))} />
+			</div>
 		{/if}
 		<div class="flex gap-2">
 			<div class="flex-1"><label class={labelCls}>Output var</label><VariableInput value={block.settings.output_var} class={inputCls} oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} /></div>

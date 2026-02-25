@@ -127,7 +127,7 @@
 		if (step < STEPS.length - 1) {
 			step++;
 			// Trigger directory setup when reaching the last step
-			if (step === STEPS.length - 1 && !setupDone) {
+			if (step === STEPS.length - 1 && !app.setupDirsDone) {
 				console.log('[Onboarding] calling setup_default_dirs');
 				send('setup_default_dirs');
 			}

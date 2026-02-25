@@ -120,9 +120,17 @@ impl ExecutionContext {
         let host = self.variables.interpolate(&settings.host);
         let username = self.variables.interpolate(&settings.username);
         let password = self.variables.interpolate(&settings.password);
-        let command = self.variables.interpolate(&settings.command);
+        let cmd_base = self.variables.interpolate(&settings.command);
+        let remote_path = self.variables.interpolate(&settings.remote_path);
         let timeout = std::time::Duration::from_millis(settings.timeout_ms);
         let addr = format!("{}:{}", host, settings.port);
+
+        // Build the full FTP command: for commands that take a path, append remote_path
+        let command = if !remote_path.is_empty() && matches!(cmd_base.as_str(), "RETR" | "STOR" | "DELE" | "MKD" | "RMD" | "CWD") {
+            format!("{} {}", cmd_base, remote_path)
+        } else {
+            cmd_base.clone()
+        };
 
         let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
             .map_err(|_| crate::error::AppError::Pipeline(format!("FTP connect timeout: {}", addr)))?
@@ -250,8 +258,18 @@ impl ExecutionContext {
         let username = self.variables.interpolate(&settings.username);
         let password = self.variables.interpolate(&settings.password);
         let command = self.variables.interpolate(&settings.command);
+        let mailbox = self.variables.interpolate(&settings.mailbox);
         let timeout = std::time::Duration::from_millis(settings.timeout_ms);
         let addr = format!("{}:{}", host, settings.port);
+
+        // Build the extra IMAP command from action + args
+        let extra_cmd: Option<String> = match command.as_str() {
+            "LOGIN" | "" => None,
+            "SELECT" => Some(format!("SELECT {}", if mailbox.is_empty() { "INBOX" } else { &mailbox })),
+            "FETCH" => Some(format!("SELECT {}\r\na002b FETCH {} BODY[]", if mailbox.is_empty() { "INBOX" } else { &mailbox }, settings.message_num)),
+            "SEARCH ALL" => Some(format!("SELECT {}\r\na002b SEARCH ALL", if mailbox.is_empty() { "INBOX" } else { &mailbox })),
+            other => Some(other.to_string()),
+        };
 
         let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
             .map_err(|_| crate::error::AppError::Pipeline(format!("IMAP connect timeout: {}", addr)))?
@@ -292,19 +310,24 @@ impl ExecutionContext {
                 }
             }
 
-            // Extra command if provided and login succeeded
-            if last_ok && !command.is_empty() && command != "LOGIN" {
-                let extra = format!("a002 {}", command);
-                writer.write_all(format!("{}\r\n", extra).as_bytes()).await.ok();
-                writer.flush().await.ok();
-                transcript.push_str(&format!("C: {}\r\n", extra));
-                loop {
-                    line.clear();
-                    match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
-                        Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
-                        Ok(Ok(_)) => {
-                            transcript.push_str(&format!("S: {}", line));
-                            if line.starts_with("a002 ") { break; }
+            // Extra IMAP command if action requires it
+            if last_ok {
+                if let Some(ref extra_imap) = extra_cmd {
+                    for (tag_n, sub_cmd) in extra_imap.split("\r\n").filter(|s| !s.is_empty()).enumerate() {
+                        let tag = format!("a{:03}", tag_n + 2);
+                        let tagged = format!("{} {}", tag, sub_cmd);
+                        writer.write_all(format!("{}\r\n", tagged).as_bytes()).await.ok();
+                        writer.flush().await.ok();
+                        transcript.push_str(&format!("C: {}\r\n", tagged));
+                        loop {
+                            line.clear();
+                            match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
+                                Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                                Ok(Ok(_)) => {
+                                    transcript.push_str(&format!("S: {}", line));
+                                    if line.starts_with(&format!("{} ", tag)) { break; }
+                                }
+                            }
                         }
                     }
                 }
@@ -338,18 +361,23 @@ impl ExecutionContext {
                 }
             }
 
-            if last_ok && !command.is_empty() && command != "LOGIN" {
-                let extra = format!("a002 {}", command);
-                writer.write_all(format!("{}\r\n", extra).as_bytes()).await.ok();
-                writer.flush().await.ok();
-                transcript.push_str(&format!("C: {}\r\n", extra));
-                loop {
-                    line.clear();
-                    match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
-                        Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
-                        Ok(Ok(_)) => {
-                            transcript.push_str(&format!("S: {}", line));
-                            if line.starts_with("a002 ") { break; }
+            if last_ok {
+                if let Some(ref extra_imap) = extra_cmd {
+                    for (tag_n, sub_cmd) in extra_imap.split("\r\n").filter(|s| !s.is_empty()).enumerate() {
+                        let tag = format!("a{:03}", tag_n + 2);
+                        let tagged = format!("{} {}", tag, sub_cmd);
+                        writer.write_all(format!("{}\r\n", tagged).as_bytes()).await.ok();
+                        writer.flush().await.ok();
+                        transcript.push_str(&format!("C: {}\r\n", tagged));
+                        loop {
+                            line.clear();
+                            match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
+                                Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                                Ok(Ok(_)) => {
+                                    transcript.push_str(&format!("S: {}", line));
+                                    if line.starts_with(&format!("{} ", tag)) { break; }
+                                }
+                            }
                         }
                     }
                 }
@@ -389,9 +417,14 @@ impl ExecutionContext {
         let host = self.variables.interpolate(&settings.host);
         let username = self.variables.interpolate(&settings.username);
         let password = self.variables.interpolate(&settings.password);
-        let command = self.variables.interpolate(&settings.command);
+        let _command = self.variables.interpolate(&settings.command);
         let timeout = std::time::Duration::from_millis(settings.timeout_ms);
         let addr = format!("{}:{}", host, settings.port);
+        let is_send = settings.action == "SEND_EMAIL";
+        let from = self.variables.interpolate(if settings.from.is_empty() { &settings.username } else { &settings.from });
+        let to = self.variables.interpolate(&settings.to);
+        let subject = self.variables.interpolate(&settings.subject);
+        let body_tpl = self.variables.interpolate(&settings.body_template);
 
         let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
             .map_err(|_| crate::error::AppError::Pipeline(format!("SMTP connect timeout: {}", addr)))?
@@ -459,11 +492,33 @@ impl ExecutionContext {
                 auth_ok = code == 235;
             }
 
-            // Extra command
-            if !command.is_empty() && command != "EHLO" {
-                writer.write_all(format!("{}\r\n", command).as_bytes()).await.ok();
+            // SEND_EMAIL or VERIFY
+            if is_send && (auth_ok || username.is_empty()) {
+                let mail_from = if from.is_empty() { username.clone() } else { from.clone() };
+                writer.write_all(format!("MAIL FROM:<{}>\r\n", mail_from).as_bytes()).await.ok();
                 writer.flush().await.ok();
-                transcript.push_str(&format!("C: {}\r\n", command));
+                transcript.push_str(&format!("C: MAIL FROM:<{}>\r\n", mail_from));
+                smtp_read!(reader, transcript);
+
+                for rcpt in to.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    writer.write_all(format!("RCPT TO:<{}>\r\n", rcpt).as_bytes()).await.ok();
+                    writer.flush().await.ok();
+                    transcript.push_str(&format!("C: RCPT TO:<{}>\r\n", rcpt));
+                    smtp_read!(reader, transcript);
+                }
+
+                writer.write_all(b"DATA\r\n").await.ok();
+                writer.flush().await.ok();
+                transcript.push_str("C: DATA\r\n");
+                smtp_read!(reader, transcript);
+
+                let mail_body = format!(
+                    "From: {}\r\nTo: {}\r\nSubject: {}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}\r\n.\r\n",
+                    mail_from, to, subject, body_tpl
+                );
+                writer.write_all(mail_body.as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: [email {} bytes]\r\n", mail_body.len()));
                 smtp_read!(reader, transcript);
             }
 
@@ -502,10 +557,33 @@ impl ExecutionContext {
                 auth_ok = code == 235;
             }
 
-            if !command.is_empty() && command != "EHLO" {
-                writer.write_all(format!("{}\r\n", command).as_bytes()).await.ok();
+            // SEND_EMAIL or VERIFY
+            if is_send && (auth_ok || username.is_empty()) {
+                let mail_from = if from.is_empty() { username.clone() } else { from.clone() };
+                writer.write_all(format!("MAIL FROM:<{}>\r\n", mail_from).as_bytes()).await.ok();
                 writer.flush().await.ok();
-                transcript.push_str(&format!("C: {}\r\n", command));
+                transcript.push_str(&format!("C: MAIL FROM:<{}>\r\n", mail_from));
+                smtp_read!(reader, transcript);
+
+                for rcpt in to.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    writer.write_all(format!("RCPT TO:<{}>\r\n", rcpt).as_bytes()).await.ok();
+                    writer.flush().await.ok();
+                    transcript.push_str(&format!("C: RCPT TO:<{}>\r\n", rcpt));
+                    smtp_read!(reader, transcript);
+                }
+
+                writer.write_all(b"DATA\r\n").await.ok();
+                writer.flush().await.ok();
+                transcript.push_str("C: DATA\r\n");
+                smtp_read!(reader, transcript);
+
+                let mail_body = format!(
+                    "From: {}\r\nTo: {}\r\nSubject: {}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}\r\n.\r\n",
+                    mail_from, to, subject, body_tpl
+                );
+                writer.write_all(mail_body.as_bytes()).await.ok();
+                writer.flush().await.ok();
+                transcript.push_str(&format!("C: [email {} bytes]\r\n", mail_body.len()));
                 smtp_read!(reader, transcript);
             }
 
@@ -517,10 +595,14 @@ impl ExecutionContext {
 
         if let Some(last) = self.block_results.last_mut() {
             last.request = Some(RequestInfo {
-                method: "SMTP".into(),
+                method: if is_send { "SMTP/SEND".into() } else { "SMTP/VERIFY".into() },
                 url: addr,
                 headers: vec![],
-                body: format!("AUTH {} ****", username),
+                body: if is_send {
+                    format!("FROM:{} TO:{} SUBJECT:{}", from, to, subject)
+                } else {
+                    format!("AUTH {} ****", username)
+                },
             });
             last.response = Some(ResponseInfo {
                 status_code: if auth_ok { 235 } else { 535 },
@@ -543,9 +625,16 @@ impl ExecutionContext {
         let host = self.variables.interpolate(&settings.host);
         let username = self.variables.interpolate(&settings.username);
         let password = self.variables.interpolate(&settings.password);
-        let command = self.variables.interpolate(&settings.command);
+        let cmd_base = self.variables.interpolate(&settings.command);
         let timeout = std::time::Duration::from_millis(settings.timeout_ms);
         let addr = format!("{}:{}", host, settings.port);
+
+        // For RETR/DELE, append the message number
+        let command = if matches!(cmd_base.as_str(), "RETR" | "DELE") {
+            format!("{} {}", cmd_base, settings.message_num)
+        } else {
+            cmd_base.clone()
+        };
 
         let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await
             .map_err(|_| crate::error::AppError::Pipeline(format!("POP3 connect timeout: {}", addr)))?
