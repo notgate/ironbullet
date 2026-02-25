@@ -1182,6 +1182,14 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             code.push_str(&format!("{}    {}.to_string() // Simplified lambda execution\n", pad, input));
             code.push_str(&format!("{}}};\n", pad));
         }
+        BlockSettings::DataConversion(s) => {
+            let letkw = vars.let_or_assign(&s.output_var);
+            let vn = var_name(&s.output_var);
+            code.push_str(&format!("{}{}{}= String::new(); // DataConversion::{:?} (runtime op)\n", pad, letkw, vn, s.op));
+        }
+        BlockSettings::FileSystem(s) => {
+            code.push_str(&format!("{}// FileSystem::{:?} on \"{}\"\n", pad, s.op, escape_str(&s.path)));
+        }
     }
 
     code

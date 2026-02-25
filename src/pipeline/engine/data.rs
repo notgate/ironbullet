@@ -224,22 +224,19 @@ impl ExecutionContext {
                 words_to_number(&input).to_string()
             }
             DataConversionOp::SvgToPng => {
-                use resvg::usvg::{self, TreeParsing, TreeTextToPath};
+                use resvg::usvg;
                 use resvg::tiny_skia;
                 use base64::Engine;
 
-                let opt = usvg::Options::default();
+                let mut opt = usvg::Options::default();
+                opt.fontdb_mut().load_system_fonts();
                 match usvg::Tree::from_str(&input, &opt) {
-                    Ok(mut tree) => {
-                        let mut db = usvg::fontdb::Database::new();
-                        db.load_system_fonts();
-                        tree.convert_text(&db);
-                        let rtree = resvg::Tree::from_usvg(&tree);
-                        let size = rtree.size.to_int_size();
-                        let width = size.width().max(1);
-                        let height = size.height().max(1);
+                    Ok(tree) => {
+                        let size = tree.size();
+                        let width = (size.width().ceil() as u32).max(1);
+                        let height = (size.height().ceil() as u32).max(1);
                         if let Some(mut pixmap) = tiny_skia::Pixmap::new(width, height) {
-                            rtree.render(tiny_skia::Transform::default(), &mut pixmap.as_mut());
+                            resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
                             match pixmap.encode_png() {
                                 Ok(png_bytes) => base64::engine::general_purpose::STANDARD.encode(&png_bytes),
                                 Err(_) => String::new(),
