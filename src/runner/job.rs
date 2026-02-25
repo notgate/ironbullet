@@ -31,6 +31,7 @@ pub struct DataSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DataSourceType {
     File,
+    Folder,
     Url,
     Inline,
     Range,

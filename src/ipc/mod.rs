@@ -168,6 +168,10 @@ pub fn handle_ipc_cmd(
             handlers_config::get_recent_configs(state, eval_js);
             None
         }
+        "setup_default_dirs" => {
+            handlers_config::setup_default_dirs(eval_js);
+            None
+        }
 
         "add_block" => {
             handlers_block::add_block(state, data, eval_js);

@@ -126,6 +126,6 @@
 		onclick={cycleMode}
 		title={getModeTitle()}
 	>
-		{getModeLabel()}
+		<svelte:component this={getModeIcon()} size={9} class="inline-block mr-0.5" />{getModeLabel()}
 	</button>
 </div>

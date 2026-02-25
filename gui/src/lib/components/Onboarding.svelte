@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
+	import { send } from '$lib/ipc';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import FolderCheck from '@lucide/svelte/icons/folder-check';
+
+
 
 	let show = $state(false);
 	let step = $state(0);
@@ -70,6 +74,11 @@
 			body: 'Use File menu to save/load configs, Run to debug or start the runner, and the quick action buttons for one-click access.',
 			highlight: 'top',
 		},
+		{
+			title: 'Setting Up Your Workspace',
+			body: 'Creating default folders (wordlists, proxies, configs, results) next to the application. These will be pre-filled in path fields going forward.',
+			highlight: null,
+		},
 	];
 
 	// Arrow position in overlay screen coords. Angle: 0=right, 90=down, 180=left, -90=up
@@ -115,8 +124,16 @@
 	}
 
 	function next() {
-		if (step < STEPS.length - 1) step++;
-		else finish();
+		if (step < STEPS.length - 1) {
+			step++;
+			// Trigger directory setup when reaching the last step
+			if (step === STEPS.length - 1 && !setupDone) {
+				console.log('[Onboarding] calling setup_default_dirs');
+				send('setup_default_dirs');
+			}
+		} else {
+			finish();
+		}
 	}
 
 	function prev() {
@@ -180,7 +197,22 @@
 				</div>
 
 				<h3 class="text-[14px] font-semibold text-foreground mb-1.5">{STEPS[step].title}</h3>
-				<p class="text-[12px] text-muted-foreground leading-relaxed mb-4">{STEPS[step].body}</p>
+				<p class="text-[12px] text-muted-foreground leading-relaxed mb-3">{STEPS[step].body}</p>
+				{#if step === STEPS.length - 1}
+					<div class="space-y-1 mb-3">
+						{#if app.setupDirsDone && Object.keys(app.setupDirsPaths).length > 0}
+							{#each Object.entries(app.setupDirsPaths) as [name, path]}
+								<div class="flex items-center gap-1.5 text-[10px] bg-primary/10 rounded px-2 py-1">
+									<FolderCheck size={10} class="text-primary shrink-0" />
+									<span class="text-primary font-medium w-16 shrink-0">{name}/</span>
+									<span class="text-muted-foreground truncate font-mono">{path}</span>
+								</div>
+							{/each}
+						{:else}
+							<div class="text-[10px] text-muted-foreground animate-pulse">Creating directories...</div>
+						{/if}
+					</div>
+				{/if}
 
 				<div class="flex items-center justify-between">
 					<button class="text-[11px] text-muted-foreground hover:text-foreground" onclick={skip}>

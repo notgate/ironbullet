@@ -7,6 +7,7 @@
 	import Play from '@lucide/svelte/icons/play';
 	import Square from '@lucide/svelte/icons/square';
 	import Bug from '@lucide/svelte/icons/bug';
+	import CheckCircle from '@lucide/svelte/icons/check-circle';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 
 	import type { Block } from '$lib/types';
@@ -158,6 +159,28 @@
 				</DropdownMenu.Item>
 				<DropdownMenu.Item class="menu-item" onSelect={() => { send('stop_runner'); app.isRunning = false; app.isPaused = false; }} disabled={!app.isRunning}>
 					Stop Runner
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
+		</DropdownMenu.Portal>
+	</DropdownMenu.Root>
+
+	<!-- Hits menu -->
+	<DropdownMenu.Root>
+		<DropdownMenu.Trigger class="toolbar-trigger flex items-center gap-1 {app.hits.length > 0 ? 'text-primary' : ''}">
+			<CheckCircle size={10} />Hits{#if app.hits.length > 0}<span class="text-[9px] bg-primary/15 px-1 rounded">{app.hits.length}</span>{/if}
+		</DropdownMenu.Trigger>
+		<DropdownMenu.Portal>
+			<DropdownMenu.Content class="menu-content" sideOffset={2} align="start">
+				<DropdownMenu.Item class="menu-item" onSelect={() => { app.showHitsDialog = true; }}>
+					View Hits Database
+				</DropdownMenu.Item>
+				<DropdownMenu.Separator class="menu-sep" />
+				<DropdownMenu.Item class="menu-item" onSelect={() => { app.bottomTab = 'data'; }}>
+					Show Data Panel
+				</DropdownMenu.Item>
+				<DropdownMenu.Separator class="menu-sep" />
+				<DropdownMenu.Item class="menu-item text-muted-foreground" onSelect={() => { app.hits = []; }} disabled={app.hits.length === 0}>
+					Clear All Hits
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Portal>

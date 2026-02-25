@@ -121,6 +121,31 @@ impl JobManager {
                     .map(|l| l.to_string())
                     .collect::<Vec<_>>()
             }
+            DataSourceType::Folder => {
+                // Read all .txt / .csv files in the folder, concatenate their lines
+                let mut all_lines: Vec<String> = Vec::new();
+                if let Ok(rd) = std::fs::read_dir(&job.data_source.value) {
+                    let mut paths: Vec<_> = rd
+                        .filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .filter(|p| p.is_file() && matches!(
+                            p.extension().and_then(|s| s.to_str()),
+                            Some("txt") | Some("csv") | Some("lst") | Some("dat")
+                        ))
+                        .collect();
+                    paths.sort();
+                    for path in paths {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            all_lines.extend(
+                                content.lines()
+                                    .filter(|l| !l.trim().is_empty())
+                                    .map(|l| l.to_string())
+                            );
+                        }
+                    }
+                }
+                all_lines
+            }
             DataSourceType::Inline => {
                 job.data_source.value.lines()
                     .filter(|l| !l.trim().is_empty())

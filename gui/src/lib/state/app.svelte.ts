@@ -99,6 +99,10 @@ interface AppState {
 
 	// Fingerprint
 	showFingerprint: boolean;
+	showHitsDialog: boolean;
+	setupDirsDone: boolean;
+	setupDirsPaths: Record<string, string>;
+	pendingJobWordlist: { path: string; isFolder: boolean } | null;
 
 	// Security
 	securityIssues: Array<{ severity: string; title: string; description: string; code_snippet: string }>;
@@ -208,6 +212,10 @@ function createAppState(): AppState {
 	let showPluginBuilder = $state(false);
 	let showChangelog = $state(false);
 	let showFingerprint = $state(false);
+	let showHitsDialog = $state(false);
+	let setupDirsDone = $state(false);
+	let setupDirsPaths = $state<Record<string, string>>({});
+	let pendingJobWordlist = $state<{ path: string; isFolder: boolean } | null>(null);
 	let securityIssues = $state<Array<{ severity: string; title: string; description: string; code_snippet: string }>>([]);
 
 	// Update state
@@ -340,6 +348,14 @@ function createAppState(): AppState {
 		set showChangelog(v) { showChangelog = v; },
 		get showFingerprint() { return showFingerprint; },
 		set showFingerprint(v) { showFingerprint = v; },
+		get showHitsDialog() { return showHitsDialog; },
+		set showHitsDialog(v) { showHitsDialog = v; },
+		get setupDirsDone() { return setupDirsDone; },
+		set setupDirsDone(v) { setupDirsDone = v; },
+		get setupDirsPaths() { return setupDirsPaths; },
+		set setupDirsPaths(v) { setupDirsPaths = v; },
+		get pendingJobWordlist() { return pendingJobWordlist; },
+		set pendingJobWordlist(v) { pendingJobWordlist = v; },
 		get securityIssues() { return securityIssues; },
 		set securityIssues(v) { securityIssues = v; },
 		get updateAvailable() { return updateAvailable; },
