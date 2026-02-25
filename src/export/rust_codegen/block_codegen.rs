@@ -1,6 +1,187 @@
 use crate::pipeline::block::*;
 use super::helpers::*;
 
+// ─── Lambda expression transpiler ────────────────────────────────────────────
+
+/// Transpile a JS-style lambda expression (e.g. `x => x.split(',')[0].trim()`)
+/// into lines of Rust code that can be placed inside a block `{ ... }`.
+fn gen_lambda_rust(input_var: &str, lambda_expr: &str, pad: &str) -> String {
+    let expr = lambda_expr.trim();
+    let (param, body) = if let Some(arrow) = expr.find("=>") {
+        let p = expr[..arrow].trim().trim_matches(|c: char| c == '(' || c == ')' || c == ' ');
+        let b = expr[arrow + 2..].trim();
+        (p, b)
+    } else {
+        // No arrow — treat whole thing as identity
+        return format!("{}    {}.to_string()\n", pad, input_var);
+    };
+
+    // Normalize: replace all occurrences of `param.` and `param[` with `__v.` / `__v[`
+    let norm: String = if param.is_empty() || param == "__v" {
+        body.to_string()
+    } else {
+        // Replace `param.` and `param[` robustly (the param is a simple identifier)
+        let mut out = body.to_string();
+        let dot_pat = format!("{}.", param);
+        let brk_pat = format!("{}[", param);
+        out = out.replace(&dot_pat, "__v.");
+        out = out.replace(&brk_pat, "__v[");
+        // Identity case: body is just the param itself
+        if out.trim() == param {
+            out = "__v".to_string();
+        }
+        out
+    };
+
+    let mut lines: Vec<String> = Vec::new();
+    lines.push(format!("{}    // lambda: {}", pad, lambda_expr));
+    lines.push(format!("{}    let __v = {}.to_string();", pad, input_var));
+    let result_expr = translate_lambda_chain(&norm);
+    lines.push(format!("{}    {}", pad, result_expr));
+    lines.push(String::new());
+    lines.join("\n")
+}
+
+/// Walk a normalised lambda body (using `__v` as the variable) and emit a
+/// single Rust expression string.  Handles chained method calls and `[n]` indexing.
+fn translate_lambda_chain(expr: &str) -> String {
+    let chars: Vec<char> = expr.chars().collect();
+    let len = chars.len();
+    let mut pos = 0usize;
+
+    // Consume the base variable name (__v or anything up to '.' / '[')
+    let base_end = chars.iter().position(|&c| c == '.' || c == '[').unwrap_or(len);
+    let base = expr[..base_end].trim();
+    let mut rust = base.to_string();
+    pos = base_end;
+
+    while pos < len {
+        match chars[pos] {
+            '.' => {
+                pos += 1;
+                // Read method name
+                let mstart = pos;
+                while pos < len && (chars[pos].is_alphanumeric() || chars[pos] == '_') {
+                    pos += 1;
+                }
+                let method = &expr[mstart..pos];
+
+                if pos < len && chars[pos] == '(' {
+                    // Find matching ')'
+                    let astart = pos + 1;
+                    let mut depth = 1usize;
+                    pos += 1;
+                    while pos < len && depth > 0 {
+                        if chars[pos] == '(' { depth += 1; }
+                        else if chars[pos] == ')' { depth -= 1; }
+                        pos += 1;
+                    }
+                    let args_raw = expr[astart..pos - 1].trim();
+
+                    rust = match method {
+                        "trim" => format!("{}.trim().to_string()", rust),
+                        "trimStart" | "trimLeft" => format!("{}.trim_start().to_string()", rust),
+                        "trimEnd" | "trimRight" => format!("{}.trim_end().to_string()", rust),
+                        "toUpperCase" | "toUpper" | "to_uppercase" => format!("{}.to_uppercase()", rust),
+                        "toLowerCase" | "toLower" | "to_lowercase" => format!("{}.to_lowercase()", rust),
+                        "len" | "length" => format!("{}.len().to_string()", rust),
+                        "split" => {
+                            let delim = args_raw.trim_matches(|c: char| c == '\'' || c == '"');
+                            format!("{}.split({:?}).collect::<Vec<_>>()", rust, delim)
+                        }
+                        "replace" | "replaceAll" => {
+                            let parts: Vec<&str> = split_lambda_args(args_raw);
+                            if parts.len() == 2 {
+                                let from = parts[0].trim_matches(|c: char| c == '\'' || c == '"');
+                                let to   = parts[1].trim_matches(|c: char| c == '\'' || c == '"');
+                                format!("{}.replace({:?}, {:?})", rust, from, to)
+                            } else {
+                                let s = args_raw.trim_matches(|c: char| c == '\'' || c == '"');
+                                format!("{}.replace({:?}, \"\")", rust, s)
+                            }
+                        }
+                        "contains" => {
+                            let s = args_raw.trim_matches(|c: char| c == '\'' || c == '"');
+                            format!("{}.contains({:?}).to_string()", rust, s)
+                        }
+                        "startsWith" | "starts_with" => {
+                            let s = args_raw.trim_matches(|c: char| c == '\'' || c == '"');
+                            format!("{}.starts_with({:?}).to_string()", rust, s)
+                        }
+                        "endsWith" | "ends_with" => {
+                            let s = args_raw.trim_matches(|c: char| c == '\'' || c == '"');
+                            format!("{}.ends_with({:?}).to_string()", rust, s)
+                        }
+                        "indexOf" | "index_of" => {
+                            let s = args_raw.trim_matches(|c: char| c == '\'' || c == '"');
+                            format!("{}.find({:?}).map(|i| i.to_string()).unwrap_or_else(|| \"-1\".to_string())", rust, s)
+                        }
+                        "substring" | "slice" => {
+                            let parts: Vec<&str> = split_lambda_args(args_raw);
+                            if parts.len() == 2 {
+                                format!("{{ let __s = {}; let __a: usize = ({}).min(__s.len()); let __b: usize = ({}).min(__s.len()); __s[__a..__b].to_string() }}", rust, parts[0].trim(), parts[1].trim())
+                            } else {
+                                format!("{{ let __s = {}; let __a: usize = ({}).min(__s.len()); __s[__a..].to_string() }}", rust, args_raw.trim())
+                            }
+                        }
+                        "join" => {
+                            let s = args_raw.trim_matches(|c: char| c == '\'' || c == '"');
+                            format!("{}.join({:?})", rust, s)
+                        }
+                        "toString" | "to_string" => format!("{}.to_string()", rust),
+                        "chars" => format!("{}.chars().collect::<Vec<_>>()", rust),
+                        "lines" => format!("{}.lines().collect::<Vec<_>>()", rust),
+                        _ => format!("/* lambda: unknown method '{}'({}) */ {}", method, args_raw, rust),
+                    };
+                } else {
+                    // bare method reference (e.g. .length without parens — treat as .len())
+                    rust = match method {
+                        "length" | "len" => format!("{}.len().to_string()", rust),
+                        _ => format!("/* lambda: bare .{} */ {}", method, rust),
+                    };
+                }
+            }
+            '[' => {
+                // Array / string indexing [n]
+                pos += 1;
+                let istart = pos;
+                while pos < len && chars[pos] != ']' { pos += 1; }
+                let idx_raw = expr[istart..pos].trim();
+                pos += 1; // skip ']'
+
+                if let Ok(idx) = idx_raw.parse::<usize>() {
+                    // If the current expr is a Vec (from split), use .get(n)
+                    rust = format!("{}.get({}).copied().unwrap_or_default().to_string()", rust, idx);
+                } else {
+                    rust = format!("/* lambda: dynamic index [{}] */ {}", idx_raw, rust);
+                }
+            }
+            _ => break,
+        }
+    }
+    rust
+}
+
+/// Split comma-separated arguments, respecting quoted strings.
+fn split_lambda_args(args: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut in_quote: Option<char> = None;
+    let chars: Vec<char> = args.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if let Some(q) = in_quote {
+            if c == q { in_quote = None; }
+        } else if c == '\'' || c == '"' {
+            in_quote = Some(c);
+        } else if c == ',' {
+            parts.push(args[start..i].trim());
+            start = i + 1;
+        }
+    }
+    parts.push(args[start..].trim());
+    parts
+}
+
 pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTracker) -> String {
     let pad = "    ".repeat(indent);
     let mut code = String::new();
@@ -771,6 +952,13 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
         BlockSettings::FtpRequest(s) => {
             let letkw = vars.let_or_assign(&s.output_var);
             let vn = var_name(&s.output_var);
+            // Build full FTP command: append remote_path for path-based commands
+            let ftp_cmd = if !s.remote_path.is_empty() && matches!(s.command.as_str(), "RETR"|"STOR"|"DELE"|"MKD"|"RMD"|"CWD") {
+                format!("{} {}", s.command, escape_str(&s.remote_path))
+            } else {
+                escape_str(&s.command).to_string()
+            };
+            code.push_str(&format!("{}// FTP {} to {}:{}\n", pad, s.command, escape_str(&s.host), s.port));
             code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
             code.push_str(&format!("{}    let stream = tokio::net::TcpStream::connect(\"{}:{}\").await?;\n", pad, escape_str(&s.host), s.port));
             code.push_str(&format!("{}    let (r, mut w) = tokio::io::split(stream);\n", pad));
@@ -780,7 +968,7 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             code.push_str(&format!("{}    r.read_line(&mut line).await?; // banner\n", pad));
             code.push_str(&format!("{}    transcript.push_str(&line);\n", pad));
             code.push_str(&format!("{}    for cmd in [\"USER {}\", \"PASS {}\", \"{}\", \"QUIT\"] {{\n",
-                pad, escape_str(&s.username), escape_str(&s.password), escape_str(&s.command)));
+                pad, escape_str(&s.username), escape_str(&s.password), ftp_cmd));
             code.push_str(&format!("{}        w.write_all(format!(\"{{}}\\r\\n\", cmd).as_bytes()).await?;\n", pad));
             code.push_str(&format!("{}        w.flush().await?;\n", pad));
             code.push_str(&format!("{}        line.clear();\n", pad));
@@ -805,7 +993,16 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
         BlockSettings::ImapRequest(s) => {
             let letkw = vars.let_or_assign(&s.output_var);
             let vn = var_name(&s.output_var);
-            code.push_str(&format!("{}// IMAP connection to {}:{}\n", pad, escape_str(&s.host), s.port));
+            let mailbox = if s.mailbox.is_empty() { "INBOX" } else { s.mailbox.as_str() };
+            // Build extra IMAP commands based on action
+            let imap_extra: Option<String> = match s.command.as_str() {
+                "LOGIN" | "" => None,
+                "SELECT" => Some(format!("SELECT {}", mailbox)),
+                "FETCH" => Some(format!("SELECT {}\r\na002b FETCH {} BODY[]", mailbox, s.message_num)),
+                "SEARCH ALL" => Some(format!("SELECT {}\r\na002b SEARCH ALL", mailbox)),
+                other => Some(other.to_string()),
+            };
+            code.push_str(&format!("{}// IMAP {} to {}:{}\n", pad, s.command, escape_str(&s.host), s.port));
             code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
             code.push_str(&format!("{}    let stream = tokio::net::TcpStream::connect(\"{}:{}\").await?;\n", pad, escape_str(&s.host), s.port));
             if s.use_tls {
@@ -820,18 +1017,22 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             code.push_str(&format!("{}    w.write_all(b\"a001 LOGIN {} {}\\r\\n\").await?; w.flush().await?;\n",
                 pad, escape_str(&s.username), escape_str(&s.password)));
             code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
-            if !s.command.is_empty() && s.command != "LOGIN" {
-                code.push_str(&format!("{}    w.write_all(b\"a002 {}\\r\\n\").await?; w.flush().await?;\n", pad, escape_str(&s.command)));
-                code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
+            if let Some(ref extra) = imap_extra {
+                for (tag_n, sub_cmd) in extra.split("\r\n").filter(|s| !s.is_empty()).enumerate() {
+                    let tag = format!("a{:03}", tag_n + 2);
+                    code.push_str(&format!("{}    w.write_all(b\"{} {}\\r\\n\").await?; w.flush().await?;\n", pad, tag, escape_str(sub_cmd)));
+                    code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
+                }
             }
-            code.push_str(&format!("{}    w.write_all(b\"a003 LOGOUT\\r\\n\").await?;\n", pad));
+            code.push_str(&format!("{}    w.write_all(b\"a099 LOGOUT\\r\\n\").await?;\n", pad));
             code.push_str(&format!("{}    transcript\n", pad));
             code.push_str(&format!("{}}};\n", pad));
         }
         BlockSettings::SmtpRequest(s) => {
             let letkw = vars.let_or_assign(&s.output_var);
             let vn = var_name(&s.output_var);
-            code.push_str(&format!("{}// SMTP connection to {}:{}\n", pad, escape_str(&s.host), s.port));
+            let is_send = s.action == "SEND_EMAIL";
+            code.push_str(&format!("{}// SMTP {} to {}:{}\n", pad, s.action, escape_str(&s.host), s.port));
             code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
             code.push_str(&format!("{}    let stream = tokio::net::TcpStream::connect(\"{}:{}\").await?;\n", pad, escape_str(&s.host), s.port));
             if s.use_tls {
@@ -853,6 +1054,19 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
                 code.push_str(&format!("{}    w.write_all(format!(\"{{}}\\r\\n\", base64::engine::general_purpose::STANDARD.encode(\"{}\")).as_bytes()).await?;\n", pad, escape_str(&s.password)));
                 code.push_str(&format!("{}    w.flush().await?; line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
             }
+            if is_send {
+                let from = if s.from.is_empty() { s.username.as_str() } else { s.from.as_str() };
+                code.push_str(&format!("{}    w.write_all(b\"MAIL FROM:<{}>\\r\\n\").await?; w.flush().await?;\n", pad, escape_str(from)));
+                code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
+                code.push_str(&format!("{}    w.write_all(b\"RCPT TO:<{}>\\r\\n\").await?; w.flush().await?;\n", pad, escape_str(&s.to)));
+                code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
+                code.push_str(&format!("{}    w.write_all(b\"DATA\\r\\n\").await?; w.flush().await?;\n", pad));
+                code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
+                let body_escaped = format!("From: {}\\r\\nTo: {}\\r\\nSubject: {}\\r\\n\\r\\n{}\\r\\n.\\r\\n",
+                    escape_str(from), escape_str(&s.to), escape_str(&s.subject), escape_str(&s.body_template));
+                code.push_str(&format!("{}    w.write_all(b\"{}\").await?; w.flush().await?;\n", pad, body_escaped));
+                code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
+            }
             code.push_str(&format!("{}    w.write_all(b\"QUIT\\r\\n\").await?;\n", pad));
             code.push_str(&format!("{}    transcript\n", pad));
             code.push_str(&format!("{}}};\n", pad));
@@ -872,12 +1086,18 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             code.push_str(&format!("{}    let mut r = tokio::io::BufReader::new(r);\n", pad));
             code.push_str(&format!("{}    let mut line = String::new(); let mut transcript = String::new();\n", pad));
             code.push_str(&format!("{}    r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
+            // Build full POP3 command
+            let pop_cmd = if matches!(s.command.as_str(), "RETR" | "DELE") {
+                format!("{} {}", s.command, s.message_num)
+            } else {
+                s.command.clone()
+            };
             code.push_str(&format!("{}    w.write_all(b\"USER {}\\r\\n\").await?; w.flush().await?;\n", pad, escape_str(&s.username)));
             code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
             code.push_str(&format!("{}    w.write_all(b\"PASS {}\\r\\n\").await?; w.flush().await?;\n", pad, escape_str(&s.password)));
             code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
-            if !s.command.is_empty() {
-                code.push_str(&format!("{}    w.write_all(b\"{}\\r\\n\").await?; w.flush().await?;\n", pad, escape_str(&s.command)));
+            if !pop_cmd.is_empty() {
+                code.push_str(&format!("{}    w.write_all(b\"{}\\r\\n\").await?; w.flush().await?;\n", pad, escape_str(&pop_cmd)));
                 code.push_str(&format!("{}    line.clear(); r.read_line(&mut line).await?; transcript.push_str(&line);\n", pad));
             }
             code.push_str(&format!("{}    w.write_all(b\"QUIT\\r\\n\").await?;\n", pad));
@@ -1240,9 +1460,10 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             let letkw = vars.let_or_assign(&s.output_var);
             let vn = var_name(&s.output_var);
             code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
-            code.push_str(&format!("{}    // LambdaParser: {}\n", pad, escape_str(&s.lambda_expression)));
-            code.push_str(&format!("{}    {}.to_string() // Simplified lambda execution\n", pad, input));
+            let body = gen_lambda_rust(&input, &s.lambda_expression, &pad);
+            code.push_str(&body);
             code.push_str(&format!("{}}};\n", pad));
+            vars.define(&s.output_var);
         }
         BlockSettings::FileSystem(s) => {
             let path_expr = format!("\"{}\"", escape_str(&s.path));
