@@ -60,6 +60,21 @@
 
 {#if block.settings.type === 'KeyCheck'}
 	<div class="space-y-1.5">
+		<!-- Early-exit on Fail toggle -->
+		<div class="flex items-center gap-2 px-2 py-1.5 rounded bg-background border border-border">
+			<input
+				type="checkbox"
+				id="stop_on_fail_{block.id}"
+				checked={block.settings.stop_on_fail ?? false}
+				onchange={(e) => updateSettings('stop_on_fail', (e.target as HTMLInputElement).checked)}
+				class="accent-primary cursor-pointer"
+			/>
+			<label for="stop_on_fail_{block.id}" class="text-[10px] cursor-pointer select-none flex-1">
+				<span class="font-medium text-foreground">Stop on Fail</span>
+				<span class="text-muted-foreground ml-1">— skip remaining blocks when result is FAIL (faster, saves CPM)</span>
+			</label>
+		</div>
+
 		<div class="flex items-center justify-between">
 			<span class={labelCls}>Keychains</span>
 			<button class="text-[10px] text-primary hover:underline" onclick={addKeychain}>+ Add Keychain</button>

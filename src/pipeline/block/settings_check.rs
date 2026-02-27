@@ -3,12 +3,18 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyCheckSettings {
     pub keychains: Vec<Keychain>,
+    /// When true, a Fail result immediately halts the pipeline for this data entry —
+    /// no subsequent Parse/function blocks are executed.  Default false for
+    /// backward compatibility (existing pipelines keep running after Fail).
+    #[serde(default)]
+    pub stop_on_fail: bool,
 }
 
 impl Default for KeyCheckSettings {
     fn default() -> Self {
         Self {
             keychains: vec![Keychain::default()],
+            stop_on_fail: false,
         }
     }
 }
