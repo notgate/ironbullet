@@ -183,6 +183,9 @@ pub(crate) async fn run_worker(
                 }
             }
             _ => {
+                // BotStatus::None — no KeyCheck classified this entry.
+                // Could mean: no KeyCheck block, conditions didn't match, or pipeline was empty.
+                // Push to live feed so users can diagnose; do NOT count against any stat bucket.
                 if result.is_err() {
                     stats.errors.fetch_add(1, Ordering::Relaxed);
                     let err_msg = result.err().map(|e| e.to_string());
@@ -194,6 +197,19 @@ pub(crate) async fn run_worker(
                             proxy: proxy.clone(),
                             captures: Default::default(),
                             error: err_msg,
+                            ts_ms,
+                        });
+                    }
+                } else {
+                    // Pipeline ran OK but no status was set — show as NONE in live feed
+                    if let Ok(mut feed) = result_feed.try_lock() {
+                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        feed.push_back(ResultEntry {
+                            data_line: data_line.clone(),
+                            status: "NONE".into(),
+                            proxy: proxy.clone(),
+                            captures: Default::default(),
+                            error: None,
                             ts_ms,
                         });
                     }

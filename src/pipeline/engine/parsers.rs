@@ -61,19 +61,18 @@ impl ExecutionContext {
         let json: serde_json::Value = serde_json::from_str(&source)
             .map_err(|e| crate::error::AppError::Pipeline(format!("Invalid JSON: {}", e)))?;
 
-        // Convert dot notation to JSON pointer: "user.token" -> "/user/token"
-        let pointer = if path.starts_with('/') {
-            path.clone()
+        // JSON Pointer (RFC 6901) pass-through: paths starting with '/'
+        let value = if path.starts_with('/') {
+            json.pointer(&path)
+                .map(json_value_to_string)
+                .unwrap_or_default()
         } else {
-            format!("/{}", path.replace('.', "/"))
+            // JSONPath-lite: supports dot-notation, [n] indexing, and [] wildcard
+            // e.g.  "data.servers[].servers[].is_trial"
+            //       "user.profile.name"
+            //       "items[0].id"
+            evaluate_json_path(&json, &path)
         };
-
-        let value = json.pointer(&pointer)
-            .map(|v| match v {
-                serde_json::Value::String(s) => s.clone(),
-                other => other.to_string(),
-            })
-            .unwrap_or_default();
 
         self.variables.set_user(&settings.output_var, value, settings.capture);
         Ok(())
@@ -318,6 +317,127 @@ impl ExecutionContext {
                 output_var: s.output_var.clone(), capture: s.capture,
             }),
         }
+    }
+}
+
+// ── JSONPath-lite helper functions ────────────────────────────────────────────
+// Supports:
+//   • Dot-notation key:     `user.name`        → json["user"]["name"]
+//   • Array index:          `items[0].id`      → json["items"][0]["id"]
+//   • Array wildcard:       `servers[].host`   → all json["servers"][*]["host"]
+//   • Nested wildcards:     `a[].b[].c`        → flatten all json["a"][*]["b"][*]["c"]
+//   • Mixed:                `data.servers[].servers[].is_trial`
+//
+// All matched leaf values are joined with ", " when multiple results exist.
+
+/// Top-level entry: tokenise `path` and traverse `root`, returning all matches joined.
+pub fn evaluate_json_path(root: &serde_json::Value, path: &str) -> String {
+    let segs = tokenise_json_path(path);
+    let results = traverse_json(&[root], &segs);
+    results.join(", ")
+}
+
+/// Path segment kinds produced by the tokeniser.
+#[derive(Debug)]
+enum JsonSeg {
+    /// Navigate into an object key: `name`
+    Key(String),
+    /// Index into an array: `[3]`
+    Index(usize),
+    /// Flatten all elements of an array: `[]`
+    Wild,
+}
+
+/// Tokenise a JSONPath string into segments.
+///
+/// Input `data.servers[].servers[0].is_trial` →
+/// `[Key("data"), Key("servers"), Wild, Key("servers"), Index(0), Key("is_trial")]`
+fn tokenise_json_path(path: &str) -> Vec<JsonSeg> {
+    let mut segs: Vec<JsonSeg> = Vec::new();
+    let mut key_buf = String::new();
+
+    let mut chars = path.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            // Dot separator — flush key buffer and continue
+            '.' => {
+                if !key_buf.is_empty() {
+                    segs.push(JsonSeg::Key(key_buf.clone()));
+                    key_buf.clear();
+                }
+            }
+            // Bracket — flush key buffer, then parse index or wildcard
+            '[' => {
+                if !key_buf.is_empty() {
+                    segs.push(JsonSeg::Key(key_buf.clone()));
+                    key_buf.clear();
+                }
+                // Collect everything until ']'
+                let mut inner = String::new();
+                for c2 in chars.by_ref() {
+                    if c2 == ']' { break; }
+                    inner.push(c2);
+                }
+                let trimmed = inner.trim();
+                if trimmed.is_empty() {
+                    segs.push(JsonSeg::Wild);
+                } else if let Ok(n) = trimmed.parse::<usize>() {
+                    segs.push(JsonSeg::Index(n));
+                }
+                // After ']' there may be a leading '.' — skip it
+                if chars.peek() == Some(&'.') {
+                    chars.next();
+                }
+            }
+            c => key_buf.push(c),
+        }
+    }
+    if !key_buf.is_empty() {
+        segs.push(JsonSeg::Key(key_buf));
+    }
+    segs
+}
+
+/// Recursively traverse a slice of JSON values following `segs`.
+/// Returns a flat `Vec<String>` of all leaf values reached.
+fn traverse_json<'a>(nodes: &[&'a serde_json::Value], segs: &[JsonSeg]) -> Vec<String> {
+    // Base case: no more segments → convert each node to string
+    if segs.is_empty() {
+        return nodes.iter().map(|v| json_value_to_string(v)).collect();
+    }
+
+    let mut next: Vec<&'a serde_json::Value> = Vec::new();
+
+    for &node in nodes {
+        match &segs[0] {
+            JsonSeg::Key(k) => {
+                if let Some(v) = node.get(k.as_str()) {
+                    next.push(v);
+                }
+            }
+            JsonSeg::Index(n) => {
+                if let Some(v) = node.as_array().and_then(|a| a.get(*n)) {
+                    next.push(v);
+                }
+            }
+            JsonSeg::Wild => {
+                if let Some(arr) = node.as_array() {
+                    next.extend(arr.iter());
+                }
+            }
+        }
+    }
+
+    traverse_json(&next, &segs[1..])
+}
+
+/// Convert a serde_json::Value to its string representation.
+/// Strings are returned as-is; other types use JSON serialisation.
+fn json_value_to_string(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
     }
 }
 
