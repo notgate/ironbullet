@@ -2,7 +2,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use ironbullet::export::format::RfxConfig;
-use ironbullet::runner::job::{Job, JobType};
+use ironbullet::pipeline::{ProxyMode, ProxySettings, ProxySource, ProxySourceType};
+use ironbullet::runner::job::{Job, JobType, ProxySourceConfig};
 
 use super::{resolve_sidecar_path, AppState, IpcResponse};
 
@@ -81,6 +82,46 @@ pub(super) fn create_job(
             }
             if let Some(list) = data.get("proxy_check_list").and_then(|v| v.as_str()) {
                 if !list.is_empty() { job.proxy_check_list = list.to_string(); }
+            }
+
+            // ── per-job proxy override (config jobs only) ─────────────────────
+            // proxy_override_mode: "pipeline" | "file" | "group"
+            //   "file"  → use a specific proxy file, Rotate mode
+            //   "group" → use one of the named proxy groups from the pipeline
+            //   "pipeline" (default) → inherit pipeline's proxy_settings as-is
+            if let Some(mode) = data.get("proxy_override_mode").and_then(|v| v.as_str()) {
+                match mode {
+                    "file" => {
+                        if let Some(file) = data.get("proxy_override_file")
+                            .and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+                        {
+                            job.proxy_source = ProxySourceConfig {
+                                settings: ProxySettings {
+                                    proxy_mode: ProxyMode::Rotate,
+                                    proxy_sources: vec![ProxySource {
+                                        source_type: ProxySourceType::File,
+                                        value: file.to_string(),
+                                        refresh_interval_secs: 0,
+                                    }],
+                                    ..ProxySettings::default()
+                                },
+                            };
+                            eprintln!("[create_job] proxy override: file = {}", file);
+                        }
+                    }
+                    "group" => {
+                        if let Some(group) = data.get("proxy_override_group")
+                            .and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+                        {
+                            // Clone the pipeline's proxy settings and override the active group
+                            let mut settings = job.pipeline.proxy_settings.clone();
+                            settings.active_group = group.to_string();
+                            job.proxy_source = ProxySourceConfig { settings };
+                            eprintln!("[create_job] proxy override: group = {}", group);
+                        }
+                    }
+                    _ => { /* "pipeline" — inherit from job.pipeline.proxy_settings */ }
+                }
             }
 
             // Use currently loaded pipeline for Config jobs unless a snapshot was provided

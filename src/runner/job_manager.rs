@@ -293,9 +293,14 @@ impl JobManager {
         };
 
         let data_pool = DataPool::new(data_lines);
-        // Build proxy pool from the pipeline's proxy settings.
-        // Before this fix, ProxyPool::empty() was always used, so proxies were never applied.
-        let proxy_pool = build_proxy_pool(&job.pipeline.proxy_settings);
+        // Per-job proxy override: if proxy_source.settings has a non-None mode, use it.
+        // Otherwise fall back to the pipeline's own proxy_settings.
+        let proxy_pool = if !matches!(job.proxy_source.settings.proxy_mode, ProxyMode::None) {
+            eprintln!("[start_job] using per-job proxy override (mode={:?})", job.proxy_source.settings.proxy_mode);
+            build_proxy_pool(&job.proxy_source.settings)
+        } else {
+            build_proxy_pool(&job.pipeline.proxy_settings)
+        };
         let (hits_tx, hits_rx) = mpsc::channel::<HitResult>(1024);
 
         let runner = Arc::new(RunnerOrchestrator::new(
