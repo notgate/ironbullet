@@ -1,5 +1,5 @@
 mod http;
-mod parsers;
+pub mod parsers;
 mod functions;
 mod browser;
 mod protocol;

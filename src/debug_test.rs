@@ -430,4 +430,71 @@ mod tests {
 
         println!("=== VARIABLE TRACE PASSED ✓ ===");
     }
+
+    /// Test: JSONPath complex path extraction
+    /// Verifies the new tokeniser/traversal handles:
+    ///   • simple dot notation
+    ///   • array indexing [n]
+    ///   • array wildcards []
+    ///   • nested wildcards (the user-reported case)
+    #[test]
+    fn test_jsonpath_complex_extraction() {
+        use crate::pipeline::engine::parsers::evaluate_json_path;
+
+        let json_str = r#"{
+            "status": "ok",
+            "user": { "name": "Alice", "age": 30 },
+            "items": [
+                { "id": 1, "label": "first" },
+                { "id": 2, "label": "second" }
+            ],
+            "data": {
+                "servers": [
+                    {
+                        "region": "us-east",
+                        "servers": [
+                            { "host": "s1.example.com", "is_trial": true },
+                            { "host": "s2.example.com", "is_trial": false }
+                        ]
+                    },
+                    {
+                        "region": "eu-west",
+                        "servers": [
+                            { "host": "s3.example.com", "is_trial": true }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+
+        let root: serde_json::Value = serde_json::from_str(json_str).unwrap();
+
+        // Simple dot notation
+        assert_eq!(evaluate_json_path(&root, "status"), "ok");
+        assert_eq!(evaluate_json_path(&root, "user.name"), "Alice");
+
+        // Array indexing
+        assert_eq!(evaluate_json_path(&root, "items[0].label"), "first");
+        assert_eq!(evaluate_json_path(&root, "items[1].id"), "2");
+
+        // Array wildcard — collect all
+        let ids = evaluate_json_path(&root, "items[].id");
+        assert_eq!(ids, "1, 2");
+
+        // The user-reported case: nested wildcards
+        // data.servers[].servers[].is_trial → true, false, true
+        let trials = evaluate_json_path(&root, "data.servers[].servers[].is_trial");
+        assert_eq!(trials, "true, false, true",
+            "nested wildcard extraction failed: got '{}'", trials);
+
+        // Nested wildcards — host extraction
+        let hosts = evaluate_json_path(&root, "data.servers[].servers[].host");
+        assert_eq!(hosts, "s1.example.com, s2.example.com, s3.example.com");
+
+        // Collect just first-level field across wildcard
+        let regions = evaluate_json_path(&root, "data.servers[].region");
+        assert_eq!(regions, "us-east, eu-west");
+
+        println!("=== JSONPATH COMPLEX EXTRACTION PASSED ✓ ===");
+    }
 }

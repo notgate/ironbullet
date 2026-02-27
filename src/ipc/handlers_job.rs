@@ -51,8 +51,19 @@ pub(super) fn create_job(
 
             // ── pipeline snapshot from frontend (keeps proxy_settings etc. in sync) ──
             if let Some(pl) = data.get("pipeline") {
-                if let Ok(pipeline) = serde_json::from_value::<ironbullet::pipeline::Pipeline>(pl.clone()) {
-                    job.pipeline = pipeline;
+                match serde_json::from_value::<ironbullet::pipeline::Pipeline>(pl.clone()) {
+                    Ok(pipeline) => {
+                        eprintln!("[create_job] Pipeline OK: {} blocks, proxy_mode={:?}, proxy_sources={}",
+                            pipeline.blocks.len(),
+                            pipeline.proxy_settings.proxy_mode,
+                            pipeline.proxy_settings.proxy_sources.len());
+                        job.pipeline = pipeline;
+                    }
+                    Err(e) => {
+                        eprintln!("[create_job] Pipeline deser FAILED: {}. Falling back to s.pipeline ({} blocks).",
+                            e, s.pipeline.blocks.len());
+                        job.pipeline = s.pipeline.clone();
+                    }
                 }
             }
 

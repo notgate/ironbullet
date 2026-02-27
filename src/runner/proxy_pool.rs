@@ -52,25 +52,32 @@ impl ProxyPool {
             return None;
         }
 
-        let bans = self.bans.lock().ok()?;
         let now = Instant::now();
 
-        // Try to find an unbanned proxy
-        for _ in 0..self.proxies.len() {
-            let idx = self.index.fetch_add(1, Ordering::Relaxed) % self.proxies.len();
+        // Acquire ban-list lock; if poisoned, recover and continue (never block callers)
+        let bans = match self.bans.lock() {
+            Ok(g)  => g,
+            Err(e) => e.into_inner(), // poisoned — recover the data, don't return None
+        };
+
+        // Try to find an unbanned proxy (scan at most proxies.len() candidates)
+        let start = self.index.fetch_add(1, Ordering::Relaxed);
+        for i in 0..self.proxies.len() {
+            let idx = (start + i) % self.proxies.len();
             let proxy = &self.proxies[idx];
             let proxy_str = proxy.to_string();
 
-            if let Some(ban_time) = bans.get(&proxy_str) {
-                if now.duration_since(*ban_time).as_secs() < self.ban_duration_secs {
-                    continue; // Still banned
+            match bans.get(&proxy_str) {
+                Some(ban_time) if now.duration_since(*ban_time).as_secs() < self.ban_duration_secs => {
+                    // Still banned — skip
                 }
+                _ => return Some(proxy_str),
             }
-            return Some(proxy_str);
         }
 
-        // All proxies banned, return one anyway (oldest ban)
-        let idx = self.index.fetch_add(1, Ordering::Relaxed) % self.proxies.len();
+        // All proxies banned — return the round-robin slot anyway so work continues
+        // (better to hit a banned proxy than to stall all threads with None)
+        let idx = start % self.proxies.len();
         Some(self.proxies[idx].to_string())
     }
 
