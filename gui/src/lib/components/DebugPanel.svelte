@@ -133,6 +133,25 @@ Once all validations pass, you can create a job with confidence that the pipelin
 	];
 	let testProxy = $state('');
 
+	// Sync test inputs to app state so ContextMenu "Debug Block" can read them
+	$effect(() => { app.debugTestDataLine = testDataLine; });
+	$effect(() => { app.debugTestProxy = testProxy; });
+
+	// When ContextMenu sets debugBlockIds, auto-trigger a debug run for just those blocks
+	$effect(() => {
+		const ids = app.debugBlockIds;
+		if (ids !== null && ids.length > 0) {
+			console.log('[DebugPanel] debugBlockIds triggered:', ids);
+			app.debugBlockIds = null; // consume before running to avoid re-trigger
+			send('debug_pipeline', {
+				test_data_line: testDataLine,
+				test_proxy: testProxy || null,
+				pipeline: JSON.parse(JSON.stringify(app.pipeline)),
+				block_ids: ids,
+			});
+		}
+	});
+
 	function runDebug() {
 		console.log('[DebugPanel] debug_pipeline: data="%s" proxy="%s"', testDataLine, testProxy || 'none');
 		send('debug_pipeline', {

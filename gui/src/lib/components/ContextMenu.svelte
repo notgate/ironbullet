@@ -92,6 +92,12 @@
 					Save as Template
 				</button>
 			{/if}
+			<button class="menu-item w-full text-left" onclick={() => ctxAction(() => {
+				app.debugBlockIds = [ctx.blockId];
+				app.bottomTab = 'debugger';
+			})}>
+				🐛 Debug Block
+			</button>
 			<div class="menu-sep"></div>
 			<button class="menu-item menu-item-danger w-full text-left" onclick={() => ctxAction(() => { pushUndo(); send('remove_block', { block_id: ctx.blockId }); app.selectedBlockIds = app.selectedBlockIds.filter(id => id !== ctx.blockId); if (app.editingBlockId === ctx.blockId) app.editingBlockId = null; })}>
 				Delete <span class="menu-shortcut">Del</span>
@@ -128,6 +134,12 @@
 					Save {selCount} Blocks as Template
 				</button>
 			{/if}
+			<button class="menu-item w-full text-left" onclick={() => ctxAction(() => {
+				app.debugBlockIds = [...app.selectedBlockIds];
+				app.bottomTab = 'debugger';
+			})}>
+				🐛 Debug {selCount} Blocks
+			</button>
 			<div class="menu-sep"></div>
 			<button class="menu-item menu-item-danger w-full text-left" onclick={() => ctxAction(() => { pushUndo(); send('remove_blocks', { ids: [...app.selectedBlockIds] }); app.selectedBlockIds = []; })}>
 				Delete {selCount} Blocks <span class="menu-shortcut">Del</span>

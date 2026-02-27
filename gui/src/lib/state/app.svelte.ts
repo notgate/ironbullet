@@ -224,6 +224,14 @@ function createAppState(): AppState {
 	let setupDirsPaths = $state<Record<string, string>>({});
 	let pendingJobWordlist = $state<{ path: string; isFolder: boolean } | null>(null);
 	let pendingJobProxyFile = $state<string | null>(null);
+	let pendingJobConfig = $state<string | null>(null);
+	/** Saved configs list from the configs/ folder, populated by list_configs IPC */
+	let configsList = $state<Array<{ name: string; path: string; ext: string }>>([]);
+	/** When non-null, ContextMenu sets this to trigger DebugPanel to run those block IDs */
+	let debugBlockIds = $state<string[] | null>(null);
+	/** Test data line / proxy shared between DebugPanel and ContextMenu debug trigger */
+	let debugTestDataLine = $state('');
+	let debugTestProxy = $state('');
 	let securityIssues = $state<Array<{ severity: string; title: string; description: string; code_snippet: string }>>([]);
 
 	// Update state
@@ -370,6 +378,16 @@ function createAppState(): AppState {
 		set pendingJobWordlist(v) { pendingJobWordlist = v; },
 		get pendingJobProxyFile() { return pendingJobProxyFile; },
 		set pendingJobProxyFile(v) { pendingJobProxyFile = v; },
+		get pendingJobConfig() { return pendingJobConfig; },
+		set pendingJobConfig(v) { pendingJobConfig = v; },
+		get configsList() { return configsList; },
+		set configsList(v) { configsList = v; },
+		get debugBlockIds() { return debugBlockIds; },
+		set debugBlockIds(v) { debugBlockIds = v; },
+		get debugTestDataLine() { return debugTestDataLine; },
+		set debugTestDataLine(v) { debugTestDataLine = v; },
+		get debugTestProxy() { return debugTestProxy; },
+		set debugTestProxy(v) { debugTestProxy = v; },
 		get securityIssues() { return securityIssues; },
 		set securityIssues(v) { securityIssues = v; },
 		get updateAvailable() { return updateAvailable; },

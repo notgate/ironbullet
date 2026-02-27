@@ -50,20 +50,45 @@ pub(super) fn create_job(
                 }
             }
 
-            // ── pipeline snapshot from frontend (keeps proxy_settings etc. in sync) ──
-            if let Some(pl) = data.get("pipeline") {
-                match serde_json::from_value::<ironbullet::pipeline::Pipeline>(pl.clone()) {
-                    Ok(pipeline) => {
-                        eprintln!("[create_job] Pipeline OK: {} blocks, proxy_mode={:?}, proxy_sources={}",
-                            pipeline.blocks.len(),
-                            pipeline.proxy_settings.proxy_mode,
-                            pipeline.proxy_settings.proxy_sources.len());
-                        job.pipeline = pipeline;
+            // ── config_path: load pipeline from saved .opk/.svb/.rfx file ────────
+            // When a config_path is provided the file takes precedence over the `pipeline` field.
+            let config_path_str = data.get("config_path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if !config_path_str.is_empty() {
+                match std::fs::read_to_string(&config_path_str) {
+                    Ok(raw) => {
+                        // Try parsing as-is (rfx/opk are Pipeline JSON); also try RfxConfig wrapper
+                        let loaded: Option<ironbullet::pipeline::Pipeline> =
+                            serde_json::from_str::<ironbullet::pipeline::Pipeline>(&raw).ok()
+                            .or_else(|| serde_json::from_str::<RfxConfig>(&raw).ok().map(|c| c.pipeline));
+                        if let Some(pipeline) = loaded {
+                            eprintln!("[create_job] Loaded config from path: {} ({} blocks)", config_path_str, pipeline.blocks.len());
+                            job.pipeline = pipeline;
+                        } else {
+                            eprintln!("[create_job] Failed to parse config at {}, falling back to active pipeline", config_path_str);
+                            job.pipeline = s.pipeline.clone();
+                        }
                     }
                     Err(e) => {
-                        eprintln!("[create_job] Pipeline deser FAILED: {}. Falling back to s.pipeline ({} blocks).",
-                            e, s.pipeline.blocks.len());
+                        eprintln!("[create_job] Cannot read config file {}: {}", config_path_str, e);
                         job.pipeline = s.pipeline.clone();
+                    }
+                }
+            } else {
+                // ── pipeline snapshot from frontend (keeps proxy_settings etc. in sync) ──
+                if let Some(pl) = data.get("pipeline") {
+                    match serde_json::from_value::<ironbullet::pipeline::Pipeline>(pl.clone()) {
+                        Ok(pipeline) => {
+                            eprintln!("[create_job] Pipeline OK: {} blocks, proxy_mode={:?}, proxy_sources={}",
+                                pipeline.blocks.len(),
+                                pipeline.proxy_settings.proxy_mode,
+                                pipeline.proxy_settings.proxy_sources.len());
+                            job.pipeline = pipeline;
+                        }
+                        Err(e) => {
+                            eprintln!("[create_job] Pipeline deser FAILED: {}. Falling back to s.pipeline ({} blocks).",
+                                e, s.pipeline.blocks.len());
+                            job.pipeline = s.pipeline.clone();
+                        }
                     }
                 }
             }

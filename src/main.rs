@@ -323,7 +323,7 @@ fn run_gui() {
     let proxy = event_loop.create_proxy();
 
     let mut wb = WindowBuilder::new()
-        .with_title("Ironbullet")
+        .with_title("IronBullet 0.2.3")
         .with_inner_size(tao::dpi::LogicalSize::new(cfg.window_width, cfg.window_height))
         .with_decorations(false);
 

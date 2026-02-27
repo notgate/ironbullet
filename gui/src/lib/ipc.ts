@@ -220,6 +220,7 @@ export function registerCallbacks() {
 					else if (field === 'proxies') app.proxyPath = path;
 					else if (field === 'job_wordlist' || field === 'proxy_check_list') app.pendingJobWordlist = { path, isFolder: false };
 					else if (field === 'job_proxy_file') app.pendingJobProxyFile = path;
+					else if (field === 'job_config') app.pendingJobConfig = path;
 				}
 				break;
 			case 'recent_configs':
@@ -234,6 +235,11 @@ export function registerCallbacks() {
 			case 'collections_list':
 				if (resp.data && Array.isArray(resp.data)) {
 					app.collectionConfigs = resp.data as any;
+				}
+				break;
+			case 'configs_list':
+				if (resp.data && Array.isArray(resp.data)) {
+					app.configsList = resp.data as any;
 				}
 				break;
 			case 'folder_selected':

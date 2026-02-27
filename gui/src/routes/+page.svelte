@@ -178,6 +178,7 @@
 		{:else if nativePanelId === 'jobs'}<div class="h-full overflow-y-auto"><JobMonitor /></div>
 		{:else if nativePanelId === 'network'}<div class="h-full overflow-y-auto"><NetworkViewer /></div>
 		{:else if nativePanelId === 'variables'}<div class="h-full overflow-y-auto"><VariableInspector /></div>
+		{:else if nativePanelId === 'response-viewer'}<ResponseViewer nativeMode={true} />
 		{/if}
 	</div>
 
