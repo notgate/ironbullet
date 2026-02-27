@@ -11,6 +11,11 @@ const MUTATION_CMDS = new Set([
 const SILENT_SEND_CMDS = new Set(['get_runner_stats']);
 
 export function send(cmd: string, data: Record<string, unknown> = {}) {
+	// In native panel windows this webview is receive-only.
+	// Sending IPC from panel windows causes Rust to broadcast responses to ALL
+	// webviews — including the main window — re-triggering startup dialogs.
+	if (typeof window !== 'undefined' && (window as any).__ibIsPanelMode) return;
+
 	const payload: Record<string, unknown> = { ...data, _tab_id: app.activeTabId };
 	if (MUTATION_CMDS.has(cmd)) {
 		// Send current blocks so Rust syncs before mutating (avoids cross-tab bleed)

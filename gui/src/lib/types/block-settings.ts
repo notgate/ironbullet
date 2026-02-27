@@ -84,6 +84,12 @@ export interface HttpRequestSettings {
 	ssl_verify: boolean;
 	/** Dash-separated IANA cipher suite IDs — overrides browser profile defaults. Empty = use profile default. */
 	cipher_suites: string;
+	/**
+	 * TLS client to use for this request block.
+	 * - 'AzureTLS' (default): Go sidecar with azuretls — JA3/browser fingerprinting, custom ciphers.
+	 * - 'RustTLS': Rust-native reqwest + rustls — no fingerprinting, standard HTTPS.
+	 */
+	tls_client: 'AzureTLS' | 'RustTLS';
 }
 
 export interface ParseLRSettings {

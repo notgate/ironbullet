@@ -1,5 +1,25 @@
 use serde::{Deserialize, Serialize};
 
+/// Which TLS/HTTP client to use for this block.
+///
+/// - `AzureTLS` (default): Go sidecar with azuretls — supports JA3 fingerprinting,
+///   browser TLS imitation, HTTP/2 fingerprinting, and custom cipher suites.
+/// - `RustTLS`: Rust-native reqwest + rustls — no fingerprinting, but faster for
+///   standard HTTPS and easier to configure for internal APIs / self-signed certs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum TlsClient {
+    #[serde(alias = "azuretls", alias = "Azure")]
+    AzureTLS,
+    #[serde(alias = "rusttls", alias = "Rust")]
+    RustTLS,
+}
+
+impl Default for TlsClient {
+    fn default() -> Self { TlsClient::AzureTLS }
+}
+
+fn default_tls_client() -> TlsClient { TlsClient::AzureTLS }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpRequestSettings {
     pub method: String,
@@ -31,6 +51,10 @@ pub struct HttpRequestSettings {
     /// Leave empty to use the browser profile's built-in cipher list.
     #[serde(default)]
     pub cipher_suites: String,
+    /// Which TLS/HTTP client to use for this request block.
+    /// AzureTLS = Go sidecar (supports fingerprinting), RustTLS = native reqwest+rustls.
+    #[serde(default = "default_tls_client")]
+    pub tls_client: TlsClient,
 }
 
 fn default_ssl_verify() -> bool { true }
@@ -66,6 +90,7 @@ impl Default for HttpRequestSettings {
             custom_cookies: String::new(),
             ssl_verify: true,
             cipher_suites: String::new(),
+            tls_client: TlsClient::AzureTLS,
         }
     }
 }

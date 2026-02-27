@@ -12,6 +12,7 @@
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import MoveRight from '@lucide/svelte/icons/move-right';
 	import MoveLeft from '@lucide/svelte/icons/move-left';
+	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 
 	let {
 		zone,
@@ -160,10 +161,12 @@
 				<!-- Dock to bottom (from right or left zone) -->
 				{#if zone === 'right' || zone === 'left'}
 					<button
-						class="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors text-[10px]"
+						class="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
 						onclick={() => dock.movePanel(activeTab as PanelId, 'bottom')}
 						title="Dock to bottom"
-					>⬇</button>
+					>
+						<ArrowDown size={10} />
+					</button>
 				{/if}
 			</div>
 		{/if}

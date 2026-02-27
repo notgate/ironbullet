@@ -40,6 +40,13 @@
 		? new URLSearchParams(window.location.search).get('panel') || ''
 		: '';
 
+	// Set panel mode flag SYNCHRONOUSLY before any effects or mounts.
+	// This makes send() a no-op for panel windows so they don't trigger IPC
+	// commands that get broadcast back to the main window (causing startup dialogs).
+	if (typeof window !== 'undefined' && nativePanelId) {
+		(window as any).__ibIsPanelMode = true;
+	}
+
 	let bottomPanelCollapsed = $state(false);
 	let activeBottomTab = $state<string>('debugger');
 	let activeRightTab = $state<string>('');
