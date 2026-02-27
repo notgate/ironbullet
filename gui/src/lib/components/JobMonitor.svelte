@@ -587,20 +587,22 @@ Error handling
 
 						<!-- Live result log — visible only for selected job when it has recent results -->
 						{#if isActive && job.stats?.recent_results?.length}
+							{@const recentSlice = job.stats.recent_results.slice(-20).reverse()}
 							<tr class="border-b border-border/30 bg-background/60">
 								<td colspan="11" class="px-2 pt-1 pb-2">
 									<div class="text-[9px] text-muted-foreground mb-0.5 flex items-center gap-1">
 										<span class="w-1.5 h-1.5 rounded-full bg-green animate-pulse inline-block"></span>
-										Live results (last {job.stats.recent_results.length})
+										Live results (last {recentSlice.length})
 									</div>
 									<div class="font-mono text-[10px] max-h-36 overflow-y-auto space-y-px pr-1"
 										style="scrollbar-width: thin;">
-										{#each [...job.stats.recent_results].reverse() as r}
+										{#each recentSlice as r (r.data_line + r.ts_ms)}
 											{@const statusColor =
 												r.status === 'SUCCESS' ? 'text-green bg-green/10 border-green/30' :
 												r.status === 'FAIL'    ? 'text-red-400 bg-red-400/10 border-red-400/30' :
 												r.status === 'BAN'     ? 'text-orange-400 bg-orange-400/10 border-orange-400/30' :
 												r.status === 'RETRY'   ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' :
+												r.status === 'NONE'    ? 'text-muted-foreground/60 bg-muted/5 border-border/40' :
 												                         'text-muted-foreground bg-muted/10 border-border'}
 											<div class="flex items-center gap-1.5 py-0.5 hover:bg-accent/10 rounded px-1">
 												<span class="shrink-0 border rounded px-1 py-px text-[9px] font-semibold {statusColor}">{r.status}</span>

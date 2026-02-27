@@ -46,8 +46,13 @@
 	// Actual hit shape from backend (matches ipc.ts runner_hit + job_hits handlers)
 	type HitRecord = { data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string };
 
-	let autoRefreshHits = $state(true);
+	// Auto-refresh OFF by default — runner_hit events now push hits in real time.
+	// Turn ON only to force a full re-sync from the backend (e.g. after reload).
+	let autoRefreshHits = $state(false);
 	let hitsFilter = $state('');
+	// How many hits to render in the inline table; expanded by user on demand.
+	const HITS_RENDER_LIMIT = 100;
+	let hitsShowAll = $state(false);
 
 	// Reactive filtered view of app.hits — no local copy, always live
 	let filteredHits = $derived<HitRecord[]>(
@@ -63,24 +68,37 @@
 			: app.hits as HitRecord[]
 	);
 
-	// Poll job hits when a job is active and auto-refresh is on
+	// Slice to render — last N for performance, expandable by user
+	let visibleHits = $derived<HitRecord[]>(
+		hitsShowAll ? filteredHits : filteredHits.slice(-HITS_RENDER_LIMIT)
+	);
+
+	// Manual refresh: request full hit list from backend (resets incremental counter)
+	function manualRefreshHits() {
+		if (!app.activeJobId) return;
+		(app as any)._jobHitSeen = 0;
+		send('get_job_hits', { id: app.activeJobId as string });
+		console.log('[DataPanel] manual refresh: requested get_job_hits for job', app.activeJobId);
+	}
+
+	// Auto-refresh interval (only active when user enables it)
 	let jobHitsInterval: ReturnType<typeof setInterval> | null = null;
 	$effect(() => {
 		if (autoRefreshHits && app.activeJobId) {
-			console.log('[DataPanel] autoRefresh ON — starting job_hits poll for job:', app.activeJobId);
 			if (!jobHitsInterval) {
 				jobHitsInterval = setInterval(() => {
-					console.log('[DataPanel] polling get_job_hits for job:', app.activeJobId);
 					send('get_job_hits', { id: app.activeJobId as string });
-				}, 3000);
+				}, 5000);
 			}
 		} else {
-			if (jobHitsInterval) {
-				console.log('[DataPanel] autoRefresh OFF or no active job — clearing poll interval');
-				clearInterval(jobHitsInterval);
-				jobHitsInterval = null;
-			}
+			if (jobHitsInterval) { clearInterval(jobHitsInterval); jobHitsInterval = null; }
 		}
+	});
+
+	// Reset incremental counter when active job changes
+	$effect(() => {
+		const _ = app.activeJobId;
+		(app as any)._jobHitSeen = 0;
 	});
 
 	onDestroy(() => {
@@ -566,10 +584,10 @@
 			><Download size={10} /></button>
 			<button
 				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-				onclick={() => { autoRefreshHits = !autoRefreshHits; console.log('[DataPanel] autoRefreshHits toggled:', !autoRefreshHits); }}
-				title={autoRefreshHits ? 'Auto-refresh ON (polling job hits every 3s)' : 'Auto-refresh OFF'}
+				onclick={manualRefreshHits}
+				title="Sync all hits from backend for selected job"
 			>
-				<RefreshCw size={10} class={autoRefreshHits ? 'text-green' : ''} />
+				<RefreshCw size={10} />
 			</button>
 		</div>
 		<div class="space-y-1.5">
@@ -596,6 +614,12 @@
 						{hitsFilter ? 'No hits match the filter.' : 'No hits yet. Start the runner or a job to see results here.'}
 					</div>
 				{:else}
+					{#if filteredHits.length > HITS_RENDER_LIMIT && !hitsShowAll}
+						<div class="px-2 py-1 bg-amber-400/8 border-b border-amber-400/20 flex items-center justify-between">
+							<span class="text-[9px] text-amber-400/80">Showing last {HITS_RENDER_LIMIT} of {filteredHits.length} hits</span>
+							<button class="text-[9px] text-primary underline" onclick={() => { hitsShowAll = true; }}>Show all</button>
+						</div>
+					{/if}
 					<div class="max-h-[300px] overflow-y-auto">
 						<table class="w-full text-[10px]">
 							<thead class="sticky top-0 bg-surface border-b border-border">
@@ -608,7 +632,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredHits as hit}
+								{#each visibleHits as hit (hit.data_line + hit.received_at)}
 									<tr class="border-b border-border/30 hover:bg-accent/10 transition-colors">
 										<td class="px-2 py-1.5 font-mono text-foreground/90 truncate max-w-[150px]" title={hit.data_line}>
 											{hit.data_line}
@@ -643,16 +667,12 @@
 													class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
 													onclick={() => copyHit(hit)}
 													title="Copy data + captures"
-												>
-													<Copy size={10} />
-												</button>
+												><Copy size={10} /></button>
 												<button
 													class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-red transition-colors"
 													onclick={() => deleteHit(hit)}
 													title="Delete"
-												>
-													<Trash2 size={10} />
-												</button>
+												><Trash2 size={10} /></button>
 											</div>
 										</td>
 									</tr>
@@ -662,7 +682,11 @@
 					</div>
 					<div class="px-2 py-1.5 bg-surface border-t border-border flex items-center justify-between">
 						<span class="text-[9px] text-muted-foreground">
-							{filteredHits.length}{hitsFilter ? ` of ${app.hits.length}` : ''} hit{filteredHits.length !== 1 ? 's' : ''}
+							{hitsShowAll ? filteredHits.length : Math.min(filteredHits.length, HITS_RENDER_LIMIT)}
+							{hitsFilter || !hitsShowAll ? ` of ${app.hits.length}` : ''} hit{filteredHits.length !== 1 ? 's' : ''}
+							{#if hitsShowAll && filteredHits.length > HITS_RENDER_LIMIT}
+								<button class="ml-1 text-muted-foreground underline text-[9px]" onclick={() => { hitsShowAll = false; }}>collapse</button>
+							{/if}
 						</span>
 						<div class="flex gap-1 flex-wrap">
 							<button class="skeu-btn text-[9px] text-muted-foreground" onclick={clearAllHits}>Clear All</button>

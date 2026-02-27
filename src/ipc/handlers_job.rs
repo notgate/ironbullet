@@ -159,8 +159,7 @@ pub(super) fn start_job(
             if is_proxy_check {
                 let pc_rx = s.job_manager.start_proxy_check_job(uuid, inner_handle.clone());
 
-                // Bug fix: send jobs_list NOW while we still hold the lock so the UI
-                // transitions from Queued → Running immediately (was staying "Queued" forever).
+                // Immediate jobs_list so UI transitions Queued → Running right away
                 {
                     let jobs = s.job_manager.list_jobs();
                     let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
@@ -171,28 +170,57 @@ pub(super) fn start_job(
                 if let Some(mut hits_rx) = pc_rx {
                     let state2 = state.clone();
                     let state3 = state.clone();
-                    let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(64);
+                    let state4 = state.clone();
+                    let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(256);
                     inner_handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
+
+                    // ── Hit receiver: runner_hit events + store hit ──────────────
                     let js_tx2 = js_tx.clone();
                     inner_handle.spawn(async move {
                         while let Some(hit) = hits_rx.recv().await {
                             let mut s = state2.lock().await;
-                            s.job_manager.add_hit(uuid, hit);
+                            s.job_manager.add_hit(uuid, hit.clone());
+                            s.job_manager.update_job_stats(uuid);
+                            // Push runner_hit for live append on frontend
+                            let hit_resp = IpcResponse::ok("runner_hit", serde_json::to_value(&hit).unwrap_or_default());
+                            let _ = js_tx2.send(format!("window.__ipc_callback({})",
+                                serde_json::to_string(&hit_resp).unwrap_or_default())).await;
+                            // Also update jobs_list for stat columns
                             let jobs = s.job_manager.list_jobs();
                             let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
-                            let _ = js_tx2.send(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())).await;
+                            let _ = js_tx2.send(format!("window.__ipc_callback({})",
+                                serde_json::to_string(&resp).unwrap_or_default())).await;
                         }
 
-                        // Bug fix: mark Completed AND push jobs_list so UI reflects
-                        // the finished state (was staying "Running" forever after completion).
+                        // All tasks done — mark Completed
                         let mut s = state3.lock().await;
                         if let Some(job) = s.job_manager.get_job_mut(uuid) {
                             job.state = ironbullet::runner::job::JobState::Completed;
                             job.completed = Some(chrono::Utc::now());
                         }
+                        s.job_manager.update_job_stats(uuid);
                         let jobs = s.job_manager.list_jobs();
                         let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
-                        let _ = js_tx2.send(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())).await;
+                        let _ = js_tx2.send(format!("window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default())).await;
+                    });
+
+                    // ── Periodic stats push (500 ms) so dead-proxy progress shows too ──
+                    let js_tx3 = js_tx.clone();
+                    inner_handle.spawn(async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            let mut s = state4.lock().await;
+                            let still_running = s.job_manager.get_job_mut(uuid)
+                                .map(|j| j.state == ironbullet::runner::job::JobState::Running)
+                                .unwrap_or(false);
+                            if !still_running { break; }
+                            s.job_manager.update_job_stats(uuid);
+                            let jobs = s.job_manager.list_jobs();
+                            let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
+                            let _ = js_tx3.send(format!("window.__ipc_callback({})",
+                                serde_json::to_string(&resp).unwrap_or_default())).await;
+                        }
                     });
                 }
                 return;
@@ -217,21 +245,22 @@ pub(super) fn start_job(
                 let job_id = uuid;
                 let state2 = state.clone();
 
-                // Spawn hit collector for this job
+                // Single channel → single eval_js consumer (eval_js can only be moved once)
+                let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(512);
+                inner_handle.spawn(async move {
+                    while let Some(js) = js_rx.recv().await { eval_js(js); }
+                });
+
+                // Hit collector: store hit AND broadcast runner_hit for immediate live append
+                let js_hit = js_tx.clone();
                 inner_handle.spawn(async move {
                     while let Some(hit) = hits_rx.recv().await {
                         let mut s = state2.lock().await;
-                        s.job_manager.add_hit(job_id, hit);
-                    }
-                });
-
-                // Use a channel to relay eval_js calls from multiple tasks
-                let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(64);
-
-                // eval_js consumer -- owns eval_js, calls it for each message
-                inner_handle.spawn(async move {
-                    while let Some(js) = js_rx.recv().await {
-                        eval_js(js);
+                        s.job_manager.add_hit(job_id, hit.clone());
+                        // Push runner_hit so frontend can append without polling
+                        let resp = IpcResponse::ok("runner_hit", serde_json::to_value(&hit).unwrap_or_default());
+                        let _ = js_hit.send(format!("window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default())).await;
                     }
                 });
 
@@ -325,6 +354,12 @@ pub(super) fn stop_job(
             if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
                 if let Ok(uuid) = uuid::Uuid::parse_str(id) {
                     s.job_manager.stop_job(uuid);
+                    // Kill sidecar if no config jobs remain running.
+                    // Proxy-check jobs don't use the sidecar, so only check config jobs.
+                    if !s.job_manager.any_config_job_running() {
+                        s.sidecar.stop().await;
+                        eprintln!("[stop_job] No running config jobs — sidecar stopped.");
+                    }
                 }
             }
             let jobs = s.job_manager.list_jobs();

@@ -283,16 +283,30 @@ export function registerCallbacks() {
 				if (resp.data) {
 					const hit = resp.data as { data_line: string; captures: Record<string, string>; proxy: string | null };
 					const stamped = { ...hit, received_at: new Date().toISOString() };
-					app.hits = [...app.hits, stamped];
-					console.log(`[IPC] runner_hit: "${hit.data_line}" | captures: ${Object.keys(hit.captures).length} | proxy: ${hit.proxy ?? 'none'} | total hits: ${app.hits.length}`);
+					// Mutate in-place (no spread) — avoids full-array copy on every hit.
+					// Drop oldest 500 when we reach 5 000 to stay under the render budget.
+					if (app.hits.length >= 5000) (app.hits as any[]).splice(0, 500);
+					(app.hits as any[]).push(stamped);
 				}
 				break;
 			case 'job_hits': {
 				// Backend returns { id: string, hits: HitResult[] }
+				// Used for initial load / manual refresh only (not for live updates).
+				// Append ONLY new entries so we don't trigger a full list re-render on every poll.
 				const jobHitsPayload = resp.data as { id: string; hits: Array<{ data_line: string; captures: Record<string, string>; proxy: string | null }> } | null;
 				if (jobHitsPayload && Array.isArray(jobHitsPayload.hits)) {
-					console.log(`[IPC] job_hits: job=${jobHitsPayload.id}, received ${jobHitsPayload.hits.length} hits — overwriting app.hits`);
-					app.hits = jobHitsPayload.hits.map(h => ({ ...h, received_at: new Date().toISOString() }));
+					const incoming = jobHitsPayload.hits;
+					const currentCount = (app as any)._jobHitSeen ?? 0;
+					const newSlice = incoming.slice(currentCount);
+					if (newSlice.length > 0) {
+						// Keep app.hits within the render budget
+						const combined = (app.hits as any[]).concat(
+							newSlice.map((h: any) => ({ ...h, received_at: new Date().toISOString() }))
+						);
+						app.hits = combined.length > 5000 ? combined.slice(-5000) : combined;
+						(app as any)._jobHitSeen = incoming.length;
+						console.log(`[IPC] job_hits: appended ${newSlice.length} new hits (total seen: ${incoming.length})`);
+					}
 				} else {
 					console.warn('[IPC] job_hits: unexpected payload shape', resp.data);
 				}
