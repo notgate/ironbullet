@@ -88,10 +88,49 @@ fn parse_proxy_for_pool(line: &str) -> Option<ProxyEntry> {
     Some(ProxyEntry { proxy_type, address })
 }
 
+/// Lightweight stats handle for proxy-check jobs.
+/// Proxy check tasks don't use a RunnerOrchestrator, so we track stats here with atomics.
+pub struct ProxyCheckHandle {
+    pub processed: Arc<std::sync::atomic::AtomicUsize>,
+    pub hits:      Arc<std::sync::atomic::AtomicUsize>,
+    pub total:     usize,
+    pub running:   Arc<std::sync::atomic::AtomicBool>,
+    pub start_ms:  u64,
+}
+
+impl ProxyCheckHandle {
+    pub fn get_stats(&self) -> RunnerStats {
+        use std::sync::atomic::Ordering;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let elapsed_secs = (now.saturating_sub(self.start_ms)) as f64 / 1000.0;
+        let processed = self.processed.load(Ordering::Relaxed);
+        let cpm = if elapsed_secs > 0.0 { processed as f64 / elapsed_secs * 60.0 } else { 0.0 };
+        RunnerStats {
+            total:    self.total,
+            processed,
+            hits:     self.hits.load(Ordering::Relaxed),
+            fails:    0,
+            bans:     0,
+            retries:  0,
+            errors:   0,
+            cpm,
+            active_threads: 0,
+            elapsed_secs,
+            recent_results: vec![],
+        }
+    }
+}
+
 pub struct JobManager {
     jobs: Vec<Job>,
     runners: HashMap<Uuid, Arc<RunnerOrchestrator>>,
+    /// Per-job hits database (used by both config and proxy-check jobs)
     job_hits: HashMap<Uuid, Vec<HitResult>>,
+    /// Stats handles for proxy-check jobs (no RunnerOrchestrator)
+    proxy_handles: HashMap<Uuid, ProxyCheckHandle>,
 }
 
 impl JobManager {
@@ -100,6 +139,7 @@ impl JobManager {
             jobs: Vec::new(),
             runners: HashMap::new(),
             job_hits: HashMap::new(),
+            proxy_handles: HashMap::new(),
         }
     }
 
@@ -111,10 +151,12 @@ impl JobManager {
     }
 
     pub fn remove_job(&mut self, id: Uuid) -> bool {
-        if let Some(runner) = self.runners.get(&id) {
-            runner.stop();
+        if let Some(runner) = self.runners.get(&id) { runner.stop(); }
+        if let Some(h) = self.proxy_handles.get(&id) {
+            h.running.store(false, std::sync::atomic::Ordering::SeqCst);
         }
         self.runners.remove(&id);
+        self.proxy_handles.remove(&id);
         self.job_hits.remove(&id);
         let len = self.jobs.len();
         self.jobs.retain(|j| j.id != id);
@@ -130,11 +172,24 @@ impl JobManager {
     }
 
     pub fn get_job_stats(&self, id: Uuid) -> Option<RunnerStats> {
-        self.runners.get(&id).map(|r| r.get_stats())
+        if let Some(r) = self.runners.get(&id) { return Some(r.get_stats()); }
+        self.proxy_handles.get(&id).map(|h| h.get_stats())
     }
 
     pub fn get_job_hits(&self, id: Uuid) -> Vec<HitResult> {
         self.job_hits.get(&id).cloned().unwrap_or_default()
+    }
+
+    /// Return only hits newer than `since_index` (0-based).
+    /// Used by the frontend for incremental updates instead of re-sending the full list.
+    pub fn get_job_hits_since(&self, id: Uuid, since_index: usize) -> Vec<HitResult> {
+        self.job_hits.get(&id)
+            .map(|hits| hits[since_index.min(hits.len())..].to_vec())
+            .unwrap_or_default()
+    }
+
+    pub fn get_job_hit_count(&self, id: Uuid) -> usize {
+        self.job_hits.get(&id).map(|h| h.len()).unwrap_or(0)
     }
 
     pub fn add_hit(&mut self, id: Uuid, hit: HitResult) {
@@ -146,38 +201,43 @@ impl JobManager {
     pub fn pause_job(&mut self, id: Uuid) -> bool {
         if let Some(runner) = self.runners.get(&id) {
             runner.pause();
-            if let Some(job) = self.get_job_mut(id) {
-                job.state = JobState::Paused;
-            }
+            if let Some(job) = self.get_job_mut(id) { job.state = JobState::Paused; }
             true
-        } else {
-            false
-        }
+        } else { false }
     }
 
     pub fn resume_job(&mut self, id: Uuid) -> bool {
         if let Some(runner) = self.runners.get(&id) {
             runner.resume();
-            if let Some(job) = self.get_job_mut(id) {
-                job.state = JobState::Running;
-            }
+            if let Some(job) = self.get_job_mut(id) { job.state = JobState::Running; }
             true
-        } else {
-            false
-        }
+        } else { false }
     }
 
+    /// Stop a job.  Returns whether a job was found.
+    /// For config jobs: signals the RunnerOrchestrator to stop workers.
+    /// For proxy-check jobs: sets the cancellation flag so in-flight tasks abort early.
     pub fn stop_job(&mut self, id: Uuid) -> bool {
+        // Config job runner
         if let Some(runner) = self.runners.get(&id) {
             runner.stop();
-            if let Some(job) = self.get_job_mut(id) {
-                job.state = JobState::Stopped;
-                job.completed = Some(Utc::now());
-            }
-            true
-        } else {
-            false
         }
+        // Proxy-check cancellation flag
+        if let Some(h) = self.proxy_handles.get(&id) {
+            h.running.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+        if let Some(job) = self.get_job_mut(id) {
+            job.state = JobState::Stopped;
+            job.completed = Some(Utc::now());
+            true
+        } else { false }
+    }
+
+    /// Returns true if any config job is currently Running.
+    /// Used to decide whether to tear down the shared sidecar process on stop.
+    pub fn any_config_job_running(&self) -> bool {
+        use crate::runner::job::JobType;
+        self.jobs.iter().any(|j| j.job_type == JobType::Config && j.state == JobState::Running)
     }
 
     pub fn start_job(
@@ -282,7 +342,10 @@ impl JobManager {
     }
 
     pub fn update_job_stats(&mut self, id: Uuid) {
-        if let Some(stats) = self.get_job_stats(id) {
+        if let Some(mut stats) = self.get_job_stats(id) {
+            // Strip recent_results before storing into job.stats — jobs_list broadcasts
+            // should be lightweight.  recent_results is only sent via job_stats_update.
+            stats.recent_results = Vec::new();
             if let Some(job) = self.get_job_mut(id) {
                 job.stats = stats;
             }
@@ -297,12 +360,15 @@ impl JobManager {
         handle: tokio::runtime::Handle,
     ) -> Option<tokio::sync::mpsc::Receiver<HitResult>> {
         use crate::runner::job::JobType;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
         let job = self.jobs.iter_mut().find(|j| j.id == id)?;
         if job.job_type != JobType::ProxyCheck { return None; }
+
         let proxy_list_path = job.proxy_check_list.clone();
-        let check_url = job.proxy_check_url.clone();
-        let thread_count = job.thread_count.max(1);
-        job.state = JobState::Running;
+        let check_url       = job.proxy_check_url.clone();
+        let thread_count    = job.thread_count.max(1);
+        job.state   = JobState::Running;
         job.started = Some(Utc::now());
 
         let proxies: Vec<String> = if proxy_list_path.is_empty() {
@@ -316,49 +382,75 @@ impl JobManager {
                 .collect()
         };
 
-        let (hits_tx, hits_rx) = tokio::sync::mpsc::channel::<HitResult>(1024);
+        let total = proxies.len();
 
-        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(thread_count));
+        // ── Atomic stats shared with every spawned task ────────────────────
+        let processed_ctr = Arc::new(AtomicUsize::new(0));
+        let hits_ctr      = Arc::new(AtomicUsize::new(0));
+        let running_flag  = Arc::new(AtomicBool::new(true));
+
+        let start_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        // Store the handle so get_job_stats / stop_job / remove_job can access it
+        self.proxy_handles.insert(id, ProxyCheckHandle {
+            processed: processed_ctr.clone(),
+            hits:      hits_ctr.clone(),
+            total,
+            running:   running_flag.clone(),
+            start_ms,
+        });
+
+        let (hits_tx, hits_rx) = tokio::sync::mpsc::channel::<HitResult>(1024);
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(thread_count));
 
         for proxy in proxies {
-            let tx = hits_tx.clone();
-            let url = check_url.clone();
-            let sem = semaphore.clone();
+            let tx          = hits_tx.clone();
+            let url         = check_url.clone();
+            let sem         = semaphore.clone();
+            let running     = running_flag.clone();
+            let processed   = processed_ctr.clone();
+            let hits        = hits_ctr.clone();
+
             handle.spawn(async move {
                 let _permit = sem.acquire().await.ok();
+
+                // Honour cancellation: bail immediately if job was stopped
+                if !running.load(Ordering::Relaxed) { return; }
+
                 let start = std::time::Instant::now();
-                let proxy_url = if proxy.starts_with("http://") || proxy.starts_with("https://") || proxy.starts_with("socks5://") {
+                let proxy_url = if proxy.starts_with("http://")
+                    || proxy.starts_with("https://")
+                    || proxy.starts_with("socks5://")
+                {
                     proxy.clone()
                 } else {
                     format!("http://{}", proxy)
                 };
-                let result = reqwest::Client::builder()
-                    .proxy(reqwest::Proxy::all(&proxy_url).unwrap_or_else(|_| reqwest::Proxy::all("http://127.0.0.1:1").unwrap()))
+
+                let is_alive = match reqwest::Client::builder()
+                    .proxy(reqwest::Proxy::all(&proxy_url)
+                        .unwrap_or_else(|_| reqwest::Proxy::all("http://127.0.0.1:1").unwrap()))
                     .timeout(std::time::Duration::from_secs(10))
                     .build()
-                    .ok()
-                    .map(|c| {
-                        let url2 = url.clone();
-                        tokio::spawn(async move { c.get(&url2).send().await })
-                    });
-
-                let is_alive = if let Some(fut) = result {
-                    fut.await.ok().and_then(|r| r.ok()).is_some()
-                } else {
-                    false
+                {
+                    Ok(client) => client.get(&url).send().await.is_ok(),
+                    Err(_)     => false,
                 };
 
                 let latency_ms = start.elapsed().as_millis();
 
+                // Always increment processed (alive or dead)
+                processed.fetch_add(1, Ordering::Relaxed);
+
                 if is_alive {
+                    hits.fetch_add(1, Ordering::Relaxed);
                     let mut captures = std::collections::HashMap::new();
                     captures.insert("status".into(), "alive".into());
                     captures.insert("latency_ms".into(), latency_ms.to_string());
-                    let _ = tx.send(HitResult {
-                        data_line: proxy,
-                        captures,
-                        proxy: None,
-                    }).await;
+                    let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
                 }
             });
         }
