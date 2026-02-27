@@ -220,10 +220,22 @@ pub(super) fn start_job(
                     inner_handle.spawn(async move {
                         while let Some(hit) = hits_rx.recv().await {
                             let mut s = state2.lock().await;
-                            s.job_manager.add_hit(uuid, hit.clone());
+                            // Only store alive proxies in the hits DB — dead/error go to the
+                            // live feed only so the Hits Database stays clean.
+                            let status = hit.captures.get("status").map(|s| s.as_str()).unwrap_or("alive");
+                            if status == "alive" {
+                                s.job_manager.add_hit(uuid, hit.clone());
+                            }
                             s.job_manager.update_job_stats(uuid);
-                            // Push runner_hit for live append on frontend
-                            let hit_resp = IpcResponse::ok("runner_hit", serde_json::to_value(&hit).unwrap_or_default());
+                            // Push runner_hit for live feed — includes job_id so frontend
+                            // can route it to the correct per-job hits view.
+                            let hit_payload = serde_json::json!({
+                                "job_id": uuid.to_string(),
+                                "data_line": hit.data_line,
+                                "captures": hit.captures,
+                                "proxy": hit.proxy,
+                            });
+                            let hit_resp = IpcResponse::ok("runner_hit", hit_payload);
                             let _ = js_tx2.send(format!("window.__ipc_callback({})",
                                 serde_json::to_string(&hit_resp).unwrap_or_default())).await;
                             // Also update jobs_list for stat columns
@@ -298,8 +310,15 @@ pub(super) fn start_job(
                     while let Some(hit) = hits_rx.recv().await {
                         let mut s = state2.lock().await;
                         s.job_manager.add_hit(job_id, hit.clone());
-                        // Push runner_hit so frontend can append without polling
-                        let resp = IpcResponse::ok("runner_hit", serde_json::to_value(&hit).unwrap_or_default());
+                        // Push runner_hit with job_id so frontend routes it to the correct
+                        // per-job hits view in the Hits Database panel.
+                        let hit_payload = serde_json::json!({
+                            "job_id": job_id.to_string(),
+                            "data_line": hit.data_line,
+                            "captures": hit.captures,
+                            "proxy": hit.proxy,
+                        });
+                        let resp = IpcResponse::ok("runner_hit", hit_payload);
                         let _ = js_hit.send(format!("window.__ipc_callback({})",
                             serde_json::to_string(&resp).unwrap_or_default())).await;
                     }

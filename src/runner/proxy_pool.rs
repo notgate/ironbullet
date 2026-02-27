@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::time::Instant;
 
 pub struct ProxyPool {
     proxies: Vec<ProxyEntry>,
     index: AtomicUsize,
-    bans: Mutex<HashMap<String, Instant>>,
+    /// RwLock instead of Mutex: concurrent reads from next_proxy() don't block each other.
+    /// Only ban_proxy() needs exclusive write access.
+    bans: RwLock<HashMap<String, Instant>>,
     ban_duration_secs: u64,
 }
 
@@ -29,7 +31,7 @@ impl ProxyPool {
         Self {
             proxies,
             index: AtomicUsize::new(0),
-            bans: Mutex::new(HashMap::new()),
+            bans: RwLock::new(HashMap::new()),
             ban_duration_secs,
         }
     }
@@ -54,10 +56,11 @@ impl ProxyPool {
 
         let now = Instant::now();
 
-        // Acquire ban-list lock; if poisoned, recover and continue (never block callers)
-        let bans = match self.bans.lock() {
+        // Acquire ban-list read lock — multiple threads can hold this simultaneously.
+        // If poisoned, recover the data rather than returning None and stalling the caller.
+        let bans = match self.bans.read() {
             Ok(g)  => g,
-            Err(e) => e.into_inner(), // poisoned — recover the data, don't return None
+            Err(e) => e.into_inner(),
         };
 
         // Try to find an unbanned proxy (scan at most proxies.len() candidates)
@@ -82,7 +85,7 @@ impl ProxyPool {
     }
 
     pub fn ban_proxy(&self, proxy: &str) {
-        if let Ok(mut bans) = self.bans.lock() {
+        if let Ok(mut bans) = self.bans.write() {
             bans.insert(proxy.to_string(), Instant::now());
         }
     }
@@ -92,7 +95,7 @@ impl ProxyPool {
     }
 
     pub fn active(&self) -> usize {
-        let bans = self.bans.lock().ok();
+        let bans = self.bans.read().ok();
         let now = Instant::now();
         let banned = bans.map(|b| {
             b.values().filter(|t| now.duration_since(**t).as_secs() < self.ban_duration_secs).count()
