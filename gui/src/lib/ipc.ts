@@ -296,23 +296,27 @@ export function registerCallbacks() {
 				if (resp.data) {
 					const hit = resp.data as { job_id?: string; data_line: string; captures: Record<string, string>; proxy: string | null };
 					const stamped = { data_line: hit.data_line, captures: hit.captures, proxy: hit.proxy, received_at: new Date().toISOString() };
-					// Global live feed — always push regardless of status.
-					// Drop oldest 500 when we reach 5 000 to stay under the render budget.
-					if (app.hits.length >= 5000) (app.hits as any[]).splice(0, 500);
-					(app.hits as any[]).push(stamped);
-					// Per-job hits DB — only store "real" hits (alive proxies / config hits).
-					// Dead/error proxy results flow through the live feed only.
+					// Only push REAL hits (alive proxies / config job hits) to the hits DB.
+					// Dead (status=dead) and error (status=error) proxy results are discarded here
+					// — they show in the runner stats counters (Fails/Errors) but not in the DB.
 					const status = hit.captures?.status;
 					const isActualHit = !status || status === 'alive';
-					if (isActualHit && hit.job_id) {
-						const db = app.jobHitsDb;
-						if (!db[hit.job_id]) {
-							// Svelte 5: assign a new object to trigger reactivity on first insert
-							app.jobHitsDb = { ...db, [hit.job_id]: [stamped] };
-						} else {
-							// In-place push — Svelte 5 proxy tracks array mutations
-							if (db[hit.job_id].length >= 10000) (db[hit.job_id] as any[]).splice(0, 500);
-							(db[hit.job_id] as any[]).push(stamped);
+					if (isActualHit) {
+						// Global hits feed (used by HitsDialog "All Jobs" view)
+						// Drop oldest 500 when we reach 5 000 to stay under the render budget.
+						if (app.hits.length >= 5000) (app.hits as any[]).splice(0, 500);
+						(app.hits as any[]).push(stamped);
+						// Per-job hits DB — keyed by job_id for the per-job dropdown view
+						if (hit.job_id) {
+							const db = app.jobHitsDb;
+							if (!db[hit.job_id]) {
+								// Svelte 5: assign a new object to trigger reactivity on first insert
+								app.jobHitsDb = { ...db, [hit.job_id]: [stamped] };
+							} else {
+								// In-place push — Svelte 5 proxy tracks array mutations
+								if (db[hit.job_id].length >= 10000) (db[hit.job_id] as any[]).splice(0, 500);
+								(db[hit.job_id] as any[]).push(stamped);
+							}
 						}
 					}
 				}

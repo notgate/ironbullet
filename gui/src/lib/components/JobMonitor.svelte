@@ -59,11 +59,12 @@
 
 	function viewJobHits(id: string) {
 		app.activeJobId = id;
-		// Signal DataPanel to auto-select this job in the Hits Database dropdown.
-		// DataPanel's $effect will consume hitsDbJobId, fetch hits, and clear the signal.
+		// Pre-fetch hits so HitsDialog is populated when it opens
+		send('get_job_hits', { id });
+		// Signal HitsDialog to pre-select this job when it opens
 		app.hitsDbJobId = id;
-		app.bottomTab = 'data';
-		console.log('[JobMonitor] viewJobHits: switching to data tab for job', id);
+		app.showHitsDialog = true;
+		console.log('[JobMonitor] viewJobHits: opening HitsDialog for job', id);
 	}
 
 	const helpSections = [
