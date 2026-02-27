@@ -2,20 +2,24 @@ pub mod native;
 pub mod protocol;
 pub mod session;
 
-use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
+use dashmap::DashMap;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot};
 
 use protocol::{SidecarRequest, SidecarResponse};
 
 type ReqTx = mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>;
+/// Lock-free concurrent map for in-flight request correlations.
+/// DashMap shards the map internally so concurrent inserts/removes don't
+/// serialize behind a single mutex — critical at 100+ worker threads.
+type PendingMap = Arc<DashMap<String, oneshot::Sender<SidecarResponse>>>;
 
 pub struct SidecarManager {
     process: Option<Child>,
-    pending: Arc<Mutex<HashMap<String, oneshot::Sender<SidecarResponse>>>>,
+    pending: PendingMap,
     writer_tx: Option<mpsc::Sender<String>>,
     /// Stored so jobs can get a sender without restarting the sidecar
     req_tx: Option<ReqTx>,
@@ -25,7 +29,7 @@ impl SidecarManager {
     pub fn new() -> Self {
         Self {
             process: None,
-            pending: Arc::new(Mutex::new(HashMap::new())),
+            pending: Arc::new(DashMap::new()),
             writer_tx: None,
             req_tx: None,
         }
@@ -81,40 +85,53 @@ impl SidecarManager {
         let stdout = child.stdout.take()
             .ok_or_else(|| crate::error::AppError::Sidecar("No stdout".into()))?;
 
-        // Writer channel
-        let (writer_tx, mut writer_rx) = mpsc::channel::<String>(1024);
+        // Writer channel — micro-batching: drain all pending messages before flushing.
+        // Previously we flushed after every individual message, which at 100+ threads
+        // means 100+ separate flush() syscalls per wave.  Draining the channel first
+        // and flushing once per batch cuts syscall overhead significantly.
+        let (writer_tx, mut writer_rx) = mpsc::channel::<String>(4096);
         let mut stdin = stdin;
         tokio::spawn(async move {
             while let Some(line) = writer_rx.recv().await {
                 if stdin.write_all(line.as_bytes()).await.is_err() { break; }
                 if stdin.write_all(b"\n").await.is_err() { break; }
-                let _ = stdin.flush().await;
+                // Drain any additional pending messages before flushing once
+                loop {
+                    match writer_rx.try_recv() {
+                        Ok(next) => {
+                            if stdin.write_all(next.as_bytes()).await.is_err() { return; }
+                            if stdin.write_all(b"\n").await.is_err() { return; }
+                        }
+                        Err(_) => break, // Channel empty — flush what we have
+                    }
+                }
+                let _ = stdin.flush().await; // One flush per batch, not per message
             }
         });
 
-        // Reader task — routes responses back to waiting callers
+        // Reader task — routes responses back to waiting callers via DashMap (lock-free)
         let pending = self.pending.clone();
         tokio::spawn(async move {
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 if let Ok(resp) = serde_json::from_str::<SidecarResponse>(&line) {
-                    let mut map = pending.lock().await;
-                    if let Some(tx) = map.remove(&resp.id) {
+                    if let Some((_, tx)) = pending.remove(&resp.id) {
                         let _ = tx.send(resp);
                     }
                 }
             }
         });
 
-        // Request multiplexer channel — serialize requests onto the writer
-        let (req_tx, mut req_rx) = mpsc::channel::<(SidecarRequest, oneshot::Sender<SidecarResponse>)>(1024);
+        // Request multiplexer channel — register correlation then enqueue write.
+        // DashMap insert is non-blocking so this loop is never delayed by another thread's lookup.
+        let (req_tx, mut req_rx) = mpsc::channel::<(SidecarRequest, oneshot::Sender<SidecarResponse>)>(4096);
         let writer_tx2 = writer_tx.clone();
         let pending2 = self.pending.clone();
         tokio::spawn(async move {
             while let Some((req, resp_tx)) = req_rx.recv().await {
                 let id = req.id.clone();
-                pending2.lock().await.insert(id, resp_tx);
+                pending2.insert(id, resp_tx); // DashMap — no await, no mutex
                 if let Ok(json) = serde_json::to_string(&req) {
                     let _ = writer_tx2.send(json).await;
                 }

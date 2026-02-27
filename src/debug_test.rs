@@ -289,6 +289,7 @@ mod tests {
                         comparison: Comparison::EqualTo,
                         value: "FAIL".into(),
                     }],
+                    mode: KeychainMode::And,
                 }],
                 stop_on_fail,
             });
@@ -397,6 +398,7 @@ mod tests {
                         comparison: Comparison::EqualTo,
                         value: "200".into(),
                     }],
+                    mode: KeychainMode::And,
                 },
             ],
             stop_on_fail: false,

@@ -96,7 +96,7 @@
 				app.debugBlockIds = [ctx.blockId];
 				app.bottomTab = 'debugger';
 			})}>
-				🐛 Debug Block
+				Debug Block
 			</button>
 			<div class="menu-sep"></div>
 			<button class="menu-item menu-item-danger w-full text-left" onclick={() => ctxAction(() => { pushUndo(); send('remove_block', { block_id: ctx.blockId }); app.selectedBlockIds = app.selectedBlockIds.filter(id => id !== ctx.blockId); if (app.editingBlockId === ctx.blockId) app.editingBlockId = null; })}>
@@ -138,7 +138,7 @@
 				app.debugBlockIds = [...app.selectedBlockIds];
 				app.bottomTab = 'debugger';
 			})}>
-				🐛 Debug {selCount} Blocks
+				Debug {selCount} Blocks
 			</button>
 			<div class="menu-sep"></div>
 			<button class="menu-item menu-item-danger w-full text-left" onclick={() => ctxAction(() => { pushUndo(); send('remove_blocks', { ids: [...app.selectedBlockIds] }); app.selectedBlockIds = []; })}>
