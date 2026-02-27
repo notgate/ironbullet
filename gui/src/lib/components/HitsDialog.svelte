@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
+	import { send } from '$lib/ipc';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { DropdownMenu } from 'bits-ui';
 	import X from '@lucide/svelte/icons/x';
@@ -10,17 +11,50 @@
 	import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import CheckCircle from '@lucide/svelte/icons/check-circle';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 
 	type HitRecord = { data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string };
 	type SortKey = 'time_asc' | 'time_desc' | 'data_asc' | 'data_desc' | 'captures_desc';
-	type FilterTab = 'ALL' | 'HIT' | 'BAN' | 'FAIL';
 
 	let open = $derived(app.showHitsDialog);
 	function onOpenChange(v: boolean) { if (!v) app.showHitsDialog = false; }
 
 	let search = $state('');
 	let sortKey = $state<SortKey>('time_desc');
-	let activeTab = $state<FilterTab>('ALL');
+
+	// ── Per-job filter ────────────────────────────────────────────────────
+	/** '' = All Jobs; otherwise a job UUID */
+	let selectedJobId = $state('');
+
+	// When dialog opens: reset search/sort; apply pre-selected job if one was signalled
+	$effect(() => {
+		if (app.showHitsDialog) {
+			search = '';
+			sortKey = 'time_desc';
+			if (app.hitsDbJobId) {
+				selectedJobId = app.hitsDbJobId;
+				app.hitsDbJobId = null; // consume the signal
+			} else {
+				selectedJobId = '';
+			}
+		}
+	});
+
+	// If selected job is deleted while dialog is open, fall back to All Jobs
+	$effect(() => {
+		if (selectedJobId && !app.jobs.find((j: any) => j.id === selectedJobId)) {
+			selectedJobId = '';
+		}
+	});
+
+	/** The raw (unfiltered) hit list for the current job selection */
+	const baseHits = $derived<HitRecord[]>(
+		selectedJobId
+			? ((app.jobHitsDb[selectedJobId] ?? []) as HitRecord[])
+			: (app.hits as HitRecord[])
+	);
+
+	const totalForJob = $derived(baseHits.length);
 
 	const SORT_LABELS: Record<SortKey, string> = {
 		time_desc: 'Newest first',
@@ -29,15 +63,6 @@
 		data_desc: 'Data Z→A',
 		captures_desc: 'Most captures',
 	};
-
-	const TAB_LABELS: FilterTab[] = ['ALL', 'HIT', 'BAN', 'FAIL'];
-
-	// ALL hits are HITs (runner only emits hits for successes; BAN/FAIL are counters only)
-	// Future: extend when runner emits individual fail/ban records
-	function tabFilter(h: HitRecord): boolean {
-		if (activeTab === 'ALL' || activeTab === 'HIT') return true;
-		return false; // BAN/FAIL not yet tracked per-record
-	}
 
 	function matchesSearch(h: HitRecord): boolean {
 		if (!search.trim()) return true;
@@ -60,10 +85,14 @@
 	}
 
 	let displayed = $derived(
-		(app.hits as HitRecord[])
-			.filter(h => tabFilter(h) && matchesSearch(h))
-			.sort((a, b) => sortFn(a, b))
+		baseHits.filter(h => matchesSearch(h)).sort((a, b) => sortFn(a, b))
 	);
+
+	function refreshJobHits() {
+		if (selectedJobId) {
+			send('get_job_hits', { id: selectedJobId });
+		}
+	}
 
 	function exportTxt() {
 		const lines = displayed.map(h => {
@@ -96,13 +125,10 @@
 		const a = document.createElement('a');
 		a.href = url; a.download = name; a.click();
 		URL.revokeObjectURL(url);
-		console.log('[HitsDialog] exported', displayed.length, 'hits as', name);
 	}
 
 	function copyAll() {
-		const text = displayed.map(h => h.data_line).join('\n');
-		navigator.clipboard.writeText(text);
-		console.log('[HitsDialog] copied', displayed.length, 'data lines to clipboard');
+		navigator.clipboard.writeText(displayed.map(h => h.data_line).join('\n'));
 	}
 
 	function copyRow(h: HitRecord) {
@@ -111,15 +137,30 @@
 	}
 
 	function deleteRow(h: HitRecord) {
-		const before = app.hits.length;
-		app.hits = app.hits.filter(r => r !== h);
-		console.log('[HitsDialog] deleteRow, remaining:', app.hits.length, '(was', before, ')');
+		if (selectedJobId) {
+			const db = app.jobHitsDb;
+			if (db[selectedJobId]) {
+				app.jobHitsDb = { ...db, [selectedJobId]: db[selectedJobId].filter(r => r !== h) };
+			}
+		} else {
+			app.hits = app.hits.filter(r => r !== h);
+		}
 	}
 
 	function clearAll() {
-		console.log('[HitsDialog] clearAll:', app.hits.length, 'hits');
-		app.hits = [];
+		if (selectedJobId) {
+			app.jobHitsDb = { ...app.jobHitsDb, [selectedJobId]: [] };
+		} else {
+			app.hits = [];
+		}
 	}
+
+	/** Name of the selected job for display / export filename */
+	const selectedJobName = $derived(
+		selectedJobId
+			? (app.jobs.find((j: any) => j.id === selectedJobId) as any)?.name ?? 'job'
+			: 'all-jobs'
+	);
 </script>
 
 <Dialog.Root {open} {onOpenChange}>
@@ -128,8 +169,8 @@
 		<div class="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface shrink-0">
 			<CheckCircle size={14} class="text-primary" />
 			<Dialog.Title class="text-sm font-semibold text-foreground">Hits Database</Dialog.Title>
-			<span class="text-[10px] text-muted-foreground bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-				{app.hits.length} total
+			<span class="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+				{totalForJob} hits
 			</span>
 			<div class="flex-1"></div>
 
@@ -148,28 +189,60 @@
 				</DropdownMenu.Portal>
 			</DropdownMenu.Root>
 
-			<button class="skeu-btn text-[10px] text-red flex items-center gap-1" onclick={clearAll} title="Clear all hits">
-				<Trash2 size={10} />Clear All
+			<button class="skeu-btn text-[10px] text-red flex items-center gap-1" onclick={clearAll} title={selectedJobId ? 'Clear hits for this job' : 'Clear all hits'}>
+				<Trash2 size={10} />Clear
 			</button>
 			<button class="p-1 rounded hover:bg-accent/20 text-muted-foreground" onclick={() => app.showHitsDialog = false}>
 				<X size={14} />
 			</button>
 		</div>
 
-		<!-- Filter tabs + search + sort row -->
+		<!-- Job filter + search + sort row -->
 		<div class="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface/50 shrink-0">
-			<!-- Status tabs -->
-			<div class="flex rounded border border-border overflow-hidden shrink-0">
-				{#each TAB_LABELS as tab}
-					<button
-						class="px-3 py-1 text-[10px] font-medium transition-colors border-r border-border last:border-r-0
-							{activeTab === tab ? 'bg-primary text-white' : 'bg-surface text-muted-foreground hover:bg-accent/30'}
-							{(tab === 'BAN' || tab === 'FAIL') ? 'opacity-50 cursor-default' : ''}"
-						onclick={() => { if (tab !== 'BAN' && tab !== 'FAIL') activeTab = tab; }}
-						title={tab === 'BAN' || tab === 'FAIL' ? 'Not yet tracked per-record (shown in runner stats counters)' : undefined}
-					>{tab}</button>
-				{/each}
-			</div>
+			<!-- Per-job dropdown -->
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger class="skeu-btn flex items-center gap-1 text-[10px] shrink-0 max-w-[180px]">
+					<span class="truncate">
+						{selectedJobId
+							? (app.jobs.find((j: any) => j.id === selectedJobId) as any)?.name ?? 'Unknown'
+							: 'All Jobs'}
+					</span>
+					<ChevronDown size={8} class="shrink-0" />
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Portal>
+					<DropdownMenu.Content class="menu-content" sideOffset={4} align="start">
+						<DropdownMenu.Item
+							class="menu-item {selectedJobId === '' ? 'text-primary font-medium' : ''}"
+							onSelect={() => { selectedJobId = ''; }}
+						>All Jobs ({app.hits.length})</DropdownMenu.Item>
+						{#if app.jobs.length > 0}
+							<DropdownMenu.Separator class="menu-sep" />
+							{#each app.jobs as job}
+								<DropdownMenu.Item
+									class="menu-item {selectedJobId === (job as any).id ? 'text-primary font-medium' : ''}"
+									onSelect={() => {
+										selectedJobId = (job as any).id;
+										send('get_job_hits', { id: (job as any).id });
+									}}
+								>
+									{(job as any).name}
+									<span class="ml-auto text-[9px] text-muted-foreground pl-2">
+										{app.jobHitsDb[(job as any).id]?.length ?? 0} hits · {(job as any).state}
+									</span>
+								</DropdownMenu.Item>
+							{/each}
+						{:else}
+							<DropdownMenu.Item class="menu-item opacity-50 cursor-default">No jobs</DropdownMenu.Item>
+						{/if}
+					</DropdownMenu.Content>
+				</DropdownMenu.Portal>
+			</DropdownMenu.Root>
+
+			{#if selectedJobId}
+				<button class="skeu-btn text-[9px] flex items-center gap-0.5 shrink-0" onclick={refreshJobHits} title="Refresh from backend">
+					<RefreshCw size={9} />
+				</button>
+			{/if}
 
 			<!-- Search -->
 			<div class="relative flex-1">
@@ -207,8 +280,12 @@
 			{#if displayed.length === 0}
 				<div class="flex flex-col items-center justify-center h-32 text-muted-foreground text-xs gap-2">
 					<CheckCircle size={20} class="opacity-30" />
-					{#if app.hits.length === 0}
-						No hits yet — start the runner or a job to populate results.
+					{#if totalForJob === 0}
+						{#if selectedJobId}
+							No hits for this job yet.
+						{:else}
+							No hits yet — start a job or the runner to populate results.
+						{/if}
 					{:else}
 						No hits match the current filter.
 					{/if}
@@ -275,9 +352,9 @@
 		<!-- Footer -->
 		<div class="px-3 py-1.5 border-t border-border bg-surface/50 shrink-0 flex items-center justify-between">
 			<span class="text-[9px] text-muted-foreground">
-				{displayed.length} of {app.hits.length} hits
+				{displayed.length} of {totalForJob} hits
 				{#if search} · filtered{/if}
-				{#if activeTab !== 'ALL'} · {activeTab}{/if}
+				{#if selectedJobId} · {(app.jobs.find((j: any) => j.id === selectedJobId) as any)?.name ?? 'job'}{/if}
 			</span>
 			<div class="flex gap-1">
 				<button class="skeu-btn text-[9px]" onclick={exportTxt}>Export TXT</button>
