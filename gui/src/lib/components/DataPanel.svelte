@@ -173,6 +173,11 @@
 			...app.pipeline.proxy_settings.proxy_sources,
 			{ source_type: type, value: '', refresh_interval_secs: 0 },
 		];
+		// If mode is None, auto-switch to Rotate so the source is actually used.
+		if (app.pipeline.proxy_settings.proxy_mode === 'None') {
+			app.pipeline.proxy_settings.proxy_mode = 'Rotate';
+			console.log('[DataPanel] addProxySource: proxy_mode was None — auto-switched to Rotate');
+		}
 	}
 
 	function removeProxySource(index: number) {
@@ -364,7 +369,13 @@
 								...app.pipeline.proxy_settings.proxy_sources,
 								{ source_type: 'File', value: app.proxyPath, refresh_interval_secs: 0 },
 							];
-							console.log('[DataPanel] added proxy source:', app.proxyPath, '| total sources:', app.pipeline.proxy_settings.proxy_sources.length);
+							// Auto-switch mode from None → Rotate so the pool is actually used.
+							// Proxies added while mode=None are silently ignored by build_proxy_pool().
+							if (app.pipeline.proxy_settings.proxy_mode === 'None') {
+								app.pipeline.proxy_settings.proxy_mode = 'Rotate';
+								console.log('[DataPanel] proxy_mode was None — auto-switched to Rotate');
+							}
+							console.log('[DataPanel] added proxy source:', app.proxyPath, '| mode:', app.pipeline.proxy_settings.proxy_mode, '| total sources:', app.pipeline.proxy_settings.proxy_sources.length);
 						}}
 					>+ Add</button>
 				</div>

@@ -246,7 +246,6 @@ mod tests {
         assert!(code.contains("Ok(())"), "Should have Ok(())");
         assert!(code.len() > 100, "Should have at least boilerplate code");
     }
-}
 
     /// Test: KeyCheck stop_on_fail — validates early-exit optimization
     ///
@@ -367,3 +366,68 @@ mod tests {
 
         println!("\n=== stop_on_fail test: all 3 cases passed ✓ ===");
     }
+
+    /// Trace all variables set by HTTP request to verify KeyCheck sources work
+    #[tokio::test]
+    async fn test_keycheck_variable_trace() {
+        use crate::pipeline::block::*;
+        use crate::pipeline::BotStatus;
+        use crate::pipeline::engine::ExecutionContext;
+        use crate::sidecar::native::create_native_backend;
+        use uuid::Uuid;
+
+        let sidecar_tx = create_native_backend();
+
+        // Block 1: HttpRequest to httpbin
+        let mut http_block = Block::new(BlockType::HttpRequest);
+        if let BlockSettings::HttpRequest(ref mut s) = http_block.settings {
+            s.url = "https://httpbin.org/get".into();
+            s.method = "GET".into();
+            s.tls_client = crate::pipeline::block::TlsClient::RustTLS; // use native backend
+        }
+
+        // Block 2: KeyCheck — data.RESPONSECODE == 200 → Success
+        let mut kc = Block::new(BlockType::KeyCheck);
+        kc.settings = BlockSettings::KeyCheck(KeyCheckSettings {
+            keychains: vec![
+                Keychain {
+                    result: BotStatus::Success,
+                    conditions: vec![KeyCondition {
+                        source: "data.RESPONSECODE".into(),
+                        comparison: Comparison::EqualTo,
+                        value: "200".into(),
+                    }],
+                },
+            ],
+            stop_on_fail: false,
+        });
+
+        let blocks = vec![http_block, kc];
+        let mut ctx = ExecutionContext::new(Uuid::new_v4().to_string());
+        let result = ctx.execute_blocks(&blocks, &sidecar_tx).await;
+
+        println!("\n=== VARIABLE DUMP AFTER HTTP + KEYCHECK ===");
+        let snap = ctx.variables.snapshot();
+        let mut kv: Vec<_> = snap.iter().collect();
+        kv.sort_by_key(|(k, _)| k.clone());
+        for (k, v) in &kv {
+            let display = if v.len() > 80 { format!("{}...", &v[..80]) } else { v.to_string() };
+            println!("  {:40} = {}", k, display);
+        }
+        println!("\nfinal status  : {:?}", ctx.status);
+        println!("pipeline result: {:?}", result.map(|_| "Ok").map_err(|e| e.to_string()));
+
+        // Verify backward-compat variables are present
+        assert!(snap.contains_key("data.RESPONSECODE"),
+            "data.RESPONSECODE missing! Got keys: {:?}", snap.keys().collect::<Vec<_>>());
+        assert!(snap.contains_key("data.ADDRESS"), "data.ADDRESS missing!");
+        assert!(snap.contains_key("data.SOURCE"), "data.SOURCE missing!");
+
+        // Verify KeyCheck classified correctly
+        assert_eq!(ctx.status, BotStatus::Success,
+            "KeyCheck data.RESPONSECODE=200 → Success FAILED. data.RESPONSECODE={:?}",
+            snap.get("data.RESPONSECODE"));
+
+        println!("=== VARIABLE TRACE PASSED ✓ ===");
+    }
+}

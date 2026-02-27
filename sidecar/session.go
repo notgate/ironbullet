@@ -203,6 +203,14 @@ func handleHTTPRequest(req SidecarRequest) {
 		httpReq.Body = req.Body
 	}
 
+	// Bug-fix: follow_redirects and max_redirects were previously ignored.
+	// Use per-request fields so session-level defaults aren't clobbered.
+	if req.FollowRedirects != nil && !*req.FollowRedirects {
+		httpReq.DisableRedirects = true // returns 3xx directly without following
+	} else if req.MaxRedirects > 0 {
+		httpReq.MaxRedirects = uint(req.MaxRedirects)
+	}
+
 	resp, err := sw.Session.Do(httpReq)
 
 	elapsed := time.Since(start).Milliseconds()
