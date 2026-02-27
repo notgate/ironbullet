@@ -44,6 +44,7 @@ impl SessionPool {
             follow_redirects: Some(true),
             max_redirects: Some(8),
             ssl_verify: None,
+                    custom_ciphers: None,
 
         };
 
@@ -85,6 +86,7 @@ impl SessionPool {
             follow_redirects: None,
             max_redirects: None,
             ssl_verify: None,
+                    custom_ciphers: None,
 
         };
 

@@ -82,6 +82,8 @@ export interface HttpRequestSettings {
 	custom_cookies: string;
 	/** When false, skip TLS certificate verification (for debugging / self-signed certs) */
 	ssl_verify: boolean;
+	/** Dash-separated IANA cipher suite IDs — overrides browser profile defaults. Empty = use profile default. */
+	cipher_suites: string;
 }
 
 export interface ParseLRSettings {

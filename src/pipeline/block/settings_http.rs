@@ -26,6 +26,11 @@ pub struct HttpRequestSettings {
     /// When false, skip TLS certificate verification (for debugging / self-signed certs)
     #[serde(default = "default_ssl_verify")]
     pub ssl_verify: bool,
+    /// Optional dash-separated IANA cipher suite IDs to override browser defaults.
+    /// e.g. "4865-4866-4867-49195-49199-49196-49200-52393-52392"
+    /// Leave empty to use the browser profile's built-in cipher list.
+    #[serde(default)]
+    pub cipher_suites: String,
 }
 
 fn default_ssl_verify() -> bool { true }
@@ -60,6 +65,7 @@ impl Default for HttpRequestSettings {
             response_var: default_response_var(),
             custom_cookies: String::new(),
             ssl_verify: true,
+            cipher_suites: String::new(),
         }
     }
 }

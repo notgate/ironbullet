@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -59,6 +60,14 @@ func handleNewSession(req SidecarRequest) {
 	// TLS verification — ssl_verify: false skips cert checks (for testing / self-signed)
 	if req.SslVerify != nil && !*req.SslVerify {
 		session.InsecureSkipVerify = true
+	}
+
+	// Custom cipher suites — override the browser profile's default cipher list
+	if req.CustomCiphers != "" {
+		if err := applyCustomCiphers(session, browser, req.CustomCiphers); err != nil {
+			// Log but don't fail — fall back to browser default
+			fmt.Fprintf(os.Stderr, "[sidecar] custom_ciphers error: %v\n", err)
+		}
 	}
 
 	sessionsMu.Lock()
@@ -241,6 +250,36 @@ func handleHTTPRequest(req SidecarRequest) {
 		FinalURL: finalURL,
 		TimingMs: elapsed,
 	})
+}
+
+// defaultJA3ForBrowser returns a standard JA3 string for the given browser profile.
+// These are real-world fingerprints used to build a base for cipher suite overrides.
+func defaultJA3ForBrowser(browser string) string {
+	switch strings.ToLower(browser) {
+	case "firefox":
+		return "771,4865-4867-4866-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-21,29-23-24,0"
+	case "safari", "ios":
+		return "771,4865-4866-4867-49196-49195-52393-49200-49199-52392-49162-49161-49172-49171-157-156-53-47-49160-49170-10,0-23-65281-10-11-16-5-13-18-51-45-43-27,29-23-24-25,0"
+	case "edge":
+		return "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-21,29-23-24,0"
+	default: // chrome
+		return "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-21,29-23-24,0"
+	}
+}
+
+// applyCustomCiphers overrides the cipher suites in a session by injecting a custom
+// cipher list into the browser's default JA3 and re-applying the fingerprint.
+// ciphers should be dash-separated IANA decimal IDs, e.g. "4865-4866-4867-49195-49199"
+func applyCustomCiphers(session *azuretls.Session, browser, ciphers string) error {
+	baseJA3 := defaultJA3ForBrowser(browser)
+	parts := strings.SplitN(baseJA3, ",", 5)
+	if len(parts) != 5 {
+		return fmt.Errorf("invalid base JA3")
+	}
+	// Replace the cipher field (index 1) with the custom cipher list
+	parts[1] = strings.TrimSpace(ciphers)
+	customJA3 := strings.Join(parts, ",")
+	return session.ApplyJa3(customJA3, browser)
 }
 
 // enrichError adds context to common error messages to aid debugging

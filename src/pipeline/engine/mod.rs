@@ -292,6 +292,7 @@ impl ExecutionContext {
                     timeout: None, proxy: None, browser: None,
                     ja3: None, http2fp: None, follow_redirects: None, max_redirects: None,
                     ssl_verify: None,
+                    custom_ciphers: None,
 
                 };
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
