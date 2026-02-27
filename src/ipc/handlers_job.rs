@@ -147,7 +147,16 @@ pub(super) fn start_job(
 
             if is_proxy_check {
                 let pc_rx = s.job_manager.start_proxy_check_job(uuid, inner_handle.clone());
+
+                // Bug fix: send jobs_list NOW while we still hold the lock so the UI
+                // transitions from Queued → Running immediately (was staying "Queued" forever).
+                {
+                    let jobs = s.job_manager.list_jobs();
+                    let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                }
                 drop(s);
+
                 if let Some(mut hits_rx) = pc_rx {
                     let state2 = state.clone();
                     let state3 = state.clone();
@@ -162,11 +171,17 @@ pub(super) fn start_job(
                             let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
                             let _ = js_tx2.send(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())).await;
                         }
+
+                        // Bug fix: mark Completed AND push jobs_list so UI reflects
+                        // the finished state (was staying "Running" forever after completion).
                         let mut s = state3.lock().await;
                         if let Some(job) = s.job_manager.get_job_mut(uuid) {
                             job.state = ironbullet::runner::job::JobState::Completed;
                             job.completed = Some(chrono::Utc::now());
                         }
+                        let jobs = s.job_manager.list_jobs();
+                        let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
+                        let _ = js_tx2.send(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())).await;
                     });
                 }
                 return;
