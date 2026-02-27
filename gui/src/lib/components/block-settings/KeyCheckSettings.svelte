@@ -14,8 +14,16 @@
 		if (!block || block.settings.type !== 'KeyCheck') return;
 		const keychains: Keychain[] = [...block.settings.keychains, {
 			result: 'Success',
-			conditions: [{ source: 'data.RESPONSECODE', comparison: 'EqualTo', value: '200' }]
+			conditions: [{ source: 'data.RESPONSECODE', comparison: 'EqualTo', value: '200' }],
+			mode: 'And',
 		}];
+		updateSettings('keychains', keychains);
+	}
+
+	function setKeychainMode(ki: number, mode: 'And' | 'Or') {
+		if (!block || block.settings.type !== 'KeyCheck') return;
+		const keychains: Keychain[] = [...block.settings.keychains];
+		keychains[ki] = { ...keychains[ki], mode };
 		updateSettings('keychains', keychains);
 	}
 
@@ -81,18 +89,41 @@
 		</div>
 		{#each block.settings.keychains as keychain, ki}
 			<div class="bg-background rounded p-2 border border-border overflow-hidden">
+				<!-- Header row: Result + AND/OR toggle + Remove -->
 				<div class="flex items-center gap-2 mb-1.5">
-					<span class="text-[10px] text-muted-foreground">Result:</span>
+					<span class="text-[10px] text-muted-foreground shrink-0">Result:</span>
 					<SkeuSelect value={keychain.result}
 						onValueChange={(v) => updateKeychainResult(ki, v)}
 						options={[{value:'Success',label:'SUCCESS'},{value:'Fail',label:'FAIL'},{value:'Ban',label:'BAN'},{value:'Retry',label:'RETRY'},{value:'Custom',label:'CUSTOM'}]}
 						class="text-[10px]"
 					/>
+					<!-- AND / OR mode toggle -->
+					<div class="flex rounded border border-border overflow-hidden ml-1 shrink-0">
+						{#each (['And', 'Or'] as const) as m}
+							<button
+								class="px-2 py-0.5 text-[10px] font-medium transition-colors
+									{(keychain.mode ?? 'And') === m
+										? 'bg-primary text-primary-foreground'
+										: 'bg-background text-muted-foreground hover:bg-accent/20'}"
+								onclick={() => setKeychainMode(ki, m)}
+								title={m === 'And' ? 'ALL conditions must match' : 'ANY one condition is enough'}
+							>{m === 'And' ? 'AND' : 'OR'}</button>
+						{/each}
+					</div>
 					<div class="flex-1"></div>
 					<button class="text-[10px] text-red hover:underline" onclick={() => removeKeychain(ki)}>Remove</button>
 				</div>
+
+				<!-- Conditions with AND/OR dividers between them -->
 				{#each keychain.conditions as cond, ci}
-					<div class="flex gap-1 mb-1 items-center min-w-0">
+					{#if ci > 0}
+						<div class="flex items-center gap-1 my-0.5">
+							<div class="flex-1 border-t border-border/50"></div>
+							<span class="text-[9px] text-muted-foreground/60 font-medium px-1">{(keychain.mode ?? 'And') === 'And' ? 'AND' : 'OR'}</span>
+							<div class="flex-1 border-t border-border/50"></div>
+						</div>
+					{/if}
+					<div class="flex gap-1 items-center min-w-0">
 						<div class="relative flex-1 min-w-0">
 							<VariableInput value={cond.source} placeholder="data.SOURCE" class="w-full {smallInputCls}"
 								oninput={(e) => updateConditionField(ki, ci, 'source', (e.target as HTMLInputElement).value)} />

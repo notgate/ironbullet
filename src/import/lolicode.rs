@@ -276,6 +276,7 @@ fn convert_keycheck(label: &str, lines: &[String]) -> Option<Block> {
                 current_keychain = Some(Keychain {
                     result: status,
                     conditions: Vec::new(),
+                    mode: crate::pipeline::block::settings_check::KeychainMode::And,
                 });
             } else if trimmed.starts_with("STRINGKEY ") {
                 if let Some(ref mut kc) = current_keychain {

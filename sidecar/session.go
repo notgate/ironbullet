@@ -12,8 +12,12 @@ import (
 )
 
 type SessionWrapper struct {
-	Session *azuretls.Session
-	Browser string
+	Session      *azuretls.Session
+	Browser      string
+	// CurrentProxy tracks the proxy currently configured on this session.
+	// SetProxy is expensive (rebuilds transport state in azuretls), so we
+	// skip the call when the proxy hasn't changed since the last request.
+	CurrentProxy string
 }
 
 func handleNewSession(req SidecarRequest) {
@@ -168,9 +172,22 @@ func handleHTTPRequest(req SidecarRequest) {
 		}
 	}
 
-	// Set per-request proxy if different
-	if req.Proxy != "" {
-		sw.Session.SetProxy(req.Proxy)
+	// Only call SetProxy when the proxy actually changes.
+	// azuretls rebuilds internal transport state on SetProxy, which tears down
+	// any keep-alive connections — calling it redundantly on every request
+	// within the same pipeline execution (same proxy, multiple HTTP blocks)
+	// forces a fresh TCP+TLS handshake each time and kills throughput.
+	if req.Proxy != "" && req.Proxy != sw.CurrentProxy {
+		if err := sw.Session.SetProxy(req.Proxy); err != nil {
+			// Non-fatal: log and continue with previous proxy config
+			fmt.Fprintf(os.Stderr, "[sidecar] SetProxy error for %s: %v\n", req.Proxy, err)
+		} else {
+			sw.CurrentProxy = req.Proxy
+		}
+	} else if req.Proxy == "" && sw.CurrentProxy != "" {
+		// Proxy explicitly cleared — reset to direct connection
+		sw.Session.SetProxy("")
+		sw.CurrentProxy = ""
 	}
 
 	// Build ordered headers

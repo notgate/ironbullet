@@ -1,6 +1,6 @@
 mod settings_http;
 mod settings_parse;
-mod settings_check;
+pub(crate) mod settings_check;
 pub mod settings_functions;
 mod settings_control;
 mod settings_browser;

@@ -3,9 +3,13 @@ use helpers::{urlencoding, urldecoding};
 
 impl ExecutionContext {
     pub(super) fn execute_keycheck(&mut self, settings: &KeyCheckSettings) -> crate::error::Result<()> {
+        use crate::pipeline::block::settings_check::KeychainMode;
         for keychain in &settings.keychains {
-            let all_match = keychain.conditions.iter().all(|cond| self.evaluate_condition(cond));
-            if all_match {
+            let matched = match keychain.mode {
+                KeychainMode::And => keychain.conditions.iter().all(|cond| self.evaluate_condition(cond)),
+                KeychainMode::Or  => keychain.conditions.iter().any(|cond| self.evaluate_condition(cond)),
+            };
+            if matched {
                 self.status = keychain.result;
                 break;
             }

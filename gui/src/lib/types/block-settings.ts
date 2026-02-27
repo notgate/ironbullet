@@ -183,6 +183,8 @@ export interface KeyCheckSettings {
 export interface Keychain {
 	result: BotStatus;
 	conditions: KeyCondition[];
+	/** How conditions are joined. 'And' = all must match; 'Or' = any one is enough. */
+	mode: 'And' | 'Or';
 }
 
 export interface KeyCondition {

@@ -324,6 +324,7 @@ fn parse_svb_keycheck(label: &str, disabled: bool, lines: &[&str], start: usize)
                 current_keychain = Some(Keychain {
                     result: status,
                     conditions: Vec::new(),
+                    mode: crate::pipeline::block::settings_check::KeychainMode::And,
                 });
             } else if trimmed.starts_with("KEY ") {
                 if let Some(ref mut kc) = current_keychain {
