@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 fn default_smtp_action() -> String { "VERIFY".into() }
+fn default_ssl_verify() -> bool { true }
 fn default_ftp_command() -> String { "LIST".into() }
 fn default_imap_command() -> String { "LOGIN".into() }
 fn default_pop_command() -> String { "STAT".into() }
@@ -15,12 +16,14 @@ pub struct TcpRequestSettings {
     pub output_var: String,
     pub timeout_ms: u64,
     pub use_tls: bool,
+    #[serde(default = "default_ssl_verify")]
+    pub ssl_verify: bool,
     pub capture: bool,
 }
 
 impl Default for TcpRequestSettings {
     fn default() -> Self {
-        Self { host: String::new(), port: 80, data: String::new(), output_var: "TCP_RESPONSE".into(), timeout_ms: 5000, use_tls: false, capture: false }
+        Self { host: String::new(), port: 80, data: String::new(), output_var: "TCP_RESPONSE".into(), timeout_ms: 5000, use_tls: false, ssl_verify: true, capture: false }
     }
 }
 
@@ -99,6 +102,8 @@ pub struct ImapRequestSettings {
     pub username: String,
     pub password: String,
     pub use_tls: bool,
+    #[serde(default = "default_ssl_verify")]
+    pub ssl_verify: bool,
     #[serde(default = "default_imap_command")]
     pub command: String,
     /// Mailbox name for SELECT / FETCH / SEARCH actions
@@ -117,7 +122,7 @@ impl Default for ImapRequestSettings {
         Self {
             host: String::new(), port: 993,
             username: String::new(), password: String::new(),
-            use_tls: true, command: "LOGIN".into(),
+            use_tls: true, ssl_verify: true, command: "LOGIN".into(),
             mailbox: "INBOX".into(), message_num: 1,
             output_var: "IMAP_RESPONSE".into(), timeout_ms: 10000, capture: false,
         }
@@ -131,6 +136,8 @@ pub struct SmtpRequestSettings {
     pub username: String,
     pub password: String,
     pub use_tls: bool,
+    #[serde(default = "default_ssl_verify")]
+    pub ssl_verify: bool,
     pub command: String,
     /// "VERIFY" (just login check) or "SEND_EMAIL" (full email delivery)
     #[serde(default = "default_smtp_action")]
@@ -157,7 +164,7 @@ impl Default for SmtpRequestSettings {
         Self {
             host: String::new(), port: 587,
             username: String::new(), password: String::new(),
-            use_tls: true, command: "EHLO".into(),
+            use_tls: true, ssl_verify: true, command: "EHLO".into(),
             action: "VERIFY".into(),
             from: String::new(), to: String::new(),
             subject: String::new(), body_template: String::new(),
@@ -173,6 +180,8 @@ pub struct PopRequestSettings {
     pub username: String,
     pub password: String,
     pub use_tls: bool,
+    #[serde(default = "default_ssl_verify")]
+    pub ssl_verify: bool,
     #[serde(default = "default_pop_command")]
     pub command: String,
     /// Message number for RETR / DELE
@@ -188,7 +197,7 @@ impl Default for PopRequestSettings {
         Self {
             host: String::new(), port: 995,
             username: String::new(), password: String::new(),
-            use_tls: true, command: "STAT".into(),
+            use_tls: true, ssl_verify: true, command: "STAT".into(),
             message_num: 1,
             output_var: "POP_RESPONSE".into(), timeout_ms: 10000, capture: false,
         }

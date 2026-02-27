@@ -80,6 +80,8 @@ export interface HttpRequestSettings {
 	http_version: string;
 	response_var: string;
 	custom_cookies: string;
+	/** When false, skip TLS certificate verification (for debugging / self-signed certs) */
+	ssl_verify: boolean;
 }
 
 export interface ParseLRSettings {
@@ -271,6 +273,7 @@ export interface TcpRequestSettings {
 	output_var: string;
 	timeout_ms: number;
 	use_tls: boolean;
+	ssl_verify: boolean;
 	capture: boolean;
 }
 
@@ -317,6 +320,7 @@ export interface ImapRequestSettings {
 	username: string;
 	password: string;
 	use_tls: boolean;
+	ssl_verify: boolean;
 	command: string;
 	/** Mailbox for SELECT / FETCH / SEARCH actions */
 	mailbox: string;
@@ -333,6 +337,7 @@ export interface SmtpRequestSettings {
 	username: string;
 	password: string;
 	use_tls: boolean;
+	ssl_verify: boolean;
 	command: string;
 	/** "VERIFY" or "SEND_EMAIL" */
 	action: string;
@@ -351,6 +356,7 @@ export interface PopRequestSettings {
 	username: string;
 	password: string;
 	use_tls: boolean;
+	ssl_verify: boolean;
 	command: string;
 	/** Message number for RETR / DELE actions */
 	message_num: number;

@@ -291,6 +291,8 @@ impl ExecutionContext {
                     method: None, url: None, headers: None, body: None,
                     timeout: None, proxy: None, browser: None,
                     ja3: None, http2fp: None, follow_redirects: None, max_redirects: None,
+                    ssl_verify: None,
+
                 };
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
                 let _ = sidecar_tx.send((req, resp_tx)).await;

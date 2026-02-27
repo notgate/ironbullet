@@ -42,6 +42,8 @@ pub(crate) async fn run_worker(
         http2fp: pipeline.browser_settings.http2_fingerprint.clone(),
         follow_redirects: Some(true),
         max_redirects: Some(8),
+        ssl_verify: None,
+
     };
     let (resp_tx, _) = oneshot::channel();
     let _ = sidecar_tx.send((new_session_req, resp_tx)).await;
@@ -127,6 +129,8 @@ pub(crate) async fn run_worker(
         method: None, url: None, headers: None, body: None, timeout: None,
         proxy: None, browser: None, ja3: None, http2fp: None,
         follow_redirects: None, max_redirects: None,
+        ssl_verify: None,
+
     };
     let (resp_tx, _) = oneshot::channel();
     let _ = sidecar_tx.send((close_req, resp_tx)).await;

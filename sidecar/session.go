@@ -56,6 +56,11 @@ func handleNewSession(req SidecarRequest) {
 		session.MaxRedirects = uint(req.MaxRedirects)
 	}
 
+	// TLS verification — ssl_verify: false skips cert checks (for testing / self-signed)
+	if req.SslVerify != nil && !*req.SslVerify {
+		session.InsecureSkipVerify = true
+	}
+
 	sessionsMu.Lock()
 	sessions[req.Session] = &SessionWrapper{
 		Session: session,
@@ -138,11 +143,12 @@ func handleHTTPRequest(req SidecarRequest) {
 	if !ok {
 		// Auto-create session if it doesn't exist
 		handleNewSession(SidecarRequest{
-			ID:      req.ID + "_init",
-			Action:  "new_session",
-			Session: req.Session,
-			Browser: req.Browser,
-			Proxy:   req.Proxy,
+			ID:        req.ID + "_init",
+			Action:    "new_session",
+			Session:   req.Session,
+			Browser:   req.Browser,
+			Proxy:     req.Proxy,
+			SslVerify: req.SslVerify,
 		})
 		sessionsMu.RLock()
 		sw, ok = sessions[req.Session]
@@ -193,9 +199,12 @@ func handleHTTPRequest(req SidecarRequest) {
 	elapsed := time.Since(start).Milliseconds()
 
 	if err != nil {
+		// Enrich error message for common failure modes
+		errMsg := err.Error()
+		enriched := enrichError(errMsg)
 		sendResponse(SidecarResponse{
 			ID:       req.ID,
-			Error:    err.Error(),
+			Error:    enriched,
 			TimingMs: elapsed,
 		})
 		return
@@ -232,6 +241,28 @@ func handleHTTPRequest(req SidecarRequest) {
 		FinalURL: finalURL,
 		TimingMs: elapsed,
 	})
+}
+
+// enrichError adds context to common error messages to aid debugging
+func enrichError(msg string) string {
+	switch {
+	case strings.Contains(msg, "SEC_E_ILLEGAL_MESSAGE"):
+		return msg + " [TLS: Server rejected handshake — try enabling a different JA3 fingerprint or set ssl_verify=false for debugging]"
+	case strings.Contains(msg, "tls: handshake failure") || strings.Contains(msg, "handshake failure"):
+		return msg + " [TLS handshake failed — server may require specific cipher suites or SNI. Try a Chrome JA3 fingerprint]"
+	case strings.Contains(msg, "certificate") && strings.Contains(msg, "expired"):
+		return msg + " [TLS: Server certificate expired — set ssl_verify=false to bypass (testing only)]"
+	case strings.Contains(msg, "certificate signed by unknown authority"):
+		return msg + " [TLS: Self-signed/unknown CA — set ssl_verify=false to bypass (testing only)]"
+	case strings.Contains(msg, "EOF") || strings.Contains(msg, "empty response"):
+		return msg + " [Empty response — server closed connection. Common causes: TLS fingerprint rejected, IP banned, proxy issue]"
+	case strings.Contains(msg, "connection refused"):
+		return msg + " [Connection refused — server is down or port is blocked]"
+	case strings.Contains(msg, "no such host") || strings.Contains(msg, "i/o timeout"):
+		return msg + " [DNS/network error — check URL and proxy settings]"
+	default:
+		return msg
+	}
 }
 
 func getCookies(header http.Header) map[string]string {

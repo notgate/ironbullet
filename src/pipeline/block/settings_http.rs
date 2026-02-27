@@ -23,7 +23,12 @@ pub struct HttpRequestSettings {
     /// Custom cookies to send with the request (one per line: name=value)
     #[serde(default)]
     pub custom_cookies: String,
+    /// When false, skip TLS certificate verification (for debugging / self-signed certs)
+    #[serde(default = "default_ssl_verify")]
+    pub ssl_verify: bool,
 }
+
+fn default_ssl_verify() -> bool { true }
 
 fn default_response_var() -> String {
     "SOURCE".to_string()
@@ -54,6 +59,7 @@ impl Default for HttpRequestSettings {
             http_version: default_http_version(),
             response_var: default_response_var(),
             custom_cookies: String::new(),
+            ssl_verify: true,
         }
     }
 }

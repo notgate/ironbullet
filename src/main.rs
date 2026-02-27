@@ -15,6 +15,39 @@ use include_dir::{include_dir, Dir};
 use ironbullet::config::{load_config, save_config};
 use ipc::{AppState, IpcCmd};
 
+/// Check if WebView2 runtime is installed (Windows only).
+/// Checks HKCU and HKLM for the WebView2 package registry key.
+#[cfg(target_os = "windows")]
+fn check_webview2_available() -> bool {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::System::Registry::{RegOpenKeyExW, RegCloseKey, HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, KEY_READ};
+    use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+
+    let subkeys = [
+        r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}",
+    ];
+
+    let hives = [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER];
+
+    for hive in hives {
+        for subkey in &subkeys {
+            let wide: Vec<u16> = OsStr::new(subkey).encode_wide().chain(std::iter::once(0)).collect();
+            let mut hkey = 0isize;
+            let ret = unsafe { RegOpenKeyExW(hive, wide.as_ptr(), 0, KEY_READ, &mut hkey) };
+            if ret == ERROR_SUCCESS as i32 {
+                unsafe { RegCloseKey(hkey); }
+                return true;
+            }
+        }
+    }
+
+    // Also check if the DLL is loadable as a fallback
+    false
+}
+
 /// Native Win32 title bar drag via WM_NCHITTEST.
 /// Returns HTCAPTION for the top 28px (title bar) so Windows handles
 /// drag natively — no IPC round-trip, works even with webview dialog overlays.
@@ -278,6 +311,27 @@ fn run_gui() {
     let state = Arc::new(Mutex::new(AppState::new()));
     let ipc_proxy = proxy.clone();
     let ipc_state = state.clone();
+
+    // ── WebView2 availability check (Windows only) ──────────────────────────────
+    #[cfg(target_os = "windows")]
+    {
+        let wv2_available = check_webview2_available();
+        if !wv2_available {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONERROR};
+            let title: Vec<u16> = "IronBullet — Missing Dependency\0".encode_utf16().collect();
+            let msg: Vec<u16> = concat!(
+                "WebView2 runtime was not found.\n\n",
+                "IronBullet requires the Microsoft Edge WebView2 runtime to run.\n",
+                "Please install it from:\n\n",
+                "https://go.microsoft.com/fwlink/p/?LinkId=2124703\n\n",
+                "After installing, restart IronBullet.\0"
+            ).encode_utf16().collect();
+            unsafe {
+                MessageBoxW(0, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
+            }
+            std::process::exit(1);
+        }
+    }
 
     let webview = WebViewBuilder::new()
         .with_devtools(true)

@@ -108,6 +108,8 @@ pub(super) fn save_pipeline(
             };
             if let Some(save_path) = save_path {
                 let mut s = state.lock().await;
+                // Track current save path for auto-save
+                s.pipeline_path = Some(save_path.clone());
                 let config = RfxConfig::from_pipeline(&s.pipeline);
                 match config.save_to_file(&save_path) {
                     Ok(()) => {
@@ -161,6 +163,7 @@ pub(super) fn load_pipeline(
                     Ok(config) => {
                         let mut s = state.lock().await;
                         s.pipeline = config.pipeline;
+                        s.pipeline_path = Some(path_str.clone());
                         // Track in recent configs
                         let pipeline_name = s.pipeline.name.clone();
                         s.config.recent_configs.retain(|r| r.path != path_str);
