@@ -136,6 +136,7 @@ impl Default for Job {
                 cpm: 0.0,
                 active_threads: 0,
                 elapsed_secs: 0.0,
+                recent_results: Vec::new(),
             },
             job_type: JobType::Config,
             proxy_check_url: default_proxy_check_url(),

@@ -6,14 +6,34 @@ pub mod job;
 pub mod job_manager;
 
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::pipeline::Pipeline;
 use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 use data_pool::DataPool;
 use proxy_pool::ProxyPool;
+
+/// Single check result pushed to the live feed ring buffer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResultEntry {
+    /// The data line that was checked (e.g. "user:pass")
+    pub data_line: String,
+    /// Outcome: "SUCCESS" | "FAIL" | "BAN" | "RETRY" | "ERROR" | "NONE"
+    pub status: String,
+    /// Proxy used for this check, if any
+    pub proxy: Option<String>,
+    /// Captures from a successful check (non-empty only for SUCCESS)
+    #[serde(default)]
+    pub captures: std::collections::HashMap<String, String>,
+    /// Error message when status == "ERROR"
+    #[serde(default)]
+    pub error: Option<String>,
+    /// Wall-clock millis since epoch
+    pub ts_ms: u64,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerStats {
@@ -27,7 +47,14 @@ pub struct RunnerStats {
     pub cpm: f64,
     pub active_threads: usize,
     pub elapsed_secs: f64,
+    /// Last ≤100 results from the ring buffer — powers the live result log in the UI.
+    #[serde(default)]
+    pub recent_results: Vec<ResultEntry>,
 }
+
+/// Capacity of the live result ring buffer.  100 entries ≈ last few seconds
+/// of work at typical CPM rates; keeping it small avoids lock contention.
+const RESULT_FEED_CAP: usize = 100;
 
 pub struct RunnerOrchestrator {
     pipeline: Pipeline,
@@ -41,6 +68,8 @@ pub struct RunnerOrchestrator {
     hits_tx: mpsc::Sender<HitResult>,
     output_writer: Option<Arc<output::OutputWriter>>,
     plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
+    /// Ring buffer of recent per-check results for the live UI log.
+    result_feed: Arc<Mutex<VecDeque<ResultEntry>>>,
 }
 
 pub(crate) struct RunnerStatsInner {
@@ -100,6 +129,7 @@ impl RunnerOrchestrator {
             hits_tx,
             output_writer: ow,
             plugin_manager,
+            result_feed: Arc::new(Mutex::new(VecDeque::with_capacity(RESULT_FEED_CAP))),
         }
     }
 
@@ -126,6 +156,7 @@ impl RunnerOrchestrator {
             let hits_tx = self.hits_tx.clone();
             let output_writer = self.output_writer.clone();
             let plugin_manager = self.plugin_manager.clone();
+            let result_feed = self.result_feed.clone();
 
             let handle = tokio::spawn(async move {
                 worker::run_worker(
@@ -139,6 +170,7 @@ impl RunnerOrchestrator {
                     hits_tx,
                     output_writer,
                     plugin_manager,
+                    result_feed,
                 ).await;
             });
             handles.push(handle);
@@ -171,6 +203,11 @@ impl RunnerOrchestrator {
         let processed = self.stats.processed.load(Ordering::Relaxed);
         let cpm = if elapsed_secs > 0.0 { processed as f64 / elapsed_secs * 60.0 } else { 0.0 };
 
+        // Snapshot the live feed (non-blocking try_lock; return empty if contended)
+        let recent_results = self.result_feed.try_lock()
+            .map(|feed| feed.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+
         RunnerStats {
             total: self.data_pool.total(),
             processed,
@@ -182,6 +219,7 @@ impl RunnerOrchestrator {
             cpm,
             active_threads: self.stats.active_threads.load(Ordering::Relaxed),
             elapsed_secs,
+            recent_results,
         }
     }
 
