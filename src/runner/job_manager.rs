@@ -93,6 +93,10 @@ fn parse_proxy_for_pool(line: &str) -> Option<ProxyEntry> {
 pub struct ProxyCheckHandle {
     pub processed: Arc<std::sync::atomic::AtomicUsize>,
     pub hits:      Arc<std::sync::atomic::AtomicUsize>,
+    /// Dead proxies (connected but no HTTP response / timeout)
+    pub fails:     Arc<std::sync::atomic::AtomicUsize>,
+    /// Error proxies (couldn't even build HTTP client for this proxy)
+    pub errors:    Arc<std::sync::atomic::AtomicUsize>,
     pub total:     usize,
     pub running:   Arc<std::sync::atomic::AtomicBool>,
     pub start_ms:  u64,
@@ -112,10 +116,10 @@ impl ProxyCheckHandle {
             total:    self.total,
             processed,
             hits:     self.hits.load(Ordering::Relaxed),
-            fails:    0,
-            bans:     0,
+            fails:    self.fails.load(Ordering::Relaxed),
+            bans:     0, // proxy checks don't have a ban concept
             retries:  0,
-            errors:   0,
+            errors:   self.errors.load(Ordering::Relaxed),
             cpm,
             active_threads: 0,
             elapsed_secs,
@@ -392,6 +396,8 @@ impl JobManager {
         // ── Atomic stats shared with every spawned task ────────────────────
         let processed_ctr = Arc::new(AtomicUsize::new(0));
         let hits_ctr      = Arc::new(AtomicUsize::new(0));
+        let fails_ctr     = Arc::new(AtomicUsize::new(0));
+        let errors_ctr    = Arc::new(AtomicUsize::new(0));
         let running_flag  = Arc::new(AtomicBool::new(true));
 
         let start_ms = std::time::SystemTime::now()
@@ -403,6 +409,8 @@ impl JobManager {
         self.proxy_handles.insert(id, ProxyCheckHandle {
             processed: processed_ctr.clone(),
             hits:      hits_ctr.clone(),
+            fails:     fails_ctr.clone(),
+            errors:    errors_ctr.clone(),
             total,
             running:   running_flag.clone(),
             start_ms,
@@ -412,12 +420,14 @@ impl JobManager {
         let semaphore = Arc::new(tokio::sync::Semaphore::new(thread_count));
 
         for proxy in proxies {
-            let tx          = hits_tx.clone();
-            let url         = check_url.clone();
-            let sem         = semaphore.clone();
-            let running     = running_flag.clone();
-            let processed   = processed_ctr.clone();
-            let hits        = hits_ctr.clone();
+            let tx        = hits_tx.clone();
+            let url       = check_url.clone();
+            let sem       = semaphore.clone();
+            let running   = running_flag.clone();
+            let processed = processed_ctr.clone();
+            let hits      = hits_ctr.clone();
+            let fails     = fails_ctr.clone();
+            let errors    = errors_ctr.clone();
 
             handle.spawn(async move {
                 let _permit = sem.acquire().await.ok();
@@ -429,33 +439,52 @@ impl JobManager {
                 let proxy_url = if proxy.starts_with("http://")
                     || proxy.starts_with("https://")
                     || proxy.starts_with("socks5://")
+                    || proxy.starts_with("socks4://")
                 {
                     proxy.clone()
                 } else {
                     format!("http://{}", proxy)
                 };
 
-                let is_alive = match reqwest::Client::builder()
+                // Build client first — a bad proxy URL can fail at this stage
+                let client_result = reqwest::Client::builder()
                     .proxy(reqwest::Proxy::all(&proxy_url)
                         .unwrap_or_else(|_| reqwest::Proxy::all("http://127.0.0.1:1").unwrap()))
                     .timeout(std::time::Duration::from_secs(10))
-                    .build()
-                {
-                    Ok(client) => client.get(&url).send().await.is_ok(),
-                    Err(_)     => false,
-                };
+                    .build();
 
+                // Always increment processed regardless of outcome
+                processed.fetch_add(1, Ordering::Relaxed);
                 let latency_ms = start.elapsed().as_millis();
 
-                // Always increment processed (alive or dead)
-                processed.fetch_add(1, Ordering::Relaxed);
-
-                if is_alive {
-                    hits.fetch_add(1, Ordering::Relaxed);
-                    let mut captures = std::collections::HashMap::new();
-                    captures.insert("status".into(), "alive".into());
-                    captures.insert("latency_ms".into(), latency_ms.to_string());
-                    let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
+                match client_result {
+                    Err(_) => {
+                        // Client build failed (invalid proxy URL / system error)
+                        errors.fetch_add(1, Ordering::Relaxed);
+                        let mut captures = std::collections::HashMap::new();
+                        captures.insert("status".into(), "error".into());
+                        let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
+                    }
+                    Ok(client) => {
+                        match client.get(&url).send().await {
+                            Ok(_) => {
+                                // Proxy is alive — counts as a Hit
+                                hits.fetch_add(1, Ordering::Relaxed);
+                                let mut captures = std::collections::HashMap::new();
+                                captures.insert("status".into(), "alive".into());
+                                captures.insert("latency_ms".into(), latency_ms.to_string());
+                                let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
+                            }
+                            Err(_) => {
+                                // Proxy is dead (timeout, refused, etc.) — counts as a Fail
+                                fails.fetch_add(1, Ordering::Relaxed);
+                                let mut captures = std::collections::HashMap::new();
+                                captures.insert("status".into(), "dead".into());
+                                captures.insert("latency_ms".into(), latency_ms.to_string());
+                                let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
+                            }
+                        }
+                    }
                 }
             });
         }

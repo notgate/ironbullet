@@ -269,7 +269,19 @@ export function registerCallbacks() {
 			case 'jobs_list':
 				if (resp.data && Array.isArray(resp.data)) {
 					console.log('[IPC] jobs_list: received', (resp.data as any[]).length, 'jobs');
-					app.jobs = resp.data as any;
+					const newJobsList = resp.data as any[];
+					// Prune jobHitsDb entries for jobs that no longer exist
+					const liveJobIds = new Set(newJobsList.map((j: any) => j.id));
+					const currentDb = app.jobHitsDb;
+					const staleIds = Object.keys(currentDb).filter(id => !liveJobIds.has(id));
+					if (staleIds.length > 0) {
+						const pruned: typeof currentDb = {};
+						for (const [k, v] of Object.entries(currentDb)) {
+							if (liveJobIds.has(k)) pruned[k] = v;
+						}
+						app.jobHitsDb = pruned;
+					}
+					app.jobs = newJobsList;
 				}
 				break;
 			case 'job_stats_update':
@@ -282,32 +294,40 @@ export function registerCallbacks() {
 				break;
 			case 'runner_hit':
 				if (resp.data) {
-					const hit = resp.data as { data_line: string; captures: Record<string, string>; proxy: string | null };
-					const stamped = { ...hit, received_at: new Date().toISOString() };
-					// Mutate in-place (no spread) — avoids full-array copy on every hit.
+					const hit = resp.data as { job_id?: string; data_line: string; captures: Record<string, string>; proxy: string | null };
+					const stamped = { data_line: hit.data_line, captures: hit.captures, proxy: hit.proxy, received_at: new Date().toISOString() };
+					// Global live feed — always push regardless of status.
 					// Drop oldest 500 when we reach 5 000 to stay under the render budget.
 					if (app.hits.length >= 5000) (app.hits as any[]).splice(0, 500);
 					(app.hits as any[]).push(stamped);
+					// Per-job hits DB — only store "real" hits (alive proxies / config hits).
+					// Dead/error proxy results flow through the live feed only.
+					const status = hit.captures?.status;
+					const isActualHit = !status || status === 'alive';
+					if (isActualHit && hit.job_id) {
+						const db = app.jobHitsDb;
+						if (!db[hit.job_id]) {
+							// Svelte 5: assign a new object to trigger reactivity on first insert
+							app.jobHitsDb = { ...db, [hit.job_id]: [stamped] };
+						} else {
+							// In-place push — Svelte 5 proxy tracks array mutations
+							if (db[hit.job_id].length >= 10000) (db[hit.job_id] as any[]).splice(0, 500);
+							(db[hit.job_id] as any[]).push(stamped);
+						}
+					}
 				}
 				break;
 			case 'job_hits': {
 				// Backend returns { id: string, hits: HitResult[] }
-				// Used for initial load / manual refresh only (not for live updates).
-				// Append ONLY new entries so we don't trigger a full list re-render on every poll.
+				// Used for Hits Database panel: on-demand fetch / manual refresh.
+				// Replaces the jobHitsDb entry for this job with the full snapshot from the backend.
 				const jobHitsPayload = resp.data as { id: string; hits: Array<{ data_line: string; captures: Record<string, string>; proxy: string | null }> } | null;
 				if (jobHitsPayload && Array.isArray(jobHitsPayload.hits)) {
-					const incoming = jobHitsPayload.hits;
-					const currentCount = (app as any)._jobHitSeen ?? 0;
-					const newSlice = incoming.slice(currentCount);
-					if (newSlice.length > 0) {
-						// Keep app.hits within the render budget
-						const combined = (app.hits as any[]).concat(
-							newSlice.map((h: any) => ({ ...h, received_at: new Date().toISOString() }))
-						);
-						app.hits = combined.length > 5000 ? combined.slice(-5000) : combined;
-						(app as any)._jobHitSeen = incoming.length;
-						console.log(`[IPC] job_hits: appended ${newSlice.length} new hits (total seen: ${incoming.length})`);
-					}
+					const { id: jobId, hits: incoming } = jobHitsPayload;
+					const stamped = incoming.map((h: any) => ({ ...h, received_at: h.received_at ?? new Date().toISOString() }));
+					// Full replace — this is a fresh snapshot from the DB, not an incremental append.
+					app.jobHitsDb = { ...app.jobHitsDb, [jobId]: stamped };
+					console.log(`[IPC] job_hits: loaded ${stamped.length} hits for job ${jobId}`);
 				} else {
 					console.warn('[IPC] job_hits: unexpected payload shape', resp.data);
 				}

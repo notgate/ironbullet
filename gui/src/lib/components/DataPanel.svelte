@@ -13,6 +13,7 @@
 	import Link from '@lucide/svelte/icons/link';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import Download from '@lucide/svelte/icons/download';
 
 	function browseProxies() {
 		send('browse_file', { field: 'proxies' });
@@ -115,6 +116,67 @@
 	}
 
 	onDestroy(() => {});
+
+	// ── Hits Database ──────────────────────────────────────────────────────
+	let selectedHitsJobId = $state<string | null>(null);
+
+	// Derived: hits array for the currently selected job
+	const hitsForJob = $derived(
+		selectedHitsJobId ? (app.jobHitsDb[selectedHitsJobId] ?? []) : []
+	);
+
+	// If the selected job gets deleted, clear selection automatically
+	$effect(() => {
+		if (selectedHitsJobId && !app.jobs.find((j: any) => j.id === selectedHitsJobId)) {
+			selectedHitsJobId = null;
+		}
+	});
+
+	// Respond to external navigation requests (e.g. clicking "View Hits" in JobMonitor)
+	$effect(() => {
+		const id = app.hitsDbJobId;
+		if (id && id !== selectedHitsJobId) {
+			selectHitsJob(id);
+			app.hitsDbJobId = null; // consume the signal
+		}
+	});
+
+	function selectHitsJob(id: string) {
+		selectedHitsJobId = id || null;
+		if (selectedHitsJobId) {
+			// Fetch latest snapshot from backend on selection
+			send('get_job_hits', { id: selectedHitsJobId });
+		}
+	}
+
+	function refreshHits() {
+		if (selectedHitsJobId) {
+			send('get_job_hits', { id: selectedHitsJobId });
+		}
+	}
+
+	function exportHitsTxt() {
+		if (!hitsForJob.length) return;
+		const lines = hitsForJob.map(h => h.data_line).join('\n');
+		const blob = new Blob([lines], { type: 'text/plain' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a'); a.href = url; a.download = 'hits.txt'; a.click();
+		URL.revokeObjectURL(url);
+	}
+
+	function exportHitsCsv() {
+		if (!hitsForJob.length) return;
+		const cols = [...new Set(hitsForJob.flatMap(h => Object.keys(h.captures ?? {})))];
+		const header = ['data_line', 'proxy', ...cols].join(',');
+		const rows = hitsForJob.map(h =>
+			[h.data_line, h.proxy ?? '', ...cols.map(c => h.captures?.[c] ?? '')].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+		);
+		const csv = [header, ...rows].join('\n');
+		const blob = new Blob([csv], { type: 'text/csv' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a'); a.href = url; a.download = 'hits.csv'; a.click();
+		URL.revokeObjectURL(url);
+	}
 </script>
 
 <div class="flex flex-col h-full bg-surface p-2 space-y-2.5 overflow-y-auto">
@@ -420,6 +482,103 @@
 				/>
 				<p class="text-[9px] text-muted-foreground mt-0.5">HTTP/2 SETTINGS frame + priority fingerprint</p>
 			</div>
+		</div>
+	</div>
+
+	<!-- ── Hits Database ──────────────────────────────────────────────── -->
+	<div>
+		<div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+			<Database size={11} />
+			Hits Database
+		</div>
+		<div class="space-y-1.5">
+			<!-- Job selector -->
+			<div>
+				<label class="text-[10px] text-muted-foreground">Job</label>
+				<SkeuSelect
+					value={selectedHitsJobId ?? ''}
+					onValueChange={(v) => selectHitsJob(v)}
+					options={[
+						{ value: '', label: 'Select a job…' },
+						...app.jobs.map((j: any) => ({ value: j.id, label: `${j.name} [${j.state}]` }))
+					]}
+					class="w-full text-[11px] mt-0.5"
+				/>
+			</div>
+
+			{#if selectedHitsJobId}
+				<!-- Stats + actions row -->
+				<div class="flex items-center justify-between">
+					<span class="text-[9px] text-muted-foreground">
+						{hitsForJob.length} hit{hitsForJob.length !== 1 ? 's' : ''}
+					</span>
+					<div class="flex gap-1">
+						<button
+							class="skeu-btn text-[9px] px-1.5 py-0.5 flex items-center gap-0.5"
+							onclick={refreshHits}
+							title="Refresh from backend"
+						>
+							<RefreshCw size={9} />
+							Refresh
+						</button>
+						<button
+							class="skeu-btn text-[9px] px-1.5 py-0.5 flex items-center gap-0.5"
+							onclick={exportHitsTxt}
+							title="Export hits as TXT"
+							disabled={hitsForJob.length === 0}
+						>
+							<Download size={9} />
+							TXT
+						</button>
+						<button
+							class="skeu-btn text-[9px] px-1.5 py-0.5 flex items-center gap-0.5"
+							onclick={exportHitsCsv}
+							title="Export hits as CSV"
+							disabled={hitsForJob.length === 0}
+						>
+							<Download size={9} />
+							CSV
+						</button>
+					</div>
+				</div>
+
+				{#if hitsForJob.length > 0}
+					<!-- Hits table (last 100 in reverse order — newest first) -->
+					<div class="bg-background border border-border rounded overflow-hidden">
+						<div class="overflow-auto max-h-52">
+							<table class="w-full text-[10px]">
+								<thead class="sticky top-0 bg-surface border-b border-border z-10">
+									<tr>
+										<th class="px-2 py-1 text-left font-medium text-muted-foreground">Data</th>
+										<th class="px-2 py-1 text-left font-medium text-muted-foreground">Captures</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each hitsForJob.slice(-100).reverse() as hit, i (`${selectedHitsJobId}-${i}`)}
+										<tr class="border-b border-border/40 hover:bg-surface/60">
+											<td class="px-2 py-0.5 font-mono text-[9px] text-green truncate max-w-[130px]" title={hit.data_line}>
+												{hit.data_line}
+											</td>
+											<td class="px-2 py-0.5 font-mono text-[9px] text-muted-foreground truncate max-w-[160px]" title={Object.entries(hit.captures ?? {}).map(([k,v]) => `${k}=${v}`).join(' | ')}>
+												{Object.entries(hit.captures ?? {}).map(([k,v]) => `${k}=${v}`).join(' | ')}
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+						{#if hitsForJob.length > 100}
+							<div class="px-2 py-1 text-[9px] text-muted-foreground bg-surface border-t border-border">
+								Showing last 100 of {hitsForJob.length} — export for full list
+							</div>
+						{/if}
+					</div>
+				{:else}
+					<p class="text-[10px] text-muted-foreground text-center py-3">No hits recorded for this job yet</p>
+				{/if}
+			{:else}
+				<p class="text-[10px] text-muted-foreground text-center py-2">Select a job to view its hits</p>
+			{/if}
 		</div>
 	</div>
 

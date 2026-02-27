@@ -59,7 +59,9 @@
 
 	function viewJobHits(id: string) {
 		app.activeJobId = id;
-		send('get_job_hits', { id });
+		// Signal DataPanel to auto-select this job in the Hits Database dropdown.
+		// DataPanel's $effect will consume hitsDbJobId, fetch hits, and clear the signal.
+		app.hitsDbJobId = id;
 		app.bottomTab = 'data';
 		console.log('[JobMonitor] viewJobHits: switching to data tab for job', id);
 	}
@@ -83,9 +85,10 @@
 • Requires a pipeline to be loaded in the editor
 
 \`Proxy Check\` — tests a list of proxies against a URL
-• Each proxy in the list is tested with a HEAD request
-• Alive proxies appear as Hits with \`status=alive\` and \`latency_ms\` captures
-• Dead proxies are silently dropped (not tracked individually)
+• Each proxy in the list is tested with a GET request against the check URL
+• Alive proxies appear as \`Hits\` with \`status=alive\` and \`latency_ms\` captures
+• Dead proxies (timeout / refused) count as \`Fails\` with \`status=dead\`
+• Unreachable proxies (bad URL / system error) count as \`Errors\` with \`status=error\`
 • No pipeline required — select the type before creating`
 		},
 		{
@@ -135,11 +138,13 @@ Stats columns: \`CPM\` (checks per minute) • \`Hits\` • \`Processed/Total\` 
 		},
 		{
 			heading: 'Hits Database',
-			content: `• All hits are stored in the \`Data\` tab and persisted in memory
-• Click a job row or the \`📊 database icon\` to view hits for that job
-• Export hits via the \`Data\` panel buttons: \`TXT\` or \`CSV\`
-• For advanced filtering and sorting, click \`Advanced\` or use the \`Hits\` menu in the toolbar
-• Proxy Check hits include captures: \`status=alive\` and \`latency_ms=NNN\``
+			content: `• Hits for each job are stored separately and viewable in the \`Data\` tab
+• Click a job row or the \`📊 database icon\` to jump to that job's hits in the Data panel
+• The \`Data\` panel shows a \`Hits Database\` section with a job dropdown selector
+• Switching jobs in the dropdown loads hits for that job from the backend
+• Hits are removed from the database when the job is deleted
+• Export hits per-job via \`TXT\` or \`CSV\` buttons in the Data panel
+• Proxy Check: only \`alive\` proxies appear in the Hits Database (dead/error shown in live feed)`
 		},
 		{
 			heading: 'Thread Tuning',
@@ -563,7 +568,7 @@ Error handling
 					<div class="col-span-2">
 						<label class="text-muted-foreground text-[10px]">Ping URL</label>
 						<input type="text" bind:value={proxyCheckUrl} placeholder="http://www.google.com" class="skeu-input w-full text-xs font-mono" />
-						<p class="text-[9px] text-muted-foreground mt-0.5">Alive proxies will appear as Hits. Dead proxies are silently dropped.</p>
+						<p class="text-[9px] text-muted-foreground mt-0.5">Alive → Hits · Dead (timeout/refused) → Fails · Unreachable → Errors.</p>
 					</div>
 				{/if}
 			</div>

@@ -165,6 +165,10 @@ function createAppState(): AppState {
 	let isPaused = $state(false);
 	let threadCount = $state(100);
 	let hits = $state<Array<{ data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string }>>([]);
+	/** Per-job hits database: keyed by job id, only contains "hit" entries (alive proxies / config hits).
+	 *  Populated by runner_hit (live) and job_hits (on-demand fetch).
+	 *  Entries are removed when the job is deleted. */
+	let jobHitsDb = $state<Record<string, Array<{ data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string }>>>({});
 	let debugResult = $state<BlockResult | null>(null);
 	let debugResults = $state<BlockResult[]>([]);
 	let debugLog = $state<string[]>([]);
@@ -206,6 +210,8 @@ function createAppState(): AppState {
 	let pendingAppClose = $state(false);
 	let jobs = $state<Job[]>([]);
 	let activeJobId = $state<string | null>(null);
+	/** When set, the Data panel's Hits Database section will auto-select this job. */
+	let hitsDbJobId = $state<string | null>(null);
 	let pluginBlocks = $state<PluginBlockMeta[]>([]);
 	let pluginMetas = $state<PluginMeta[]>([]);
 	let showBlockDocs = $state(false);
@@ -278,6 +284,8 @@ function createAppState(): AppState {
 		set threadCount(v) { threadCount = v; },
 		get hits() { return hits; },
 		set hits(v) { hits = v; },
+		get jobHitsDb() { return jobHitsDb; },
+		set jobHitsDb(v) { jobHitsDb = v; },
 		get debugResult() { return debugResult; },
 		set debugResult(v) { debugResult = v; },
 		get debugResults() { return debugResults; },
@@ -336,6 +344,8 @@ function createAppState(): AppState {
 		set jobs(v) { jobs = v; },
 		get activeJobId() { return activeJobId; },
 		set activeJobId(v) { activeJobId = v; },
+		get hitsDbJobId() { return hitsDbJobId; },
+		set hitsDbJobId(v) { hitsDbJobId = v; },
 		get pluginBlocks() { return pluginBlocks; },
 		set pluginBlocks(v) { pluginBlocks = v; },
 		get pluginMetas() { return pluginMetas; },
