@@ -225,6 +225,16 @@ impl ExecutionContext {
             // downstream blocks (e.g. ParseJSON to capture balance) can still run.
             match self.status {
                 BotStatus::Error | BotStatus::Ban | BotStatus::Retry => break,
+                BotStatus::Fail => {
+                    // Early-exit optimisation: if this KeyCheck has stop_on_fail enabled,
+                    // skip all remaining Parse/function blocks — the entry is already
+                    // classified as a Fail and nothing downstream can change that.
+                    if let BlockSettings::KeyCheck(ref ks) = block.settings {
+                        if ks.stop_on_fail {
+                            break;
+                        }
+                    }
+                }
                 _ => {}
             }
         }

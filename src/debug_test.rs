@@ -247,3 +247,123 @@ mod tests {
         assert!(code.len() > 100, "Should have at least boilerplate code");
     }
 }
+
+    /// Test: KeyCheck stop_on_fail — validates early-exit optimization
+    ///
+    /// Pipeline:
+    ///   SetVariable("MARKER1", "set")   ← must always run
+    ///   KeyCheck(STATUS == "FAIL" → Fail, stop_on_fail=true)
+    ///   SetVariable("MARKER2", "set")   ← must NOT run when stop_on_fail=true & status=Fail
+    ///
+    /// We run this twice:
+    ///  (A) stop_on_fail=true, STATUS="FAIL"  → MARKER2 should be unset
+    ///  (B) stop_on_fail=false, STATUS="FAIL" → MARKER2 should be set (old behaviour)
+    ///  (C) stop_on_fail=true, STATUS="OK"    → MARKER2 should be set (Success path, no early exit)
+    #[tokio::test]
+    async fn test_keycheck_stop_on_fail() {
+        // All block types are re-exported via `pub use settings_*::*` in block/mod.rs
+        use crate::pipeline::block::*;
+        use crate::pipeline::BotStatus;
+        use crate::pipeline::engine::ExecutionContext;
+        use crate::sidecar::native::create_native_backend;
+        use uuid::Uuid;
+
+        let sidecar_tx = create_native_backend();
+
+        // Helper: build a 3-block pipeline
+        let make_pipeline = |stop_on_fail: bool| -> Vec<Block> {
+            // Block 1: SetVariable — set STATUS = "FAIL" (pipeline input)
+            let mut b1 = Block::new(BlockType::SetVariable);
+            b1.settings = BlockSettings::SetVariable(SetVariableSettings {
+                name: "STATUS".into(),
+                value: "FAIL".into(),
+                capture: false,
+            });
+
+            // Block 2: KeyCheck — STATUS == "FAIL" → Fail
+            let mut b2 = Block::new(BlockType::KeyCheck);
+            b2.settings = BlockSettings::KeyCheck(KeyCheckSettings {
+                keychains: vec![Keychain {
+                    result: BotStatus::Fail,
+                    conditions: vec![KeyCondition {
+                        source: "STATUS".into(),
+                        comparison: Comparison::EqualTo,
+                        value: "FAIL".into(),
+                    }],
+                }],
+                stop_on_fail,
+            });
+
+            // Block 3: SetVariable("MARKER2", "set") — should be skipped when stop_on_fail
+            let mut b3 = Block::new(BlockType::SetVariable);
+            b3.settings = BlockSettings::SetVariable(SetVariableSettings {
+                name: "MARKER2".into(),
+                value: "set".into(),
+                capture: false,
+            });
+
+            vec![b1, b2, b3]
+        };
+
+        // ── Case A: stop_on_fail=true, STATUS="FAIL" ─────────────────────────
+        {
+            let blocks = make_pipeline(true);
+            let mut ctx = ExecutionContext::new(Uuid::new_v4().to_string());
+            ctx.execute_blocks(&blocks, &sidecar_tx).await.unwrap();
+
+            assert_eq!(ctx.status, BotStatus::Fail, "A: status should be Fail");
+            assert_eq!(
+                ctx.variables.get("STATUS").as_deref(),
+                Some("FAIL"),
+                "A: STATUS should be set (block ran before KeyCheck)"
+            );
+            assert_eq!(
+                ctx.variables.get("MARKER2"),
+                None,
+                "A: MARKER2 should NOT be set — stop_on_fail skipped block 3"
+            );
+            println!("[A] stop_on_fail=true  + Fail → MARKER2={:?} (expected None) ✓",
+                ctx.variables.get("MARKER2"));
+        }
+
+        // ── Case B: stop_on_fail=false, STATUS="FAIL" ────────────────────────
+        {
+            let blocks = make_pipeline(false);
+            let mut ctx = ExecutionContext::new(Uuid::new_v4().to_string());
+            ctx.execute_blocks(&blocks, &sidecar_tx).await.unwrap();
+
+            assert_eq!(ctx.status, BotStatus::Fail, "B: status should be Fail");
+            assert_eq!(
+                ctx.variables.get("MARKER2").as_deref(),
+                Some("set"),
+                "B: MARKER2 should be set — old behaviour continues after Fail"
+            );
+            println!("[B] stop_on_fail=false + Fail → MARKER2={:?} (expected Some(\"set\")) ✓",
+                ctx.variables.get("MARKER2"));
+        }
+
+        // ── Case C: stop_on_fail=true, but KeyCheck doesn't fire (STATUS != "FAIL") ──
+        // Override STATUS to "OK" so keychain doesn't match → status stays None → block 3 runs
+        {
+            let mut blocks = make_pipeline(true);
+            // Change block 1 to set STATUS = "OK"
+            if let BlockSettings::SetVariable(ref mut sv) = blocks[0].settings {
+                sv.value = "OK".into();
+            }
+            // Change keycheck condition to Fail if STATUS == "FAIL" (won't match "OK")
+            let mut ctx = ExecutionContext::new(Uuid::new_v4().to_string());
+            ctx.execute_blocks(&blocks, &sidecar_tx).await.unwrap();
+
+            // KeyCheck doesn't match → status stays None → block 3 runs
+            assert_ne!(ctx.status, BotStatus::Fail, "C: status should not be Fail");
+            assert_eq!(
+                ctx.variables.get("MARKER2").as_deref(),
+                Some("set"),
+                "C: MARKER2 should be set — KeyCheck didn't match (no early exit)"
+            );
+            println!("[C] stop_on_fail=true  + no match → MARKER2={:?} (expected Some(\"set\")) ✓",
+                ctx.variables.get("MARKER2"));
+        }
+
+        println!("\n=== stop_on_fail test: all 3 cases passed ✓ ===");
+    }

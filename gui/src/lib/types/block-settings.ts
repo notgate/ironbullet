@@ -175,6 +175,9 @@ export interface ParseSettings {
 
 export interface KeyCheckSettings {
 	keychains: Keychain[];
+	/** When true, a Fail result halts the pipeline immediately — skips all
+	 *  subsequent Parse/function blocks for this data entry. */
+	stop_on_fail: boolean;
 }
 
 export interface Keychain {
