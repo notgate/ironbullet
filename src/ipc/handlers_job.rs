@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use ironbullet::export::format::RfxConfig;
-use ironbullet::runner::job::Job;
+use ironbullet::runner::job::{Job, JobType};
 
 use super::{resolve_sidecar_path, AppState, IpcResponse};
 
@@ -15,26 +15,68 @@ pub(super) fn create_job(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let mut s = state.lock().await;
+
+            // Try full deserialization first; fall back to default + manual patching.
+            // NOTE: the frontend only sends partial data, so deserialization almost always
+            // fails (missing required `proxy_source` etc.).  We therefore always patch the
+            // fields we care about explicitly below.
             let mut job = if let Ok(j) = serde_json::from_value::<Job>(data.clone()) {
                 j
             } else {
                 Job::default()
             };
+
+            // ── job_type (CRITICAL — was never set before this fix) ───────────
+            if let Some(jt) = data.get("job_type").and_then(|v| v.as_str()) {
+                job.job_type = match jt {
+                    "ProxyCheck" => JobType::ProxyCheck,
+                    _ => JobType::Config,
+                };
+            }
+
+            // ── basic fields ──────────────────────────────────────────────────
             if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
                 job.name = name.to_string();
             }
+            if let Some(tc) = data.get("thread_count").and_then(|v| v.as_u64()) {
+                job.thread_count = tc as usize;
+            }
+
+            // ── data source ───────────────────────────────────────────────────
+            if let Some(ds) = data.get("data_source") {
+                if let Ok(new_ds) = serde_json::from_value::<ironbullet::runner::job::DataSource>(ds.clone()) {
+                    job.data_source = new_ds;
+                }
+            }
+
+            // ── pipeline snapshot from frontend (keeps proxy_settings etc. in sync) ──
+            if let Some(pl) = data.get("pipeline") {
+                if let Ok(pipeline) = serde_json::from_value::<ironbullet::pipeline::Pipeline>(pl.clone()) {
+                    job.pipeline = pipeline;
+                }
+            }
+
+            // ── config path (loads pipeline from .rfx file if provided) ───────
             if let Some(path) = data.get("config_path").and_then(|v| v.as_str()) {
                 job.config_path = Some(path.to_string());
                 if let Ok(rfx) = RfxConfig::load_from_file(path) {
                     job.pipeline = rfx.pipeline;
                 }
             }
+
+            // ── proxy check fields ────────────────────────────────────────────
             if let Some(url) = data.get("proxy_check_url").and_then(|v| v.as_str()) {
                 if !url.is_empty() { job.proxy_check_url = url.to_string(); }
             }
             if let Some(list) = data.get("proxy_check_list").and_then(|v| v.as_str()) {
                 if !list.is_empty() { job.proxy_check_list = list.to_string(); }
             }
+
+            // Use currently loaded pipeline for Config jobs unless a snapshot was provided
+            if job.job_type == JobType::Config && data.get("pipeline").is_none() {
+                job.pipeline = s.pipeline.clone();
+            }
+
             let id = s.job_manager.add_job(job);
             let resp = IpcResponse::ok("job_created", serde_json::json!({ "id": id.to_string() }));
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));

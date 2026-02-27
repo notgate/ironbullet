@@ -5,11 +5,88 @@ use chrono::Utc;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
+use crate::pipeline::{ProxyMode, ProxySettings, ProxySourceType};
 use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 use super::data_pool::DataPool;
 use super::job::{DataSourceType, Job, JobState, StartCondition};
-use super::proxy_pool::ProxyPool;
+use super::proxy_pool::{ProxyPool, ProxyEntry, ProxyType};
 use super::{HitResult, RunnerOrchestrator, RunnerStats};
+
+/// Build a ProxyPool from the pipeline's proxy_settings.
+/// Loads all proxy sources (File, Inline, Url) and applies the configured mode.
+fn build_proxy_pool(settings: &ProxySettings) -> ProxyPool {
+    // Determine which sources to use
+    let sources = if !settings.active_group.is_empty() {
+        settings.proxy_groups.iter()
+            .find(|g| g.name == settings.active_group)
+            .map(|g| g.sources.as_slice())
+            .unwrap_or(&settings.proxy_sources)
+    } else {
+        &settings.proxy_sources
+    };
+
+    if matches!(settings.proxy_mode, ProxyMode::None) || sources.is_empty() {
+        return ProxyPool::empty();
+    }
+
+    let mut raw_lines: Vec<String> = Vec::new();
+    for src in sources {
+        match src.source_type {
+            ProxySourceType::File => {
+                if let Ok(content) = std::fs::read_to_string(&src.value) {
+                    raw_lines.extend(content.lines()
+                        .filter(|l| !l.trim().is_empty())
+                        .map(|l| l.trim().to_string()));
+                }
+            }
+            ProxySourceType::Inline => {
+                raw_lines.extend(src.value.lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| l.trim().to_string()));
+            }
+            ProxySourceType::Url => {
+                // URL sources need async; skip for now (they're resolved at runtime)
+            }
+        }
+    }
+
+    let entries: Vec<ProxyEntry> = raw_lines.into_iter()
+        .filter_map(|l| parse_proxy_for_pool(&l))
+        .collect();
+
+    ProxyPool::new(entries, settings.ban_duration_secs)
+}
+
+fn parse_proxy_for_pool(line: &str) -> Option<ProxyEntry> {
+    // Delegate to the same logic as ProxyPool::from_file's internal parser
+    // by constructing the entry directly
+    let (proxy_type, address) = if let Some(rest) = line.strip_prefix("socks5://") {
+        (ProxyType::Socks5, rest.to_string())
+    } else if let Some(rest) = line.strip_prefix("socks4://") {
+        (ProxyType::Socks4, rest.to_string())
+    } else if let Some(rest) = line.strip_prefix("https://") {
+        (ProxyType::Https, rest.to_string())
+    } else if let Some(rest) = line.strip_prefix("http://") {
+        (ProxyType::Http, rest.to_string())
+    } else {
+        let parts: Vec<&str> = line.split(':').collect();
+        match parts.len() {
+            2 => (ProxyType::Http, format!("{}:{}", parts[0], parts[1])),
+            4 => (ProxyType::Http, format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1])),
+            5 => {
+                let pt = match parts[0].to_lowercase().as_str() {
+                    "https" => ProxyType::Https,
+                    "socks4" => ProxyType::Socks4,
+                    "socks5" => ProxyType::Socks5,
+                    _ => ProxyType::Http,
+                };
+                (pt, format!("{}:{}@{}:{}", parts[3], parts[4], parts[1], parts[2]))
+            }
+            _ => return None,
+        }
+    };
+    Some(ProxyEntry { proxy_type, address })
+}
 
 pub struct JobManager {
     jobs: Vec<Job>,
@@ -156,7 +233,9 @@ impl JobManager {
         };
 
         let data_pool = DataPool::new(data_lines);
-        let proxy_pool = ProxyPool::empty();
+        // Build proxy pool from the pipeline's proxy settings.
+        // Before this fix, ProxyPool::empty() was always used, so proxies were never applied.
+        let proxy_pool = build_proxy_pool(&job.pipeline.proxy_settings);
         let (hits_tx, hits_rx) = mpsc::channel::<HitResult>(1024);
 
         let runner = Arc::new(RunnerOrchestrator::new(
