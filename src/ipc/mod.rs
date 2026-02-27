@@ -96,41 +96,53 @@ impl AppState {
     }
 }
 
-/// Resolve a sidecar path: if relative, search multiple locations.
+/// Resolve a sidecar path: always prefer exe-relative over the config value.
+///
+/// The stored config path may be stale (from a previous install location).
+/// We always check next to the current executable first so the app works
+/// even if the user reinstalls to a different folder.
 fn resolve_sidecar_path(configured: &str) -> String {
-    let p = std::path::Path::new(configured);
-    if p.is_absolute() && p.exists() {
-        return configured.to_string();
-    }
-    let filename = std::path::Path::new(configured)
-        .file_name()
-        .unwrap_or(std::ffi::OsStr::new(configured));
+    // Canonical sidecar filename for the current OS (ignore what config says
+    // the name is — it's always "reqflow-sidecar[.exe]").
+    let sidecar_name = if cfg!(target_os = "windows") {
+        "reqflow-sidecar.exe"
+    } else {
+        "reqflow-sidecar"
+    };
+
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            // 1. Next to the exe (deployed layout)
-            let full = dir.join(configured);
-            if full.exists() {
-                return full.display().to_string();
+            // 1. Next to the exe — ALWAYS preferred (deployed layout)
+            let next_to_exe = dir.join(sidecar_name);
+            if next_to_exe.exists() {
+                return next_to_exe.display().to_string();
             }
-            // 2. exe_dir/../../sidecar/<filename> (dev: target/release/ -> project root sidecar/)
-            let dev = dir.join("../../sidecar").join(filename);
+
+            // 2. exe_dir/../../sidecar/ — dev layout (target/release/ → project/sidecar/)
+            let dev = dir.join("../../sidecar").join(sidecar_name);
             if dev.exists() {
                 return dev.canonicalize().unwrap_or(dev).display().to_string();
             }
-            // 3. exe_dir/../sidecar/<filename> (alt dev layout)
-            let alt = dir.join("../sidecar").join(filename);
+            // 3. exe_dir/../sidecar/ — alt dev layout
+            let alt = dir.join("../sidecar").join(sidecar_name);
             if alt.exists() {
                 return alt.canonicalize().unwrap_or(alt).display().to_string();
             }
         }
     }
-    // 4. CWD-relative fallbacks
+
+    // 4. Absolute config path (user may have configured a custom path)
+    let p = std::path::Path::new(configured);
+    if p.is_absolute() && p.exists() {
+        return configured.to_string();
+    }
+    // 5. CWD-relative fallbacks
     if let Ok(cwd) = std::env::current_dir() {
-        let cwd_sidecar = cwd.join("sidecar").join(filename);
+        let cwd_sidecar = cwd.join("sidecar").join(sidecar_name);
         if cwd_sidecar.exists() {
             return cwd_sidecar.display().to_string();
         }
-        let cwd_direct = cwd.join(configured);
+        let cwd_direct = cwd.join(sidecar_name);
         if cwd_direct.exists() {
             return cwd_direct.display().to_string();
         }

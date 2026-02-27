@@ -33,13 +33,48 @@ impl SidecarManager {
 
     /// Start the sidecar process. Returns a cloneable sender for sending requests.
     pub async fn start(&mut self, sidecar_path: &str) -> crate::error::Result<ReqTx> {
+        // Pre-flight: verify the sidecar file exists before spawning.
+        // This gives a clear error instead of the generic OS "not found" message.
+        let path = std::path::Path::new(sidecar_path);
+        if !path.exists() {
+            let exe_dir = std::env::current_exe()
+                .ok()
+                .and_then(|e| e.parent().map(|p| p.display().to_string()))
+                .unwrap_or_else(|| String::from("<unknown>"));
+            let sidecar_name = if cfg!(target_os = "windows") {
+                "reqflow-sidecar.exe"
+            } else {
+                "reqflow-sidecar"
+            };
+            return Err(crate::error::AppError::Sidecar(format!(
+                "Sidecar not found at '{}'.\n\
+                 Make sure {} is in the same folder as the IronBullet executable.\n\
+                 Executable directory: {}",
+                sidecar_path, sidecar_name, exe_dir
+            )));
+        }
+
+        // Set the working directory to the sidecar's own folder so that any
+        // relative paths the sidecar uses resolve correctly.
+        let sidecar_dir = path.parent().unwrap_or(std::path::Path::new("."));
+
         let mut child = Command::new(sidecar_path)
+            .current_dir(sidecar_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| crate::error::AppError::Sidecar(format!("Failed to spawn sidecar: {}", e)))?;
+            .map_err(|e| crate::error::AppError::Sidecar(format!(
+                "Failed to spawn sidecar '{}': {}\n\
+                 (file exists={}, is_executable={})",
+                sidecar_path, e,
+                path.exists(),
+                path.metadata().map(|m| {
+                    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; m.permissions().mode() & 0o111 != 0 }
+                    #[cfg(not(unix))] { true }
+                }).unwrap_or(false)
+            )))?;
 
         let stdin = child.stdin.take()
             .ok_or_else(|| crate::error::AppError::Sidecar("No stdin".into()))?;

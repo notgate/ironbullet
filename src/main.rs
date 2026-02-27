@@ -16,6 +16,64 @@ use ironbullet::config::{load_config, save_config};
 use ipc::{AppState, IpcCmd};
 
 /// Check if WebView2 runtime is installed (Windows only).
+/// On Linux, check that WebKitGTK (required by wry) is actually installed.
+/// Returns None if everything looks OK, or Some(install_instructions) if the
+/// required library isn't found.
+///
+/// NOTE: This can only catch missing libs if wry was compiled with a
+/// WEAK/optional link — otherwise the dynamic linker will crash before main().
+/// The real protection is the start.sh launcher script packaged in the zip.
+#[cfg(target_os = "linux")]
+fn check_linux_webview() -> Option<String> {
+    use std::path::Path;
+
+    // wry 0.x links against webkit2gtk — check the most common install paths.
+    let candidates = [
+        // Ubuntu 22.04+ / Debian 12+
+        "/usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0",
+        "/usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so.37",
+        // Fedora / RHEL
+        "/usr/lib64/libwebkit2gtk-4.1.so.0",
+        "/usr/lib64/libwebkit2gtk-4.0.so.37",
+        // Arch / generic
+        "/usr/lib/libwebkit2gtk-4.1.so.0",
+        "/usr/lib/libwebkit2gtk-4.0.so.37",
+    ];
+
+    for lib in &candidates {
+        if Path::new(lib).exists() {
+            return None; // Found — we're good
+        }
+    }
+
+    // Also check via ldconfig cache (most distros)
+    if std::process::Command::new("ldconfig")
+        .args(["-p"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.contains("libwebkit2gtk"))
+        .unwrap_or(false)
+    {
+        return None;
+    }
+
+    Some(
+        "WebKitGTK is required to run IronBullet but was not found.\n\n\
+         Install it for your distribution:\n\
+         \n\
+         • Ubuntu / Debian (22.04+):  sudo apt install libwebkit2gtk-4.1-0\n\
+         • Ubuntu / Debian (20.04):   sudo apt install libwebkit2gtk-4.0-37\n\
+         • Fedora / RHEL:             sudo dnf install webkit2gtk4.1\n\
+         • Arch Linux:                sudo pacman -S webkit2gtk-4.1\n\
+         • openSUSE:                  sudo zypper install libwebkit2gtk-4_1-0\n\
+         \n\
+         After installing, restart IronBullet.\n\
+         Alternatively, use the start.sh launcher script from the zip."
+            .into(),
+    )
+}
+
 /// Checks known install locations for the EdgeWebView application directory.
 #[cfg(target_os = "windows")]
 fn check_webview2_available() -> bool {
@@ -322,6 +380,25 @@ fn run_gui() {
                 #[allow(clippy::zero_ptr)]
                 MessageBoxW(std::ptr::null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
             }
+            std::process::exit(1);
+        }
+    }
+
+    // ── Linux WebKitGTK availability check ───────────────────────────────────
+    // NOTE: If WebKitGTK is NOT installed and the binary is dynamically linked,
+    // the dynamic linker will crash *before* this code runs. The start.sh
+    // launcher script (included in the Linux zip) is the primary protection.
+    // This check only fires when the libs are found by linker but have some
+    // issue at the GTK level, or on statically-linked builds.
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(msg) = check_linux_webview() {
+            eprintln!("IronBullet: {}", msg);
+            // Try to show a GTK dialog — best effort, no hard dep on GTK dialog lib
+            let _ = std::process::Command::new("zenity")
+                .args(["--error", "--title=IronBullet — Missing Dependency",
+                       &format!("--text={}", msg)])
+                .status();
             std::process::exit(1);
         }
     }
