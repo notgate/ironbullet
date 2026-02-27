@@ -130,20 +130,9 @@ pub(super) fn start_job(
                 return;
             }
 
-            // Start sidecar if needed
+            // Get or start sidecar (reuses existing process if already running)
             let sidecar_path = resolve_sidecar_path(&s.config.sidecar_path);
-            if !s.sidecar.is_running() {
-                s.sidecar.stop().await;
-                match s.sidecar.start(&sidecar_path).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        let resp = IpcResponse::err("job_stats_update", format!("Failed to start sidecar: {}", e));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
-                        return;
-                    }
-                }
-            }
-            let sidecar_tx = match s.sidecar.start(&sidecar_path).await {
+            let sidecar_tx = match s.sidecar.get_or_start(&sidecar_path).await {
                 Ok(tx) => tx,
                 Err(e) => {
                     let resp = IpcResponse::err("job_stats_update", format!("Failed to start sidecar: {}", e));

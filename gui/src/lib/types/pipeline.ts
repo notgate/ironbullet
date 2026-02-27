@@ -27,7 +27,7 @@ export interface Block {
 }
 
 export type BlockType =
-	| 'HttpRequest' | 'ParseLR' | 'ParseRegex' | 'ParseJSON' | 'ParseCSS' | 'ParseXPath' | 'ParseCookie'
+	| 'HttpRequest' | 'ParseLR' | 'ParseRegex' | 'ParseJSON' | 'ParseCSS' | 'ParseXPath' | 'ParseCookie' | 'Parse'
 	| 'KeyCheck' | 'StringFunction' | 'ListFunction' | 'CryptoFunction' | 'ConversionFunction'
 	| 'IfElse' | 'Loop' | 'Delay' | 'Script' | 'Log' | 'SetVariable' | 'ClearCookies' | 'Webhook' | 'WebSocket'
 	| 'TcpRequest' | 'UdpRequest' | 'FtpRequest' | 'SshRequest' | 'ImapRequest' | 'SmtpRequest' | 'PopRequest'

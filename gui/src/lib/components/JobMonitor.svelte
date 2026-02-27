@@ -404,16 +404,18 @@ Error handling
 	<!-- New job form -->
 	{#if showNewJob}
 		<div class="px-3 py-2.5 bg-background border-b border-border space-y-2">
-			<!-- Job type segmented selector -->
-			<div class="flex rounded border border-border overflow-hidden text-[10px]">
-				<button
-					class="flex-1 py-1.5 flex items-center justify-center gap-1.5 transition-all duration-200 {newJobType === 'Config' ? 'bg-primary text-white font-medium' : 'bg-surface text-muted-foreground hover:bg-accent/30'}"
-					onclick={() => newJobType = 'Config'}
-				><FileText size={9} />Config Job</button>
-				<button
-					class="flex-1 py-1.5 flex items-center justify-center gap-1.5 transition-all duration-200 {newJobType === 'ProxyCheck' ? 'bg-primary text-white font-medium' : 'bg-surface text-muted-foreground hover:bg-accent/30'}"
-					onclick={() => newJobType = 'ProxyCheck'}
-				><ShieldCheck size={9} />Proxy Check</button>
+			<!-- Job type dropdown -->
+			<div class="flex items-center gap-2">
+				<label class="text-muted-foreground text-[10px] shrink-0">Job Type</label>
+				<SkeuSelect
+					value={newJobType}
+					onValueChange={(v) => { newJobType = v as any; }}
+					options={[
+						{ value: 'Config', label: 'Config Job — Run pipeline against wordlist' },
+						{ value: 'ProxyCheck', label: 'Proxy Check — Test proxy list liveness' },
+					]}
+					class="text-xs flex-1"
+				/>
 			</div>
 
 			<div class="grid grid-cols-2 gap-2 text-xs">

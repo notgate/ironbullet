@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
+	import { send } from '$lib/ipc';
 	import SkeuSelect from '$lib/components/SkeuSelect.svelte';
 
 	let { searchQuery, shouldShowSetting }: {
@@ -76,16 +77,19 @@
 {/if}
 
 {#if shouldShowSetting('output', 'Output Directory')}
-	<div class="flex items-center justify-between py-1.5">
-		<div>
-			<span class="text-[11px] text-muted-foreground">Output directory</span>
-			<p class="text-[9px] text-muted-foreground/60">Folder for result text files</p>
+	<div class="py-1.5">
+		<div class="flex items-center justify-between mb-0.5">
+			<div>
+				<span class="text-[11px] text-muted-foreground">Output directory</span>
+				<p class="text-[9px] text-muted-foreground/60">Folder for result text files</p>
+			</div>
+			<button class="skeu-btn text-[10px]" onclick={() => send('browse_folder', { field: 'results' })}>Browse</button>
 		</div>
 		<input
 			type="text"
 			bind:value={app.pipeline.output_settings.output_directory}
-			class="w-28 skeu-input text-[10px]"
-			placeholder="results"
+			class="w-full skeu-input text-[10px] font-mono"
+			placeholder="results/"
 		/>
 	</div>
 {/if}

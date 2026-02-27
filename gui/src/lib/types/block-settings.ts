@@ -8,6 +8,7 @@ export type BlockSettings =
 	| { type: 'ParseCSS' } & ParseCSSSettings
 	| { type: 'ParseXPath' } & ParseXPathSettings
 	| { type: 'ParseCookie' } & ParseCookieSettings
+	| { type: 'Parse' } & ParseSettings
 	| { type: 'KeyCheck' } & KeyCheckSettings
 	| { type: 'StringFunction' } & StringFunctionSettings
 	| { type: 'ListFunction' } & ListFunctionSettings
@@ -130,6 +131,38 @@ export interface ParseCookieSettings {
 	capture: boolean;
 }
 
+export type ParseMode = 'LR' | 'Regex' | 'Json' | 'Css' | 'XPath' | 'Cookie' | 'Lambda';
+
+/** Unified parse block — replaces ParseLR/ParseRegex/ParseJSON/ParseCSS/ParseXPath/ParseCookie/LambdaParser */
+export interface ParseSettings {
+	parse_mode: ParseMode;
+	// Common
+	input_var: string;
+	output_var: string;
+	capture: boolean;
+	// LR
+	left: string;
+	right: string;
+	recursive: boolean;
+	case_insensitive: boolean;
+	// Regex
+	pattern: string;
+	output_format: string;
+	multi_line: boolean;
+	// JSON
+	json_path: string;
+	// CSS
+	selector: string;
+	attribute: string;
+	index: number;
+	// XPath
+	xpath: string;
+	// Cookie
+	cookie_name: string;
+	// Lambda
+	lambda_expression: string;
+}
+
 export interface KeyCheckSettings {
 	keychains: Keychain[];
 }
@@ -188,6 +221,8 @@ export interface DateFunctionSettings {
 	amount: number;
 	unit: string;
 	capture: boolean;
+	/** Expression for Compute, decimal places for Round */
+	param: string;
 }
 
 export interface CaseSwitchSettings {
@@ -256,6 +291,10 @@ export interface FtpRequestSettings {
 	command: string;
 	/** Remote path for RETR, STOR, DELE, MKD, RMD, CWD actions */
 	remote_path: string;
+	/** Local file to upload (STOR) */
+	local_path: string;
+	/** Local directory to save downloaded file (RETR) */
+	output_dir: string;
 	output_var: string;
 	timeout_ms: number;
 	capture: boolean;

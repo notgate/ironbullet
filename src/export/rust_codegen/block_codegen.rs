@@ -292,6 +292,97 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
             code.push_str(&format!("{}    .map(|(_, v)| v.to_string())\n", pad));
             code.push_str(&format!("{}    .unwrap_or_default();\n", pad));
         }
+        BlockSettings::Parse(s) => {
+            use crate::pipeline::block::ParseMode;
+            let input = if vars.is_defined(&s.input_var) { var_name(&s.input_var) } else { "source".into() };
+            let letkw = vars.let_or_assign(&s.output_var);
+            let vn = var_name(&s.output_var);
+            match &s.parse_mode {
+                ParseMode::LR => {
+                    let flags = if s.case_insensitive { ".to_lowercase()" } else { "" };
+                    code.push_str(&format!("{}// Parse LR: \"{}\" ... \"{}\"\n", pad, escape_str(&s.left), escape_str(&s.right)));
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let src = {}{};", pad, input, flags));
+                    code.push_str(&format!("\n{}    let l = \"{}\"; let r = \"{}\";\n", pad, escape_str(&s.left), escape_str(&s.right)));
+                    if s.recursive {
+                        code.push_str(&format!("{}    let mut out = Vec::new();\n", pad));
+                        code.push_str(&format!("{}    let mut rest = src.as_str();\n", pad));
+                        code.push_str(&format!("{}    while let Some(li) = rest.find(l) {{\n", pad));
+                        code.push_str(&format!("{}        let after = &rest[li + l.len()..];\n", pad));
+                        code.push_str(&format!("{}        if let Some(ri) = after.find(r) {{ out.push(after[..ri].to_string()); rest = &after[ri + r.len()..]; }} else {{ break; }}\n", pad));
+                        code.push_str(&format!("{}    }}\n", pad));
+                        code.push_str(&format!("{}    serde_json::to_string(&out).unwrap_or_default()\n", pad));
+                    } else {
+                        code.push_str(&format!("{}    src.find(l).and_then(|li| {{ let after = &src[li + l.len()..]; after.find(r).map(|ri| after[..ri].to_string()) }}).unwrap_or_default()\n", pad));
+                    }
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+                ParseMode::Regex => {
+                    code.push_str(&format!("{}// Parse Regex: /{}/\n", pad, escape_str(&s.pattern)));
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    let flags = if s.multi_line { "(?m)" } else { "" };
+                    code.push_str(&format!("{}    let re = regex::Regex::new(\"{}{}\").unwrap();\n", pad, flags, escape_str(&s.pattern)));
+                    code.push_str(&format!("{}    let fmt = \"{}\";\n", pad, escape_str(&s.output_format)));
+                    code.push_str(&format!("{}    re.captures(&{}).map(|caps| {{\n", pad, input));
+                    code.push_str(&format!("{}        let mut result = fmt.to_string();\n", pad));
+                    code.push_str(&format!("{}        for (i, cap) in caps.iter().enumerate() {{\n", pad));
+                    code.push_str(&format!("{}            if let Some(m) = cap {{ result = result.replace(&format!(\"${{}}\", i), m.as_str()); }}\n", pad));
+                    code.push_str(&format!("{}        }}\n        result\n    }}).unwrap_or_default()\n", pad));
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+                ParseMode::Json => {
+                    code.push_str(&format!("{}// Parse JSON path: {}\n", pad, escape_str(&s.json_path)));
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let v: serde_json::Value = serde_json::from_str(&{}).unwrap_or(serde_json::Value::Null);\n", pad, input));
+                    let parts: Vec<&str> = s.json_path.split('.').filter(|p| !p.is_empty()).collect();
+                    let chain = parts.iter().map(|p| format!(".get(\"{}\").unwrap_or(&serde_json::Value::Null)", p)).collect::<Vec<_>>().join("");
+                    code.push_str(&format!("{}    v{}.as_str().unwrap_or_default().to_string()\n", pad, chain));
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+                ParseMode::Css => {
+                    code.push_str(&format!("{}// Parse CSS: {} [{}]\n", pad, escape_str(&s.selector), escape_str(&s.attribute)));
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let doc = scraper::Html::parse_document(&{});\n", pad, input));
+                    code.push_str(&format!("{}    let sel = scraper::Selector::parse(\"{}\").unwrap();\n", pad, escape_str(&s.selector)));
+                    let attr = &s.attribute;
+                    if attr == "innerText" || attr.is_empty() {
+                        if s.index < 0 {
+                            code.push_str(&format!("{}    doc.select(&sel).map(|e| e.text().collect::<String>()).collect::<Vec<_>>().join(\"\\n\")\n", pad));
+                        } else {
+                            code.push_str(&format!("{}    doc.select(&sel).nth({}).map(|e| e.text().collect::<String>()).unwrap_or_default()\n", pad, s.index));
+                        }
+                    } else {
+                        let idx = if s.index < 0 { 0usize } else { s.index as usize };
+                        code.push_str(&format!("{}    doc.select(&sel).nth({}).and_then(|e| e.value().attr(\"{}\")).unwrap_or_default().to_string()\n", pad, idx, escape_str(attr)));
+                    }
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+                ParseMode::XPath => {
+                    code.push_str(&format!("{}// Parse XPath: {}\n", pad, escape_str(&s.xpath)));
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let doc = roxmltree::Document::parse(&{}).unwrap();\n", pad, input));
+                    code.push_str(&format!("{}    // Note: Full XPath requires an xpath crate. Simplified attribute/text match:\n", pad));
+                    code.push_str(&format!("{}    doc.root_element().descendants().next().map(|n| n.text().unwrap_or_default().to_string()).unwrap_or_default()\n", pad));
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+                ParseMode::Cookie => {
+                    code.push_str(&format!("{}// Parse Cookie: \"{}\"\n", pad, escape_str(&s.cookie_name)));
+                    code.push_str(&format!("{}{}{}= {}.split(';')\n", pad, letkw, vn, input));
+                    code.push_str(&format!("{}    .filter_map(|pair| {{ let pair = pair.trim(); let eq = pair.find('=')?; Some((&pair[..eq], &pair[eq + 1..])) }})\n", pad));
+                    code.push_str(&format!("{}    .find(|(name, _)| *name == \"{}\")\n", pad, escape_str(&s.cookie_name)));
+                    code.push_str(&format!("{}    .map(|(_, v)| v.to_string())\n", pad));
+                    code.push_str(&format!("{}    .unwrap_or_default();\n", pad));
+                }
+                ParseMode::Lambda => {
+                    code.push_str(&format!("{}// Parse Lambda: {}\n", pad, escape_str(&s.lambda_expression)));
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    let body = gen_lambda_rust(&input, &s.lambda_expression, &format!("{}    ", pad));
+                    code.push_str(&body);
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+            }
+            vars.define(&s.output_var);
+        }
         BlockSettings::KeyCheck(s) => {
             for (i, keychain) in s.keychains.iter().enumerate() {
                 let prefix = if i == 0 { "if" } else { "} else if" };
@@ -640,6 +731,23 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
                     };
                     code.push_str(&format!("{}    (now {} {}).format(\"{}\").to_string()\n", pad, op, dur, escape_str(&s.format)));
                     code.push_str(&format!("{}}};\n", pad));
+                }
+                DateFnType::CurrentUnixTimeMs => {
+                    code.push_str(&format!("{}{}{}= std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis().to_string();\n", pad, letkw, vn));
+                }
+                DateFnType::Compute => {
+                    // Emit the expression directly; variables have already been interpolated at runtime
+                    code.push_str(&format!("{}// Compute: {}\n", pad, escape_str(&s.param)));
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    let __expr = \"{}\".to_string();\n", pad, escape_str(&s.param)));
+                    code.push_str(&format!("{}    // Evaluate arithmetic expression (runtime variable values substituted)\n", pad));
+                    code.push_str(&format!("{}    eval_arithmetic(&__expr)\n", pad));
+                    code.push_str(&format!("{}}};\n", pad));
+                }
+                DateFnType::Round => {
+                    let input = if vars.is_defined(&s.input_var) { var_name(&s.input_var) } else { "source".into() };
+                    let places: u32 = s.param.parse().unwrap_or(2);
+                    code.push_str(&format!("{}{}{}= {{ let v: f64 = {}.parse().unwrap_or(0.0); let f = 10f64.powi({}); format!(\"{{:.{}}}\" , (v * f).round() / f) }};\n", pad, letkw, vn, input, places, places));
                 }
             }
         }

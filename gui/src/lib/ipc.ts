@@ -239,6 +239,7 @@ export function registerCallbacks() {
 					else if (folderField === 'proxy_dir') app.defaultProxyPath = folderPath;
 					else if (folderField === 'plugins') (app.config as any).plugins_path = folderPath;
 					else if (folderField === 'job_folder') app.pendingJobWordlist = { path: folderPath, isFolder: true };
+					else if (folderField === 'results') app.pipeline.output_settings.output_directory = folderPath;
 				}
 				break;
 			case 'import_success':

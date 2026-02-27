@@ -39,6 +39,10 @@ impl ExecutionContext {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();
                 format!("{} = {}", s.output_var, truncate_display(&val, 60))
             }
+            BlockSettings::Parse(s) => {
+                let val = self.variables.get(&s.output_var).unwrap_or_default();
+                format!("{:?}({}) → {} = {}", s.parse_mode, s.input_var, s.output_var, truncate_display(&val, 50))
+            }
             BlockSettings::KeyCheck(_) => {
                 format!("status → {:?}", self.status)
             }

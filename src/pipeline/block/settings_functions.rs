@@ -210,6 +210,9 @@ pub struct DateFunctionSettings {
     pub amount: i64,
     pub unit: String,
     pub capture: bool,
+    /// Extra parameter: expression string (Compute), decimal places (Round), etc.
+    #[serde(default)]
+    pub param: String,
 }
 
 impl Default for DateFunctionSettings {
@@ -222,6 +225,7 @@ impl Default for DateFunctionSettings {
             amount: 0,
             unit: "seconds".into(),
             capture: false,
+            param: String::new(),
         }
     }
 }
@@ -235,6 +239,12 @@ pub enum DateFnType {
     SubtractTime,
     UnixTimestamp,
     UnixToDate,
+    /// Current Unix timestamp in milliseconds
+    CurrentUnixTimeMs,
+    /// Evaluate a math/arithmetic expression with variable interpolation
+    Compute,
+    /// Round a number to N decimal places (param = decimal places, default 2)
+    Round,
 }
 
 // ── Case / Switch ──
