@@ -329,6 +329,10 @@ pub fn handle_ipc_cmd(
             handlers_file::list_collections(state, eval_js);
             None
         }
+        "list_configs" => {
+            handlers_file::list_configs(data, eval_js);
+            None
+        }
         "browse_folder" => {
             handlers_file::browse_folder(data, eval_js);
             None

@@ -1,16 +1,25 @@
 <script lang="ts">
 	import { app, getEditingBlock } from '$lib/state.svelte';
+	import { send } from '$lib/ipc';
 	import type { BlockResult, Block } from '$lib/types';
 	import X from '@lucide/svelte/icons/x';
 	import Copy from '@lucide/svelte/icons/copy';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 	import Check from '@lucide/svelte/icons/check';
 	import Search from '@lucide/svelte/icons/search';
 	import Shield from '@lucide/svelte/icons/shield';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Minus from '@lucide/svelte/icons/minus';
+	import Plus from '@lucide/svelte/icons/plus';
 
-	let viewTab = $state<'body' | 'headers' | 'cookies'>('body');
+	// When true, renders full-screen inside a native OS window (launched via float_panel_native)
+	let { nativeMode = false }: { nativeMode?: boolean } = $props();
+
+	let viewTab = $state<'request' | 'body' | 'headers' | 'cookies'>('body');
+	let prettyFormat = $state(true);
+	let fontSize = $state(11);
 	let selectedResultIndex = $state(0);
 	let copied = $state(false);
 
@@ -355,6 +364,7 @@
 	}
 
 	function formatBody(body: string): string {
+		if (!prettyFormat) return body;
 		try {
 			return JSON.stringify(JSON.parse(body), null, 2);
 		} catch {
@@ -395,6 +405,27 @@
 			copied = true;
 			setTimeout(() => { copied = false; }, 1500);
 		} catch {}
+	}
+
+	async function copyCurrentTab() {
+		let text = '';
+		if (viewTab === 'body') text = currentResult?.response?.body ?? '';
+		else if (viewTab === 'headers') text = getHeadersText();
+		else if (viewTab === 'cookies') text = getCookiesText();
+		else if (viewTab === 'request') {
+			const req = currentResult?.request;
+			if (req) {
+				const hdrs = Object.entries(req.headers ?? {}).map(([k,v]) => `${k}: ${v}`).join('\n');
+				text = `${req.method} ${req.url}\n${hdrs}${req.body ? '\n\n' + req.body : ''}`;
+			}
+		}
+		if (text) {
+			try {
+				await navigator.clipboard.writeText(text);
+				copied = true;
+				setTimeout(() => { copied = false; }, 1500);
+			} catch {}
+		}
 	}
 
 	// --- Drag handlers ---
@@ -451,28 +482,35 @@
 		return r.block_label;
 	}
 
-	// Keyboard shortcut: Ctrl+F to open search
+	// Keyboard shortcuts: Ctrl+F to search, Ctrl+C to copy current tab (when nothing selected)
 	function onViewerKeydown(e: KeyboardEvent) {
 		if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
 			e.preventDefault();
 			e.stopPropagation();
 			toggleSearch();
+		} else if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !window.getSelection()?.toString()) {
+			e.preventDefault();
+			copyCurrentTab();
 		}
 	}
 </script>
 
-{#if app.showResponseViewer && hasResults}
+{#if (nativeMode || app.showResponseViewer) && hasResults}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed z-50 flex flex-col bg-surface border border-border shadow-2xl"
-		style="left: {posX}px; top: {posY}px; width: {width}px; height: {height}px; box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.3);"
+		class="{nativeMode
+			? 'flex flex-col h-screen w-screen bg-surface'
+			: 'fixed z-50 flex flex-col bg-surface border border-border shadow-2xl'}"
+		style="{nativeMode
+			? ''
+			: `left: ${posX}px; top: ${posY}px; width: ${width}px; height: ${height}px; box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.3);`}"
 		onkeydown={onViewerKeydown}
 	>
 		<!-- Title bar -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="flex items-center gap-2 px-2 py-1.5 bg-surface panel-raised shrink-0 cursor-move select-none"
-			onmousedown={onTitleMouseDown}
+			class="flex items-center gap-2 px-2 py-1.5 bg-surface panel-raised shrink-0 {nativeMode ? 'cursor-default' : 'cursor-move'} select-none"
+			onmousedown={nativeMode ? undefined : onTitleMouseDown}
 		>
 			<ExternalLink size={12} class="text-primary shrink-0" />
 			<span class="text-xs font-medium text-foreground flex-1 truncate">Response Viewer</span>
@@ -489,6 +527,21 @@
 				</select>
 			{/if}
 
+			<!-- Font size controls -->
+			<div class="flex items-center gap-0.5 shrink-0">
+				<button class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary" onclick={() => fontSize = Math.max(9, fontSize - 1)} title="Decrease font size"><Minus size={10} /></button>
+				<span class="text-[9px] text-muted-foreground w-5 text-center">{fontSize}</span>
+				<button class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary" onclick={() => fontSize = Math.min(20, fontSize + 1)} title="Increase font size"><Plus size={10} /></button>
+			</div>
+			{#if !nativeMode}
+			<button
+				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
+				onclick={() => send('float_panel_native', { panel_id: 'response-viewer' })}
+				title="Launch as external window"
+			>
+				<Maximize2 size={12} />
+			</button>
+			{/if}
 			<button
 				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
 				onclick={() => { app.showFingerprint = true; }}
@@ -505,11 +558,12 @@
 			</button>
 			<button
 				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
-				onclick={copyBody}
-				title="Copy response body"
+				onclick={copyCurrentTab}
+				title="Copy current tab (Ctrl+C)"
 			>
 				{#if copied}<Check size={12} class="text-green" />{:else}<Copy size={12} />{/if}
 			</button>
+			{#if !nativeMode}
 			<button
 				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
 				onclick={close}
@@ -517,6 +571,7 @@
 			>
 				<X size={12} />
 			</button>
+			{/if}
 		</div>
 
 		<!-- Search bar -->
@@ -566,23 +621,38 @@
 			</div>
 
 			<!-- View tabs -->
-			<div class="flex border-b border-border shrink-0">
+			<div class="flex border-b border-border shrink-0 items-center">
+				{#if currentResult?.request}
 				<button
-					class="px-2 py-0.5 text-[11px] {viewTab === 'body' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}"
+					class="px-2 py-0.5 text-[11px] {viewTab === 'request' ? 'text-foreground font-medium border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}"
+					onclick={() => viewTab = 'request'}
+				>Request</button>
+				{/if}
+				<button
+					class="px-2 py-0.5 text-[11px] {viewTab === 'body' ? 'text-foreground font-medium border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}"
 					onclick={() => viewTab = 'body'}
-				>Body</button>
+				>Response</button>
 				<button
-					class="px-2 py-0.5 text-[11px] {viewTab === 'headers' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}"
+					class="px-2 py-0.5 text-[11px] {viewTab === 'headers' ? 'text-foreground font-medium border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}"
 					onclick={() => viewTab = 'headers'}
 				>Headers</button>
 				<button
-					class="px-2 py-0.5 text-[11px] {viewTab === 'cookies' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}"
+					class="px-2 py-0.5 text-[11px] {viewTab === 'cookies' ? 'text-foreground font-medium border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}"
 					onclick={() => viewTab = 'cookies'}
 				>Cookies</button>
 
+				<div class="flex-1"></div>
+
+				<!-- Pretty format checkbox (body/request only) -->
+				{#if viewTab === 'body' || viewTab === 'request'}
+				<label class="flex items-center gap-1 text-[10px] text-muted-foreground px-2 cursor-pointer select-none">
+					<input type="checkbox" bind:checked={prettyFormat} class="w-3 h-3" />
+					Pretty
+				</label>
+				{/if}
+
 				<!-- Parser match indicator -->
 				{#if parserMatches}
-					<div class="flex-1"></div>
 					<span class="text-[10px] text-green px-2 py-0.5 flex items-center gap-1">
 						{parserMatches.matches.length} match{parserMatches.matches.length !== 1 ? 'es' : ''}
 						<span class="text-muted-foreground">({parserMatches.type.replace('Parse', '')})</span>
@@ -592,7 +662,42 @@
 
 			<!-- Content -->
 			<div class="flex-1 overflow-auto panel-inset min-h-0">
-				{#if viewTab === 'body' && currentResult.response}
+				{#if viewTab === 'request' && currentResult?.request}
+					<!-- Request details -->
+					<div class="p-2 space-y-2 select-text" style="font-size: {fontSize}px">
+						<!-- Request line -->
+						<div class="flex items-baseline gap-2 font-mono">
+							<span class="text-orange font-bold shrink-0">{currentResult.request.method}</span>
+							<span class="text-primary break-all">{currentResult.request.url}</span>
+						</div>
+						<!-- Request headers -->
+						{#if currentResult.request.headers && Object.keys(currentResult.request.headers).length > 0}
+							<div>
+								<div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Request Headers</div>
+								{#each Object.entries(currentResult.request.headers ?? {}) as [key, value]}
+									<div class="flex font-mono gap-1 group">
+										<span class="text-orange shrink-0">{key}:</span>
+										<span class="text-foreground break-all flex-1 min-w-0">{value}</span>
+										<button
+											class="p-0.5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground shrink-0"
+											onclick={async () => { try { await navigator.clipboard.writeText(String(value)); } catch {} }}
+											title="Copy value"
+										><Copy size={9} /></button>
+									</div>
+								{/each}
+							</div>
+						{/if}
+						<!-- Request body -->
+						{#if currentResult.request.body}
+							<div>
+								<div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Request Body</div>
+								<pre class="font-mono whitespace-pre-wrap break-words text-foreground">{prettyFormat ? (() => { try { return JSON.stringify(JSON.parse(currentResult.request.body), null, 2); } catch { return currentResult.request.body; } })() : currentResult.request.body}</pre>
+							</div>
+						{:else}
+							<div class="text-muted-foreground/50 font-mono">— no request body —</div>
+						{/if}
+					</div>
+				{:else if viewTab === 'body' && currentResult.response}
 					<!-- Parser match results panel -->
 					{#if parserMatches && parserMatches.matches.length > 0}
 						<div class="border-b border-border bg-background px-2 py-1.5">
@@ -616,17 +721,17 @@
 					{/if}
 
 					<!-- Response body with highlights -->
-					<div class="p-2 select-text">
+					<div class="p-2 select-text" style="font-size: {fontSize}px">
 						{#if parserMatches && parserMatches.positions.length > 0}
-							<pre class="text-xs text-foreground font-mono whitespace-pre-wrap break-words">{@html highlightBody(currentResult.response.body, parserMatches)}</pre>
+							<pre class="text-foreground font-mono whitespace-pre-wrap break-words">{@html highlightBody(currentResult.response.body, parserMatches)}</pre>
 						{:else if searchQuery}
-							<pre class="text-xs text-foreground font-mono whitespace-pre-wrap break-words">{@html applySearchHighlights(escapeHtml(formatBody(currentResult.response.body)), getCurrentLocalIndex('body'))}</pre>
+							<pre class="text-foreground font-mono whitespace-pre-wrap break-words">{@html applySearchHighlights(escapeHtml(formatBody(currentResult.response.body)), getCurrentLocalIndex('body'))}</pre>
 						{:else}
-							<pre class="text-xs text-foreground font-mono whitespace-pre-wrap break-words">{formatBody(currentResult.response.body)}</pre>
+							<pre class="text-foreground font-mono whitespace-pre-wrap break-words">{formatBody(currentResult.response.body)}</pre>
 						{/if}
 					</div>
 				{:else if viewTab === 'headers' && currentResult.response}
-					<div class="p-2 space-y-0.5 select-text">
+					<div class="p-2 space-y-0.5 select-text" style="font-size: {fontSize}px">
 						{#if searchQuery}
 							<div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Response Headers</div>
 							<pre class="text-xs font-mono whitespace-pre-wrap break-words">{@html getHighlightedHeadersHtml()}</pre>
@@ -666,7 +771,7 @@
 						{/if}
 					</div>
 				{:else if viewTab === 'cookies' && currentResult.response}
-					<div class="p-2 space-y-0.5 select-text">
+					<div class="p-2 space-y-0.5 select-text" style="font-size: {fontSize}px">
 						{#if Object.keys(currentResult.response.cookies).length > 0}
 							{#if searchQuery}
 								<pre class="text-xs font-mono whitespace-pre-wrap break-words">{@html getHighlightedCookiesHtml()}</pre>
@@ -704,8 +809,9 @@
 			</div>
 		{/if}
 
-		<!-- Resize handle -->
+		<!-- Resize handle (hidden in native window mode) -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		{#if !nativeMode}
 		<div
 			class="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
 			onmousedown={onResizeMouseDown}
@@ -715,5 +821,6 @@
 				<path d="M11 5v6H5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
 			</svg>
 		</div>
+		{/if}
 	</div>
 {/if}

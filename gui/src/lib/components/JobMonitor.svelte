@@ -261,6 +261,9 @@ Error handling
 	let newJobProxyMode = $state<'pipeline' | 'file' | 'group'>('pipeline');
 	let newJobProxyFile = $state('');
 	let newJobProxyGroup = $state('');
+	// Per-job config source
+	let newJobConfigSource = $state<'current' | 'saved' | 'browse'>('current');
+	let newJobConfigPath = $state('');
 
 	// Edit job dialog state
 	let editingJob = $state<any>(null);
@@ -323,11 +326,33 @@ Error handling
 		}
 	});
 
+	// When a config file browse completes, fill the config path field
+	$effect(() => {
+		const picked = app.pendingJobConfig;
+		if (picked && showNewJob) {
+			newJobConfigPath = picked;
+			newJobConfigSource = 'browse';
+			console.log('[JobMonitor] pendingJobConfig applied:', picked);
+			app.pendingJobConfig = null;
+		}
+	});
+
+	// When form opens and configs dir is known, fetch saved configs list
+	$effect(() => {
+		if (showNewJob && app.setupDirsPaths?.configs) {
+			send('list_configs', { configs_path: app.setupDirsPaths.configs });
+		}
+	});
+
 	function createJob() {
-		console.log('[JobMonitor] createJob: jobType=', newJobType, 'dataType=', newJobDataType, 'threads=', newJobThreads);
+		console.log('[JobMonitor] createJob: jobType=', newJobType, 'configSource=', newJobConfigSource, 'threads=', newJobThreads);
 		send('create_job', {
 			name: newJobName || (newJobType === 'ProxyCheck' ? 'Proxy Check' : 'New Job'),
 			pipeline: JSON.parse(JSON.stringify(app.pipeline)),
+			// config_path overrides the pipeline field — backend loads from disk if set
+			...(newJobType === 'Config' && newJobConfigSource !== 'current' && newJobConfigPath
+				? { config_path: newJobConfigPath }
+				: {}),
 			thread_count: newJobThreads,
 			job_type: newJobType,
 			proxy_check_url: newJobType === 'ProxyCheck' ? proxyCheckUrl : undefined,
@@ -353,6 +378,8 @@ Error handling
 		newJobProxyMode = 'pipeline';
 		newJobProxyFile = '';
 		newJobProxyGroup = '';
+		newJobConfigSource = 'current';
+		newJobConfigPath = '';
 	}
 
 	function refreshJobs() {
@@ -459,6 +486,45 @@ Error handling
 				</div>
 
 				{#if newJobType === 'Config'}
+					<!-- Config Source -->
+					<div class="col-span-2">
+						<label class="text-muted-foreground text-[10px]">Config</label>
+						<div class="flex gap-1 mt-0.5">
+							<div class="flex rounded border border-border overflow-hidden shrink-0">
+								{#each [['current','Current Tab'],['saved','Saved Config'],['browse','Browse']] as [val, label]}
+									<button
+										class="px-2 py-0.5 text-[10px] transition-colors {newJobConfigSource === val ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent/20'}"
+										onclick={() => { newJobConfigSource = val as any; if (val === 'saved' && newJobConfigPath === '') newJobConfigPath = app.configsList[0]?.path ?? ''; }}
+									>{label}</button>
+								{/each}
+							</div>
+							{#if newJobConfigSource === 'saved'}
+								{#if app.configsList.length === 0}
+									<span class="text-[10px] text-muted-foreground/60 italic px-2 self-center">No .opk/.svb/.rfx files found in configs folder</span>
+								{:else}
+									<SkeuSelect
+										value={newJobConfigPath}
+										onValueChange={(v) => { newJobConfigPath = v; }}
+										options={app.configsList.map(c => ({ value: c.path, label: `${c.name}.${c.ext}` }))}
+										class="flex-1 text-[10px]"
+									/>
+								{/if}
+							{:else if newJobConfigSource === 'browse'}
+								<input
+									type="text"
+									bind:value={newJobConfigPath}
+									placeholder="Path to .opk/.svb/.rfx file..."
+									class="skeu-input flex-1 text-[10px] font-mono"
+								/>
+								<button
+									class="skeu-btn text-[10px] shrink-0"
+									onclick={() => send('browse_file', { field: 'job_config' })}
+								>Browse</button>
+							{:else}
+								<span class="text-[10px] text-muted-foreground/70 px-2 self-center">Uses the currently active config tab</span>
+							{/if}
+						</div>
+					</div>
 					<div>
 						<label class="text-muted-foreground text-[10px]">Data Source Type</label>
 						<SkeuSelect

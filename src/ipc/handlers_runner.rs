@@ -20,7 +20,18 @@ pub(super) fn debug_pipeline(
             // If the frontend sends a full pipeline snapshot, use it (keeps settings in sync)
             let frontend_pipeline = data.get("pipeline")
                 .and_then(|v| serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok());
-            let blocks = frontend_pipeline.as_ref().map(|p| p.blocks.clone()).unwrap_or_else(|| s.pipeline.blocks.clone());
+            let mut blocks = frontend_pipeline.as_ref().map(|p| p.blocks.clone()).unwrap_or_else(|| s.pipeline.blocks.clone());
+            // If block_ids is provided, restrict execution to only those blocks (Debug Block feature)
+            if let Some(ids_val) = data.get("block_ids") {
+                if let Some(ids) = ids_val.as_array() {
+                    let ids: std::collections::HashSet<String> = ids.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect();
+                    if !ids.is_empty() {
+                        blocks.retain(|b| ids.contains(&b.id.to_string()));
+                    }
+                }
+            }
             let data_settings = frontend_pipeline.as_ref().map(|p| p.data_settings.clone()).unwrap_or_else(|| s.pipeline.data_settings.clone());
             let pm = s.plugin_manager.clone();
             drop(s); // Release lock before async execution

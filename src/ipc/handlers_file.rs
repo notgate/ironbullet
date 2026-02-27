@@ -153,6 +153,46 @@ pub(super) fn list_collections(
     }
 }
 
+/// List saved configs (.opk / .svb / .rfx) in the given directory.
+/// Frontend sends: { configs_path: "/path/to/configs" }
+/// Returns: configs_list: [{ name, path, ext }, ...]
+pub(super) fn list_configs(
+    data: serde_json::Value,
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        handle.spawn(async move {
+            let path = data.get("configs_path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+            let mut configs: Vec<serde_json::Value> = Vec::new();
+            if !path.is_empty() {
+                if let Ok(entries) = std::fs::read_dir(&path) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                        if ext == "opk" || ext == "svb" || ext == "rfx" {
+                            let name = p.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                            configs.push(serde_json::json!({
+                                "path": p.display().to_string(),
+                                "name": name,
+                                "ext": ext,
+                            }));
+                        }
+                    }
+                }
+            }
+            configs.sort_by(|a, b| {
+                let na = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let nb = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                na.to_lowercase().cmp(&nb.to_lowercase())
+            });
+            let resp = IpcResponse::ok("configs_list", serde_json::json!(configs));
+            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+        });
+    }
+}
+
 pub(super) fn browse_folder(
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
