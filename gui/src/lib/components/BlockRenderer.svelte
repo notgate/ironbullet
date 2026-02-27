@@ -134,6 +134,11 @@
 			case 'ParseCSS': return `${s.selector}${s.attribute ? `[${s.attribute}]` : ''} → ${s.output_var}`;
 			case 'ParseXPath': return `${s.xpath} → ${s.output_var}`;
 			case 'ParseCookie': return `cookie "${s.cookie_name}" → ${s.output_var}`;
+		case 'Parse': {
+			const mode = s.parse_mode || 'LR';
+			const hint: Record<string, string> = { LR: `"${s.left}"…"${s.right}"`, Regex: s.pattern, Json: s.json_path, Css: s.selector, XPath: s.xpath, Cookie: s.cookie_name, Lambda: s.lambda_expression };
+			return `${mode}: ${(hint[mode] || '').slice(0, 22) || '…'} → ${s.output_var}`;
+		}
 			case 'KeyCheck': return s.keychains.map((k: { result: string }) => k.result).join(', ');
 			case 'StringFunction': return `${s.function_type}(${s.input_var}) → ${s.output_var}`;
 			case 'ListFunction': return `${s.function_type}(${s.input_var}) → ${s.output_var}`;

@@ -23,14 +23,19 @@
 			{#if fieldHint(block, 'function_type')}<p class={hintCls}>{fieldHint(block, 'function_type')}</p>{/if}
 			<SkeuSelect value={block.settings.function_type}
 				options={[
-					{value:'Now',label:'Now (current time)'},{value:'FormatDate',label:'Format Date'},
-					{value:'ParseDate',label:'Parse Date'},{value:'AddTime',label:'Add Time'},
-					{value:'SubtractTime',label:'Subtract Time'},{value:'UnixTimestamp',label:'Unix Timestamp'},
-					{value:'UnixToDate',label:'Unix to Date'},
+					{value:'Now',label:'Now — Current date/time'},{value:'UnixTimestamp',label:'Unix Timestamp — Current (seconds)'},
+					{value:'CurrentUnixTimeMs',label:'CurrentUnixTime — Current (milliseconds)'},
+					{value:'UnixToDate',label:'Unix to Date — Convert timestamp to string'},
+					{value:'FormatDate',label:'Format Date — Reformat a date string'},
+					{value:'ParseDate',label:'Parse Date — Date string to timestamp'},
+					{value:'AddTime',label:'Add Time — Add duration to timestamp'},
+					{value:'SubtractTime',label:'Subtract Time — Subtract duration from timestamp'},
+					{value:'Compute',label:'Compute — Evaluate arithmetic expression'},
+					{value:'Round',label:'Round — Round number to N decimals'},
 				]}
 				onValueChange={(v) => updateSettings('function_type', v)} />
 		</div>
-		{#if !['Now','UnixTimestamp'].includes(block.settings.function_type)}
+		{#if !['Now','UnixTimestamp','CurrentUnixTimeMs'].includes(block.settings.function_type)}
 			<div>
 				<label class={labelCls}>Input var</label>
 				{#if fieldHint(block, 'input_var')}<p class={hintCls}>{fieldHint(block, 'input_var')}</p>{/if}
@@ -38,12 +43,27 @@
 					oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
 			</div>
 		{/if}
-		<div>
-			<label class={labelCls}>Format</label>
-			{#if fieldHint(block, 'format')}<p class={hintCls}>{fieldHint(block, 'format')}</p>{/if}
-			<VariableInput value={block.settings.format} class={inputCls} placeholder="%Y-%m-%d %H:%M:%S"
-				oninput={(e) => updateSettings('format', (e.target as HTMLInputElement).value)} />
-		</div>
+		{#if block.settings.function_type === 'Compute'}
+			<div>
+				<label class={labelCls}>Expression <span class="text-muted-foreground/60">(supports +, -, *, /, %, parens)</span></label>
+				<VariableInput value={block.settings.param || ''} placeholder="<BALANCE> * 0.9 + 100" class={`${inputCls} font-mono`}
+					oninput={(e) => updateSettings('param', (e.target as HTMLInputElement).value)} />
+				<p class="text-[9px] text-muted-foreground mt-0.5">Variables are interpolated before evaluation. e.g. &lt;PRICE&gt; * 2</p>
+			</div>
+		{:else if block.settings.function_type === 'Round'}
+			<div>
+				<label class={labelCls}>Decimal places</label>
+				<input type="number" value={block.settings.param || '2'} min="0" max="10" class="w-20 skeu-input text-[11px]"
+					oninput={(e) => updateSettings('param', (e.target as HTMLInputElement).value)} />
+			</div>
+		{:else if !['Now','UnixTimestamp','CurrentUnixTimeMs','Compute','Round'].includes(block.settings.function_type)}
+			<div>
+				<label class={labelCls}>Format</label>
+				{#if fieldHint(block, 'format')}<p class={hintCls}>{fieldHint(block, 'format')}</p>{/if}
+				<VariableInput value={block.settings.format} class={inputCls} placeholder="%Y-%m-%d %H:%M:%S"
+					oninput={(e) => updateSettings('format', (e.target as HTMLInputElement).value)} />
+			</div>
+		{/if}
 		{#if ['AddTime','SubtractTime'].includes(block.settings.function_type)}
 			<div class="flex gap-2">
 				<div class="flex-1">

@@ -7,7 +7,7 @@
 	import Play from '@lucide/svelte/icons/play';
 	import Square from '@lucide/svelte/icons/square';
 	import Bug from '@lucide/svelte/icons/bug';
-	import CheckCircle from '@lucide/svelte/icons/check-circle';
+
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 
 	import type { Block } from '$lib/types';
@@ -167,7 +167,7 @@
 	<!-- Hits menu -->
 	<DropdownMenu.Root>
 		<DropdownMenu.Trigger class="toolbar-trigger flex items-center gap-1 {app.hits.length > 0 ? 'text-primary' : ''}">
-			<CheckCircle size={10} />Hits{#if app.hits.length > 0}<span class="text-[9px] bg-primary/15 px-1 rounded">{app.hits.length}</span>{/if}
+			Hits{#if app.hits.length > 0}<span class="text-[9px] bg-primary/15 px-1 rounded">{app.hits.length}</span>{/if}
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Portal>
 			<DropdownMenu.Content class="menu-content" sideOffset={2} align="start">

@@ -4,17 +4,18 @@
 export interface FingerprintRule {
 	id: string;
 	name: string;
-	category: 'waf' | 'cdn' | 'server' | 'framework' | 'security' | 'session' | 'bot_protection';
+	category: 'waf' | 'cdn' | 'server' | 'framework' | 'cms' | 'analytics' | 'captcha' | 'antibot' | 'identity' | 'hosting';
 	confidence: 'high' | 'medium' | 'low';
 	match: {
-		cookie?: string;       // cookie name pattern (regex)
-		header?: string;       // header name to check (case-insensitive)
-		headerValue?: string;  // header value pattern (regex)
-		bodyPattern?: string;  // response body regex
+		cookie?: string;
+		header?: string;
+		headerValue?: string;
+		bodyPattern?: string;
 		statusCode?: number;
 	};
 	description: string;
 	details?: string;
+	bypassHint?: string;
 }
 
 export interface FingerprintMatch {
@@ -31,654 +32,334 @@ export interface ResponseInfo {
 
 export interface StackEntry {
 	name: string;
-	category: string;        // 'waf' | 'cdn' | 'server' | 'framework'
+	category: string;
 	confidence: 'high' | 'medium' | 'low';
 }
 
+export interface CookieAnalysis {
+	name: string;
+	value: string;
+	provider: string;
+	purpose: string;
+	category: 'antibot' | 'session' | 'analytics' | 'tracking' | 'functional' | 'unknown';
+	risk: 'critical' | 'high' | 'medium' | 'low';
+	bypassRequired: boolean;
+	details: string;
+}
+
 export interface FingerprintResult {
-	stack: StackEntry[];      // top-level summary: "Cloudflare, nginx, PHP"
+	stack: StackEntry[];
 	matches: FingerprintMatch[];
 	securityHeaders: { name: string; present: boolean; value?: string }[];
+	cookieAnalysis: CookieAnalysis[];
 	raw: { headers: Record<string, string>; cookies: Record<string, string> };
 }
 
 // ─── Detection Rules ─────────────────────────────────────────────────
 
 const rules: FingerprintRule[] = [
-	// ── WAF ──────────────────────────────────────────────────────────
-	{
-		id: 'akamai-abck', name: 'Akamai Bot Manager', category: 'waf', confidence: 'high',
-		match: { cookie: '^_abck$' },
-		description: 'Akamai Bot Manager detected via _abck cookie',
-		details: 'Requires sensor data generation to bypass',
-	},
-	{
-		id: 'akamai-akbmsc', name: 'Akamai Bot Manager', category: 'waf', confidence: 'high',
-		match: { cookie: '^ak_bmsc$' },
-		description: 'Akamai Bot Manager detected via ak_bmsc cookie',
-	},
-	{
-		id: 'akamai-bmsz', name: 'Akamai Bot Manager', category: 'waf', confidence: 'medium',
-		match: { cookie: '^bm_sz$' },
-		description: 'Akamai Bot Manager detected via bm_sz cookie',
-	},
-	{
-		id: 'akamai-bmsv', name: 'Akamai Bot Manager', category: 'waf', confidence: 'medium',
-		match: { cookie: '^bm_sv$' },
-		description: 'Akamai Bot Manager detected via bm_sv cookie',
-	},
-	{
-		id: 'akamai-header', name: 'Akamai', category: 'waf', confidence: 'medium',
-		match: { header: 'x-akamai-transformed' },
-		description: 'Akamai WAF/CDN detected via x-akamai-transformed header',
-	},
-	{
-		id: 'cloudflare-cfray', name: 'Cloudflare', category: 'waf', confidence: 'high',
-		match: { header: 'cf-ray' },
-		description: 'Cloudflare detected via cf-ray header',
-		details: 'May require challenge solving for protected endpoints',
-	},
-	{
-		id: 'cloudflare-server', name: 'Cloudflare', category: 'waf', confidence: 'high',
-		match: { header: 'server', headerValue: '^cloudflare$' },
-		description: 'Cloudflare detected via Server header',
-	},
-	{
-		id: 'cloudflare-cfbm', name: 'Cloudflare Bot Management', category: 'waf', confidence: 'high',
-		match: { cookie: '^__cf_bm$' },
-		description: 'Cloudflare Bot Management detected via __cf_bm cookie',
-	},
-	{
-		id: 'cloudflare-clearance', name: 'Cloudflare Challenge', category: 'waf', confidence: 'high',
-		match: { cookie: '^cf_clearance$' },
-		description: 'Cloudflare JS Challenge detected via cf_clearance cookie',
-		details: 'Requires JS challenge solving or Turnstile token',
-	},
-	{
-		id: 'ddosguard-server', name: 'DDoS-Guard', category: 'waf', confidence: 'high',
-		match: { header: 'server', headerValue: 'ddos-guard' },
-		description: 'DDoS-Guard detected via Server header',
-		details: 'May require cookie solving or JS challenge bypass',
-	},
-	{
-		id: 'ddosguard-cookie1', name: 'DDoS-Guard', category: 'waf', confidence: 'high',
-		match: { cookie: '^__ddg[0-9]' },
-		description: 'DDoS-Guard detected via __ddg cookie',
-	},
-	{
-		id: 'ddosguard-cookie2', name: 'DDoS-Guard', category: 'waf', confidence: 'medium',
-		match: { cookie: '^__ddgid_' },
-		description: 'DDoS-Guard detected via __ddgid cookie',
-	},
-	{
-		id: 'ddosguard-mark', name: 'DDoS-Guard', category: 'waf', confidence: 'high',
-		match: { cookie: '^__ddgmark_' },
-		description: 'DDoS-Guard detected via __ddgmark cookie',
-	},
-	{
-		id: 'datadome-cookie', name: 'DataDome', category: 'waf', confidence: 'high',
-		match: { cookie: '^datadome$' },
-		description: 'DataDome detected via datadome cookie',
-		details: 'Requires DataDome interstitial/captcha handling',
-	},
-	{
-		id: 'datadome-header', name: 'DataDome', category: 'waf', confidence: 'high',
-		match: { header: 'x-datadome-cid' },
-		description: 'DataDome detected via x-datadome-cid header',
-	},
-	{
-		id: 'datadome-server', name: 'DataDome', category: 'waf', confidence: 'high',
-		match: { header: 'server', headerValue: 'datadome' },
-		description: 'DataDome detected via Server header',
-	},
-	{
-		id: 'incapsula-visid', name: 'Imperva/Incapsula', category: 'waf', confidence: 'high',
-		match: { cookie: '^visid_incap_' },
-		description: 'Imperva/Incapsula WAF detected via visid_incap cookie',
-	},
-	{
-		id: 'incapsula-ses', name: 'Imperva/Incapsula', category: 'waf', confidence: 'high',
-		match: { cookie: '^incap_ses_' },
-		description: 'Imperva/Incapsula WAF detected via incap_ses cookie',
-	},
-	{
-		id: 'imperva-cdn', name: 'Imperva/Incapsula', category: 'waf', confidence: 'high',
-		match: { header: 'x-cdn', headerValue: 'imperva' },
-		description: 'Imperva CDN detected via X-CDN header',
-	},
-	{
-		id: 'imperva-iinfo', name: 'Imperva/Incapsula', category: 'waf', confidence: 'high',
-		match: { header: 'x-iinfo' },
-		description: 'Imperva/Incapsula detected via X-Iinfo header',
-	},
-	{
-		id: 'perimeterx-cookie', name: 'PerimeterX/HUMAN', category: 'waf', confidence: 'high',
-		match: { cookie: '^_px' },
-		description: 'PerimeterX (HUMAN) detected via _px cookie',
-		details: 'Requires sensor data and challenge solving',
-	},
-	{
-		id: 'perimeterx-header', name: 'PerimeterX/HUMAN', category: 'waf', confidence: 'high',
-		match: { header: 'x-px-' },
-		description: 'PerimeterX (HUMAN) detected via x-px header',
-	},
-	{
-		id: 'aws-waf', name: 'AWS WAF', category: 'waf', confidence: 'high',
-		match: { header: 'x-amzn-waf-' },
-		description: 'AWS WAF detected via x-amzn-waf header',
-	},
-	{
-		id: 'aws-alb', name: 'AWS ALB', category: 'waf', confidence: 'medium',
-		match: { cookie: '^(awsalb|AWSALB)$' },
-		description: 'AWS Application Load Balancer detected via AWSALB cookie',
-	},
-	{
-		id: 'sucuri', name: 'Sucuri WAF', category: 'waf', confidence: 'high',
-		match: { header: 'x-sucuri-id' },
-		description: 'Sucuri WAF detected via x-sucuri-id header',
-	},
-	{
-		id: 'sucuri-server', name: 'Sucuri WAF', category: 'waf', confidence: 'high',
-		match: { header: 'server', headerValue: 'sucuri' },
-		description: 'Sucuri WAF detected via Server header',
-	},
-	{
-		id: 'reese84', name: 'Reese84 (Shape/F5)', category: 'waf', confidence: 'high',
-		match: { cookie: '^reese84$' },
-		description: 'Reese84 (Shape Security / F5) detected via reese84 cookie',
-		details: 'Requires sensor data generation',
-	},
-	{
-		id: 'f5-bigip', name: 'F5 BIG-IP', category: 'waf', confidence: 'high',
-		match: { cookie: '^BIGipServer' },
-		description: 'F5 BIG-IP load balancer detected via BIGipServer cookie',
-	},
-	{
-		id: 'kasada-header', name: 'Kasada', category: 'waf', confidence: 'high',
-		match: { header: 'x-kpsdk-' },
-		description: 'Kasada bot protection detected via x-kpsdk header',
-		details: 'Requires Kasada SDK challenge solving',
-	},
-	{
-		id: 'shape-cookie', name: 'Shape Security', category: 'waf', confidence: 'medium',
-		match: { cookie: '^_imp_apg_r_$' },
-		description: 'Shape Security detected via _imp_apg_r_ cookie',
-	},
-	{
-		id: 'forcepoint', name: 'Forcepoint', category: 'waf', confidence: 'medium',
-		match: { header: 'x-cnection', headerValue: 'close' },
-		description: 'Forcepoint WAF detected via x-cnection header',
-	},
-	{
-		id: 'wordfence', name: 'Wordfence', category: 'waf', confidence: 'high',
-		match: { cookie: '^wfvt_' },
-		description: 'Wordfence (WordPress WAF) detected via wfvt_ cookie',
-	},
-	{
-		id: 'modsecurity', name: 'ModSecurity', category: 'waf', confidence: 'high',
-		match: { header: 'server', headerValue: 'mod_security' },
-		description: 'ModSecurity WAF detected via Server header',
-	},
-	{
-		id: 'stackpath', name: 'StackPath', category: 'waf', confidence: 'high',
-		match: { header: 'x-sp-' },
-		description: 'StackPath WAF detected via x-sp header',
-	},
-	{
-		id: 'edgecast', name: 'Edgecast/Verizon', category: 'waf', confidence: 'medium',
-		match: { header: 'server', headerValue: 'ecacc' },
-		description: 'Edgecast (Verizon Digital Media) detected via Server header',
-	},
-	{
-		id: 'qrator', name: 'Qrator', category: 'waf', confidence: 'high',
-		match: { header: 'x-qrator-' },
-		description: 'Qrator WAF detected via x-qrator header',
-	},
-	{
-		id: 'stormwall', name: 'StormWall', category: 'waf', confidence: 'high',
-		match: { cookie: '^swp_token' },
-		description: 'StormWall DDoS protection detected via swp_token cookie',
-	},
-
-	// ── CDN ──────────────────────────────────────────────────────────
-	{
-		id: 'cloudfront-id', name: 'CloudFront', category: 'cdn', confidence: 'high',
-		match: { header: 'x-amz-cf-id' },
-		description: 'Amazon CloudFront CDN detected via x-amz-cf-id header',
-	},
-	{
-		id: 'cloudfront-pop', name: 'CloudFront', category: 'cdn', confidence: 'high',
-		match: { header: 'x-amz-cf-pop' },
-		description: 'Amazon CloudFront CDN detected via x-amz-cf-pop header',
-	},
-	{
-		id: 'fastly-served', name: 'Fastly', category: 'cdn', confidence: 'high',
-		match: { header: 'x-served-by' },
-		description: 'Fastly CDN detected via x-served-by header',
-	},
-	{
-		id: 'fastly-timer', name: 'Fastly', category: 'cdn', confidence: 'medium',
-		match: { header: 'x-timer' },
-		description: 'Fastly CDN detected via x-timer header',
-	},
-	{
-		id: 'cloudflare-cache', name: 'Cloudflare CDN', category: 'cdn', confidence: 'high',
-		match: { header: 'cf-cache-status' },
-		description: 'Cloudflare CDN detected via cf-cache-status header',
-	},
-	{
-		id: 'varnish-via', name: 'Varnish', category: 'cdn', confidence: 'medium',
-		match: { header: 'via', headerValue: 'varnish' },
-		description: 'Varnish cache detected via Via header',
-	},
-	{
-		id: 'varnish-header', name: 'Varnish', category: 'cdn', confidence: 'high',
-		match: { header: 'x-varnish' },
-		description: 'Varnish cache detected via x-varnish header',
-	},
-	{
-		id: 'keycdn', name: 'KeyCDN', category: 'cdn', confidence: 'high',
-		match: { header: 'x-edge-location' },
-		description: 'KeyCDN detected via x-edge-location header',
-	},
-	{
-		id: 'bunnycdn', name: 'BunnyCDN', category: 'cdn', confidence: 'high',
-		match: { header: 'cdn-pullzone' },
-		description: 'BunnyCDN detected via CDN-PullZone header',
-	},
-
-	// ── Server ───────────────────────────────────────────────────────
-	{
-		id: 'server-nginx', name: 'nginx', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: '^nginx' },
-		description: 'nginx web server detected',
-	},
-	{
-		id: 'server-apache', name: 'Apache', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: '^apache' },
-		description: 'Apache HTTP Server detected',
-	},
-	{
-		id: 'server-iis', name: 'Microsoft IIS', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: 'microsoft-iis' },
-		description: 'Microsoft IIS web server detected',
-	},
-	{
-		id: 'server-litespeed', name: 'LiteSpeed', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: 'litespeed' },
-		description: 'LiteSpeed web server detected',
-	},
-	{
-		id: 'server-caddy', name: 'Caddy', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: '^caddy' },
-		description: 'Caddy web server detected',
-	},
-	{
-		id: 'server-kestrel', name: 'Kestrel', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: 'kestrel' },
-		description: 'ASP.NET Kestrel web server detected',
-	},
-	{
-		id: 'server-cowboy', name: 'Cowboy (Erlang)', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: '^cowboy' },
-		description: 'Cowboy (Erlang/Elixir) web server detected',
-	},
-	{
-		id: 'server-gunicorn', name: 'Gunicorn', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: 'gunicorn' },
-		description: 'Gunicorn (Python) WSGI server detected',
-	},
-	{
-		id: 'server-openresty', name: 'OpenResty', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: 'openresty' },
-		description: 'OpenResty (nginx + Lua) web server detected',
-	},
-	{
-		id: 'server-envoy', name: 'Envoy', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: '^envoy' },
-		description: 'Envoy proxy detected',
-	},
-	{
-		id: 'server-tengine', name: 'Tengine', category: 'server', confidence: 'high',
-		match: { header: 'server', headerValue: 'tengine' },
-		description: 'Tengine (Alibaba nginx fork) web server detected',
-	},
-
-	// ── Framework ────────────────────────────────────────────────────
-	{
-		id: 'aspnet-powered', name: 'ASP.NET', category: 'framework', confidence: 'high',
-		match: { header: 'x-powered-by', headerValue: 'asp\\.net' },
-		description: 'ASP.NET framework detected via X-Powered-By header',
-	},
-	{
-		id: 'aspnet-version', name: 'ASP.NET', category: 'framework', confidence: 'high',
-		match: { header: 'x-aspnet-version' },
-		description: 'ASP.NET version detected via X-AspNet-Version header',
-	},
-	{
-		id: 'aspnet-session', name: 'ASP.NET', category: 'framework', confidence: 'high',
-		match: { cookie: '^ASP\\.NET_SessionId$' },
-		description: 'ASP.NET detected via ASP.NET_SessionId cookie',
-	},
-	{
-		id: 'aspnet-affinity', name: 'Azure App Service', category: 'framework', confidence: 'medium',
-		match: { cookie: '^ARRAffinity' },
-		description: 'Azure App Service detected via ARRAffinity cookie',
-	},
-	{
-		id: 'php-powered', name: 'PHP', category: 'framework', confidence: 'high',
-		match: { header: 'x-powered-by', headerValue: 'php' },
-		description: 'PHP detected via X-Powered-By header',
-	},
-	{
-		id: 'php-session', name: 'PHP', category: 'framework', confidence: 'high',
-		match: { cookie: '^PHPSESSID$' },
-		description: 'PHP detected via PHPSESSID cookie',
-	},
-	{
-		id: 'express-powered', name: 'Express.js', category: 'framework', confidence: 'high',
-		match: { header: 'x-powered-by', headerValue: 'express' },
-		description: 'Express.js (Node.js) detected via X-Powered-By header',
-	},
-	{
-		id: 'express-session', name: 'Express/Connect', category: 'framework', confidence: 'medium',
-		match: { cookie: '^connect\\.sid$' },
-		description: 'Express/Connect session detected via connect.sid cookie',
-	},
-	{
-		id: 'rails-runtime', name: 'Ruby on Rails', category: 'framework', confidence: 'high',
-		match: { header: 'x-runtime' },
-		description: 'Ruby on Rails detected via X-Runtime header',
-	},
-	{
-		id: 'django-csrf', name: 'Django', category: 'framework', confidence: 'high',
-		match: { cookie: '^csrftoken$' },
-		description: 'Django detected via csrftoken cookie',
-	},
-	{
-		id: 'spring-jsessionid', name: 'Java/Spring', category: 'framework', confidence: 'medium',
-		match: { cookie: '^JSESSIONID$' },
-		description: 'Java application server detected via JSESSIONID cookie',
-	},
-	{
-		id: 'spring-context', name: 'Spring Framework', category: 'framework', confidence: 'high',
-		match: { header: 'x-application-context' },
-		description: 'Spring Framework detected via X-Application-Context header',
-	},
-	{
-		id: 'laravel-session', name: 'Laravel', category: 'framework', confidence: 'high',
-		match: { cookie: '^laravel_session$' },
-		description: 'Laravel (PHP) detected via laravel_session cookie',
-	},
-	{
-		id: 'laravel-xsrf', name: 'Laravel', category: 'framework', confidence: 'medium',
-		match: { cookie: '^XSRF-TOKEN$' },
-		description: 'Laravel or Angular detected via XSRF-TOKEN cookie',
-	},
-	{
-		id: 'nextjs-header', name: 'Next.js', category: 'framework', confidence: 'high',
-		match: { header: 'x-nextjs-' },
-		description: 'Next.js detected via x-nextjs header',
-	},
-	{
-		id: 'nextjs-cookie', name: 'Next.js', category: 'framework', confidence: 'medium',
-		match: { cookie: '^__next' },
-		description: 'Next.js detected via __next cookie',
-	},
-
-	// ── Bot Protection (body patterns) ───────────────────────────────
-	{
-		id: 'challenge-page', name: 'JS Challenge Page', category: 'bot_protection', confidence: 'medium',
-		match: { statusCode: 403, bodyPattern: 'challenge-platform|please enable javascript|checking your browser' },
-		description: 'JavaScript challenge page detected (403 with challenge pattern)',
-	},
-	{
-		id: 'ratelimit-page', name: 'Rate Limiting', category: 'bot_protection', confidence: 'medium',
-		match: { statusCode: 429 },
-		description: 'Rate limiting detected (HTTP 429)',
-	},
-	{
-		id: 'captcha-page', name: 'CAPTCHA Page', category: 'bot_protection', confidence: 'medium',
-		match: { bodyPattern: 'recaptcha|hcaptcha|funcaptcha|arkose|captcha-delivery' },
-		description: 'CAPTCHA challenge detected in response body',
-	},
-
-	// ── Security Headers ─────────────────────────────────────────────
-	{
-		id: 'sec-hsts', name: 'HSTS', category: 'security', confidence: 'high',
-		match: { header: 'strict-transport-security' },
-		description: 'HTTP Strict Transport Security is enabled',
-	},
-	{
-		id: 'sec-csp', name: 'CSP', category: 'security', confidence: 'high',
-		match: { header: 'content-security-policy' },
-		description: 'Content Security Policy is enabled',
-	},
-	{
-		id: 'sec-xfo', name: 'X-Frame-Options', category: 'security', confidence: 'high',
-		match: { header: 'x-frame-options' },
-		description: 'X-Frame-Options header is set',
-	},
-	{
-		id: 'sec-xcto', name: 'X-Content-Type-Options', category: 'security', confidence: 'high',
-		match: { header: 'x-content-type-options' },
-		description: 'X-Content-Type-Options header is set',
-	},
-	{
-		id: 'sec-xxss', name: 'X-XSS-Protection', category: 'security', confidence: 'high',
-		match: { header: 'x-xss-protection' },
-		description: 'X-XSS-Protection header is set',
-	},
-	{
-		id: 'sec-referrer', name: 'Referrer-Policy', category: 'security', confidence: 'high',
-		match: { header: 'referrer-policy' },
-		description: 'Referrer-Policy header is set',
-	},
-	{
-		id: 'sec-permissions', name: 'Permissions-Policy', category: 'security', confidence: 'high',
-		match: { header: 'permissions-policy' },
-		description: 'Permissions-Policy header is set',
-	},
-	{
-		id: 'sec-cors', name: 'CORS', category: 'security', confidence: 'high',
-		match: { header: 'access-control-allow-origin' },
-		description: 'CORS headers are present',
-	},
+	// ── Akamai ──
+	{ id: 'akamai-abck', name: 'Akamai Bot Manager', category: 'antibot', confidence: 'high', match: { cookie: '^_abck$' }, description: 'Akamai Bot Manager via _abck cookie', bypassHint: 'Requires sensor data header (akamai-sensor-data) with valid payload from real browser events', details: 'Collects 100+ mouse/keyboard/device signals. One of the hardest systems to bypass.' },
+	{ id: 'akamai-akbmsc', name: 'Akamai Bot Manager', category: 'antibot', confidence: 'high', match: { cookie: '^ak_bmsc$' }, description: 'Akamai Bot Manager via ak_bmsc cookie' },
+	{ id: 'akamai-bmsz', name: 'Akamai Bot Manager', category: 'antibot', confidence: 'medium', match: { cookie: '^bm_sz$' }, description: 'Akamai BM via bm_sz (session fingerprint)' },
+	{ id: 'akamai-bmsv', name: 'Akamai Bot Manager', category: 'antibot', confidence: 'medium', match: { cookie: '^bm_sv$' }, description: 'Akamai BM via bm_sv (score/validation)' },
+	{ id: 'akamai-header', name: 'Akamai CDN', category: 'cdn', confidence: 'medium', match: { header: 'x-akamai-transformed' }, description: 'Akamai CDN via x-akamai-transformed header' },
+	{ id: 'akamai-edge', name: 'Akamai CDN', category: 'cdn', confidence: 'high', match: { header: 'x-check-cacheable' }, description: 'Akamai Edge Cache indicator' },
+	// ── Cloudflare ──
+	{ id: 'cf-ray', name: 'Cloudflare', category: 'cdn', confidence: 'high', match: { header: 'cf-ray' }, description: 'Cloudflare via cf-ray request ID', bypassHint: 'Use cf_clearance cookie or residential/ISP proxies to avoid blocks' },
+	{ id: 'cf-server', name: 'Cloudflare', category: 'cdn', confidence: 'high', match: { header: 'server', headerValue: '^cloudflare$' }, description: 'Cloudflare via Server header' },
+	{ id: 'cf-bm', name: 'Cloudflare Bot Management', category: 'antibot', confidence: 'high', match: { cookie: '^__cf_bm$' }, description: 'Cloudflare Bot Management via __cf_bm cookie', bypassHint: 'Requires valid __cf_bm token — use residential IPs or headless browser', details: 'Cloudflare Bot Management ML scoring token. Short-lived, fingerprint-tied.' },
+	{ id: 'cf-clearance', name: 'Cloudflare JS Challenge', category: 'antibot', confidence: 'high', match: { cookie: '^cf_clearance$' }, description: 'Cloudflare JS Challenge via cf_clearance cookie', bypassHint: 'Solve Cloudflare JS/Turnstile challenge with headless browser or service' },
+	{ id: 'cf-turnstile', name: 'Cloudflare Turnstile', category: 'captcha', confidence: 'high', match: { bodyPattern: 'challenges\\.cloudflare\\.com/turnstile' }, description: 'Cloudflare Turnstile CAPTCHA in page body' },
+	{ id: 'cf-mitigated', name: 'Cloudflare (Mitigated)', category: 'waf', confidence: 'high', match: { header: 'cf-mitigated' }, description: 'Cloudflare active mitigation (WAF block)' },
+	// ── DataDome ──
+	{ id: 'datadome-cookie', name: 'DataDome', category: 'antibot', confidence: 'high', match: { cookie: '^datadome$' }, description: 'DataDome via datadome cookie', bypassHint: 'Requires DataDome interstitial solver — headless browser or 2Captcha/CapMonster', details: 'ML-based behavioral bot detection. Analyzes TLS, HTTP/2 fingerprints, mouse patterns. Extremely difficult.' },
+	{ id: 'datadome-cid', name: 'DataDome', category: 'antibot', confidence: 'high', match: { header: 'x-datadome-cid' }, description: 'DataDome via x-datadome-cid response header' },
+	{ id: 'datadome-server', name: 'DataDome', category: 'antibot', confidence: 'high', match: { header: 'server', headerValue: 'datadome' }, description: 'DataDome via Server header' },
+	{ id: 'datadome-body', name: 'DataDome Captcha Page', category: 'antibot', confidence: 'high', match: { bodyPattern: 'datadome\\.co/captcha|dd-cookie' }, description: 'DataDome interstitial captcha page detected' },
+	// ── DDoS-Guard ──
+	{ id: 'ddosguard-server', name: 'DDoS-Guard', category: 'waf', confidence: 'high', match: { header: 'server', headerValue: 'ddos-guard' }, description: 'DDoS-Guard WAF via Server header', bypassHint: 'Solve JS challenge to obtain __ddg cookie series' },
+	{ id: 'ddosguard-ddg', name: 'DDoS-Guard', category: 'waf', confidence: 'high', match: { cookie: '^__ddg[0-9]' }, description: 'DDoS-Guard via __ddg# cookie' },
+	{ id: 'ddosguard-ddgid', name: 'DDoS-Guard', category: 'waf', confidence: 'medium', match: { cookie: '^__ddgid_' }, description: 'DDoS-Guard persistent device ID cookie' },
+	{ id: 'ddosguard-mark', name: 'DDoS-Guard', category: 'waf', confidence: 'high', match: { cookie: '^__ddgmark_' }, description: 'DDoS-Guard marking cookie' },
+	// ── Imperva / Incapsula ──
+	{ id: 'incapsula-visid', name: 'Imperva/Incapsula', category: 'waf', confidence: 'high', match: { cookie: '^visid_incap_' }, description: 'Imperva WAF visitor ID cookie', bypassHint: 'Requires valid referrer chain + valid incap_ses cookie pair' },
+	{ id: 'incapsula-ses', name: 'Imperva/Incapsula', category: 'waf', confidence: 'high', match: { cookie: '^incap_ses_' }, description: 'Imperva WAF session cookie' },
+	{ id: 'imperva-cdn', name: 'Imperva CDN', category: 'cdn', confidence: 'high', match: { header: 'x-cdn', headerValue: 'imperva' }, description: 'Imperva CDN via X-CDN header' },
+	{ id: 'imperva-iinfo', name: 'Imperva/Incapsula', category: 'waf', confidence: 'high', match: { header: 'x-iinfo' }, description: 'Imperva WAF request info header' },
+	// ── PerimeterX / HUMAN ──
+	{ id: 'px-cookie', name: 'PerimeterX/HUMAN', category: 'antibot', confidence: 'high', match: { cookie: '^_px[0-9a-z]' }, description: 'PerimeterX/HUMAN Security via _px cookie', bypassHint: 'Requires PX cookie generation via JS execution or solver service', details: 'HUMAN Security (formerly PerimeterX). Tracks 200+ behavioral + browser signals. Token expires quickly.' },
+	{ id: 'px-pxhd', name: 'PerimeterX/HUMAN', category: 'antibot', confidence: 'high', match: { cookie: '^_pxhd$' }, description: 'PerimeterX hardware fingerprint cookie' },
+	{ id: 'px-pxvid', name: 'PerimeterX/HUMAN', category: 'antibot', confidence: 'high', match: { cookie: '^_pxvid$' }, description: 'PerimeterX visitor ID cookie' },
+	{ id: 'px-header', name: 'PerimeterX/HUMAN', category: 'antibot', confidence: 'high', match: { header: 'x-px-cookies' }, description: 'PerimeterX response cookie injection header' },
+	{ id: 'px-body', name: 'PerimeterX/HUMAN Block Page', category: 'antibot', confidence: 'high', match: { bodyPattern: 'px-captcha|PerimeterX|perimeterx\\.com' }, description: 'PerimeterX block/captcha page in body' },
+	// ── Kasada ──
+	{ id: 'kasada-cookie', name: 'Kasada', category: 'antibot', confidence: 'high', match: { cookie: '^kpsdk-' }, description: 'Kasada SDK cookie', bypassHint: 'Requires Kasada SDK bypass — TLS fingerprint + JS POW challenge', details: 'SDK-level protection with TLS JA3 fingerprinting and JavaScript proof-of-work.' },
+	{ id: 'kasada-header', name: 'Kasada', category: 'antibot', confidence: 'high', match: { header: 'x-kpsdk-ct' }, description: 'Kasada challenge token response header' },
+	{ id: 'kasada-body', name: 'Kasada Protection Page', category: 'antibot', confidence: 'high', match: { bodyPattern: 'kpsdk|kasada\\.io' }, description: 'Kasada protection page detected in body' },
+	// ── F5 BIG-IP / Shape Security ──
+	{ id: 'f5-bigip-server', name: 'F5 BIG-IP', category: 'waf', confidence: 'high', match: { header: 'server', headerValue: 'BigIP|BIG-IP' }, description: 'F5 BIG-IP load balancer detected' },
+	{ id: 'f5-ts-cookie', name: 'F5 BIG-IP / Shape Security', category: 'antibot', confidence: 'high', match: { cookie: '^TS[0-9a-f]{8}' }, description: 'F5 BIG-IP persistence / Shape Security cookie', bypassHint: 'Shape Security tracks TLS JA3 fingerprint — requires TLS mimicry or residential IPs', details: 'TS* cookie used for both BIG-IP persistence and Shape Security (F5 bot defense) tracking.' },
+	// ── AWS WAF ──
+	{ id: 'awswaf-token', name: 'AWS WAF', category: 'waf', confidence: 'high', match: { cookie: '^aws-waf-token$' }, description: 'AWS WAF JavaScript challenge token', bypassHint: 'Requires AWS WAF token generation (JavaScript challenge must be solved)' },
+	{ id: 'awswaf-header', name: 'AWS WAF', category: 'waf', confidence: 'high', match: { header: 'x-amzn-waf-action' }, description: 'AWS WAF action response header' },
+	{ id: 'cloudfront-cfid', name: 'AWS CloudFront', category: 'cdn', confidence: 'high', match: { header: 'x-amz-cf-id' }, description: 'AWS CloudFront request ID' },
+	{ id: 'cloudfront-pop', name: 'AWS CloudFront', category: 'cdn', confidence: 'high', match: { header: 'x-amz-cf-pop' }, description: 'AWS CloudFront Point of Presence header' },
+	// ── CAPTCHA systems ──
+	{ id: 'recaptcha-body', name: 'Google reCAPTCHA', category: 'captcha', confidence: 'high', match: { bodyPattern: 'google\\.com/recaptcha|grecaptcha' }, description: 'reCAPTCHA v2/v3 embedded in page', bypassHint: 'Use 2Captcha, CapMonster, or Anti-Captcha solver APIs' },
+	{ id: 'hcaptcha-body', name: 'hCaptcha', category: 'captcha', confidence: 'high', match: { bodyPattern: 'hcaptcha\\.com|data-hcaptcha-sitekey' }, description: 'hCaptcha embedded in page', bypassHint: 'Use hCaptcha solver (2Captcha, Nopecha, CapMonster)' },
+	{ id: 'geetest-body', name: 'GeeTest', category: 'captcha', confidence: 'high', match: { bodyPattern: 'geetest\\.com|initGeetest|gt\\.js' }, description: 'GeeTest CAPTCHA (slide/click challenge)', bypassHint: 'Requires GeeTest solver — slide completion with correct trajectory data' },
+	{ id: 'arkose-body', name: 'Arkose Labs / FunCaptcha', category: 'captcha', confidence: 'high', match: { bodyPattern: 'arkoselabs\\.com|funcaptcha|fc\\.js' }, description: 'Arkose FunCaptcha in page', bypassHint: 'Requires FunCaptcha solver (Arkose token)' },
+	// ── Dynatrace RUM ──
+	{ id: 'dynatrace-dtcookie', name: 'Dynatrace RUM', category: 'analytics', confidence: 'high', match: { cookie: '^dtCookie$' }, description: 'Dynatrace Real User Monitoring session cookie', details: 'Performance monitoring only — not a security/antibot control.' },
+	{ id: 'dynatrace-rxvt', name: 'Dynatrace RUM', category: 'analytics', confidence: 'high', match: { cookie: '^rxvt$' }, description: 'Dynatrace RUM session expiry tracking' },
+	{ id: 'dynatrace-dtsa', name: 'Dynatrace RUM', category: 'analytics', confidence: 'medium', match: { cookie: '^dtSa$' }, description: 'Dynatrace sampling decision cookie' },
+	{ id: 'dynatrace-dtlatc', name: 'Dynatrace RUM', category: 'analytics', confidence: 'medium', match: { cookie: '^dtLatC$' }, description: 'Dynatrace latency measurement cookie' },
+	{ id: 'dynatrace-header', name: 'Dynatrace', category: 'analytics', confidence: 'high', match: { header: 'x-dynatrace' }, description: 'Dynatrace tracing header in response' },
+	// ── Forter ──
+	{ id: 'forter-cookie', name: 'Forter (Fraud Prevention)', category: 'antibot', confidence: 'high', match: { cookie: '^forterToken$' }, description: 'Forter fraud/device fingerprint via forterToken cookie', bypassHint: 'Requires valid Forter token — headless browser with proper device signals', details: 'Forter device intelligence for e-commerce fraud prevention.' },
+	// ── ThreatMetrix / LexisNexis ──
+	{ id: 'threatmetrix-cookie', name: 'ThreatMetrix (LexisNexis)', category: 'antibot', confidence: 'high', match: { cookie: '^__tmx' }, description: 'ThreatMetrix device ID/fingerprint cookie', details: 'Used heavily in financial services for fraud risk scoring.' },
+	// ── Sucuri ──
+	{ id: 'sucuri-id', name: 'Sucuri WAF', category: 'waf', confidence: 'high', match: { header: 'x-sucuri-id' }, description: 'Sucuri WAF via x-sucuri-id header' },
+	{ id: 'sucuri-cache', name: 'Sucuri WAF', category: 'waf', confidence: 'high', match: { header: 'x-sucuri-cache' }, description: 'Sucuri WAF cache indicator header' },
+	// ── Google ──
+	{ id: 'google-socs', name: 'Google Cookie Consent', category: 'identity', confidence: 'high', match: { cookie: '^SOCS$' }, description: 'Google cookie consent choice (SOCS)' },
+	{ id: 'google-aec', name: 'Google Anti-Abuse', category: 'antibot', confidence: 'high', match: { cookie: '^AEC$' }, description: 'Google AEC anti-abuse cookie', bypassHint: 'Required for Google account actions — difficult to spoof' },
+	{ id: 'google-nid', name: 'Google NID', category: 'tracking', confidence: 'high', match: { cookie: '^NID$' }, description: 'Google NID preference/tracking cookie' },
+	// ── Fastly ──
+	{ id: 'fastly-served', name: 'Fastly CDN', category: 'cdn', confidence: 'high', match: { header: 'x-served-by', headerValue: 'cache-' }, description: 'Fastly CDN via x-served-by cache header' },
+	{ id: 'fastly-surrogate', name: 'Fastly CDN', category: 'cdn', confidence: 'medium', match: { header: 'surrogate-key' }, description: 'Fastly CDN via surrogate-key purging header' },
+	{ id: 'fastly-cache', name: 'Fastly CDN', category: 'cdn', confidence: 'medium', match: { header: 'x-cache', headerValue: 'HIT|MISS' }, description: 'Fastly cache hit/miss indicator' },
+	// ── Varnish ──
+	{ id: 'varnish', name: 'Varnish Cache', category: 'cdn', confidence: 'high', match: { header: 'x-varnish' }, description: 'Varnish HTTP Cache accelerator' },
+	// ── nginx / Apache / IIS ──
+	{ id: 'nginx', name: 'nginx', category: 'server', confidence: 'high', match: { header: 'server', headerValue: '^nginx' }, description: 'nginx web server' },
+	{ id: 'apache', name: 'Apache', category: 'server', confidence: 'high', match: { header: 'server', headerValue: '^Apache' }, description: 'Apache HTTP Server' },
+	{ id: 'iis', name: 'Microsoft IIS', category: 'server', confidence: 'high', match: { header: 'server', headerValue: '^Microsoft-IIS' }, description: 'Microsoft IIS — commonly used with ASP.NET' },
+	{ id: 'litespeed', name: 'LiteSpeed', category: 'server', confidence: 'high', match: { header: 'server', headerValue: '^LiteSpeed' }, description: 'LiteSpeed web server' },
+	{ id: 'caddy', name: 'Caddy', category: 'server', confidence: 'high', match: { header: 'server', headerValue: '^Caddy' }, description: 'Caddy web server' },
+	{ id: 'openresty', name: 'OpenResty (nginx+Lua)', category: 'server', confidence: 'high', match: { header: 'server', headerValue: '^openresty' }, description: 'OpenResty (nginx + Lua scripting)' },
+	// ── Framework / Language ──
+	{ id: 'php', name: 'PHP', category: 'framework', confidence: 'high', match: { header: 'x-powered-by', headerValue: '^PHP' }, description: 'PHP runtime via X-Powered-By header' },
+	{ id: 'aspnet', name: 'ASP.NET', category: 'framework', confidence: 'high', match: { header: 'x-powered-by', headerValue: 'ASP\\.NET' }, description: 'ASP.NET via X-Powered-By header' },
+	{ id: 'aspnet-version', name: 'ASP.NET MVC', category: 'framework', confidence: 'high', match: { header: 'x-aspnet-version' }, description: 'ASP.NET MVC version exposed via header' },
+	{ id: 'aspnetcore', name: 'ASP.NET Core', category: 'framework', confidence: 'high', match: { header: 'x-powered-by', headerValue: 'ASP\\.NET Core' }, description: 'ASP.NET Core via X-Powered-By' },
+	{ id: 'express', name: 'Express.js', category: 'framework', confidence: 'medium', match: { header: 'x-powered-by', headerValue: '^Express' }, description: 'Express.js Node.js framework' },
+	// ── CMS ──
+	{ id: 'wordpress', name: 'WordPress', category: 'cms', confidence: 'high', match: { cookie: '^wordpress_' }, description: 'WordPress CMS via cookie prefix' },
+	{ id: 'wordpress-logged', name: 'WordPress (Logged In)', category: 'cms', confidence: 'high', match: { cookie: '^wordpress_logged_in' }, description: 'WordPress authenticated session cookie' },
+	{ id: 'joomla', name: 'Joomla', category: 'cms', confidence: 'high', match: { cookie: '^joomla_' }, description: 'Joomla CMS via cookie prefix' },
+	// ── Shopify ──
+	{ id: 'shopify-cookie', name: 'Shopify', category: 'hosting', confidence: 'high', match: { cookie: '^_shopify_' }, description: 'Shopify e-commerce platform cookie', details: 'Shopify uses Cloudflare by default. May also have Shopify-specific bot detection.' },
+	{ id: 'shopify-header', name: 'Shopify', category: 'hosting', confidence: 'high', match: { header: 'x-shopify-stage' }, description: 'Shopify via x-shopify-stage header' },
+	// ── Analytics ──
+	{ id: 'ga4', name: 'Google Analytics 4', category: 'analytics', confidence: 'high', match: { cookie: '^_ga' }, description: 'Google Analytics 4 / Universal Analytics' },
+	{ id: 'gtm', name: 'Google Ads/GTM', category: 'analytics', confidence: 'medium', match: { cookie: '^_gcl_' }, description: 'Google Ads / Tag Manager conversion cookie' },
+	{ id: 'meta-pixel', name: 'Meta Pixel', category: 'analytics', confidence: 'high', match: { cookie: '^_fbp$' }, description: 'Meta (Facebook) Pixel browser fingerprint' },
+	// ── BunnyCDN ──
+	{ id: 'bunnycdn', name: 'BunnyCDN', category: 'cdn', confidence: 'high', match: { header: 'bunnycdn-cache-status' }, description: 'BunnyCDN via cache status header' },
 ];
 
-// ─── Security headers to check for presence ─────────────────────────
+// ─── Cookie Classifier ────────────────────────────────────────────────
 
-const SECURITY_HEADERS = [
-	'strict-transport-security',
-	'content-security-policy',
-	'x-frame-options',
-	'x-content-type-options',
-	'x-xss-protection',
-	'referrer-policy',
-	'permissions-policy',
-	'access-control-allow-origin',
+const COOKIE_PATTERNS: Array<{
+	pattern: RegExp;
+	provider: string;
+	purpose: string;
+	category: CookieAnalysis['category'];
+	risk: CookieAnalysis['risk'];
+	bypassRequired: boolean;
+	details: string;
+}> = [
+	{ pattern: /^_abck$|^ak_bmsc$|^bm_sz$|^bm_sv$/, provider: 'Akamai Bot Manager', purpose: 'Bot detection — sensor/behavioral collection', category: 'antibot', risk: 'critical', bypassRequired: true, details: 'Tracks 100+ mouse/keyboard/scroll events. Requires valid akamai-sensor-data header with sensor payload to bypass.' },
+	{ pattern: /^__cf_bm$/, provider: 'Cloudflare Bot Management', purpose: 'Bot score token (ML-based)', category: 'antibot', risk: 'critical', bypassRequired: true, details: 'Short-lived ML scoring token. Requires matching browser fingerprint — TLS, HTTP/2, canvas, fonts must all match.' },
+	{ pattern: /^cf_clearance$/, provider: 'Cloudflare JS Challenge', purpose: 'JS challenge completion proof', category: 'antibot', risk: 'critical', bypassRequired: true, details: 'Cannot be generated without actually solving the Cloudflare challenge in a real browser environment.' },
+	{ pattern: /^datadome$/, provider: 'DataDome', purpose: 'Behavioral bot fingerprint token', category: 'antibot', risk: 'critical', bypassRequired: true, details: 'ML behavioral analysis engine. Analyzes TLS JA3, HTTP/2 SETTINGS, mouse movement, timing. Considered one of the hardest to bypass.' },
+	{ pattern: /^_px[0-9a-z]|^_pxhd$|^_pxvid$/, provider: 'PerimeterX / HUMAN Security', purpose: 'Device fingerprint token (200+ signals)', category: 'antibot', risk: 'critical', bypassRequired: true, details: 'HUMAN Security behavioral analysis. Tracks JS execution environment, WebGL, fonts, timing, mouse events. Token is IP/device bound.' },
+	{ pattern: /^visid_incap_|^incap_ses_/, provider: 'Imperva / Incapsula', purpose: 'WAF visitor/session tracking', category: 'antibot', risk: 'high', bypassRequired: true, details: 'Imperva WAF session pair. Requires correct referrer chain and both cookies set together to pass through.' },
+	{ pattern: /^__ddg[0-9]|^__ddgid_|^__ddgmark_/, provider: 'DDoS-Guard', purpose: 'JS challenge cookie chain', category: 'antibot', risk: 'high', bypassRequired: true, details: 'DDoS-Guard JavaScript challenge series. Must all be obtained from the same challenge solving session.' },
+	{ pattern: /^forterToken$/, provider: 'Forter', purpose: 'Device intelligence / fraud signal', category: 'antibot', risk: 'high', bypassRequired: true, details: 'Forter fraud prevention. Primarily targets account takeover and payment fraud.' },
+	{ pattern: /^__tmx/, provider: 'ThreatMetrix (LexisNexis)', purpose: 'Device identity hash', category: 'antibot', risk: 'high', bypassRequired: true, details: 'Device fingerprinting for financial fraud prevention. Common in banking/fintech.' },
+	{ pattern: /^TS[0-9a-f]{8}/, provider: 'F5 BIG-IP / Shape Security', purpose: 'Load balancer persistence / bot detection', category: 'antibot', risk: 'high', bypassRequired: false, details: 'F5 BIG-IP persistence cookie. When Shape Security is enabled, tracks TLS JA3 fingerprint alongside.' },
+	{ pattern: /^kpsdk-/, provider: 'Kasada', purpose: 'SDK proof-of-work token', category: 'antibot', risk: 'critical', bypassRequired: true, details: 'Kasada SDK JavaScript proof-of-work. Includes TLS fingerprinting check on server side.' },
+	{ pattern: /^aws-waf-token$/, provider: 'AWS WAF', purpose: 'JavaScript challenge clearance', category: 'antibot', risk: 'high', bypassRequired: true, details: 'AWS WAF JavaScript challenge token. Must be solved with real JS execution.' },
+	{ pattern: /^dtCookie$|^rxvt$|^dtSa$|^dtLatC$/, provider: 'Dynatrace RUM', purpose: 'Real User Monitoring (performance only)', category: 'analytics', risk: 'low', bypassRequired: false, details: 'Dynatrace performance monitoring — not a security control. Safe to ignore or replicate.' },
+	{ pattern: /^SOCS$/, provider: 'Google', purpose: 'Cookie consent preference', category: 'functional', risk: 'low', bypassRequired: false, details: 'Google cookie consent state. Required on Google properties for EU compliance.' },
+	{ pattern: /^AEC$/, provider: 'Google Anti-Abuse', purpose: 'Anti-abuse check token', category: 'antibot', risk: 'medium', bypassRequired: false, details: 'Google anti-abuse cookie. Required for certain account actions but not typically a blocker for requests.' },
+	{ pattern: /^_ga|^_gid$|^_gat$/, provider: 'Google Analytics', purpose: 'Analytics visitor/session tracking', category: 'analytics', risk: 'low', bypassRequired: false, details: 'Google Analytics 4 / Universal Analytics visitor ID. Not security-related.' },
+	{ pattern: /^_gcl_|^_gac_/, provider: 'Google Ads', purpose: 'Ad conversion / click tracking', category: 'tracking', risk: 'low', bypassRequired: false, details: 'Google Ads conversion linker cookie.' },
+	{ pattern: /^_fbp$|^_fbc$/, provider: 'Meta Pixel', purpose: 'Facebook/Meta ad attribution', category: 'tracking', risk: 'low', bypassRequired: false, details: 'Meta Pixel browser fingerprint for ad attribution.' },
+	{ pattern: /^wordpress_|^wp-settings-|^wordpress_logged_in/, provider: 'WordPress', purpose: 'CMS authentication / preferences', category: 'session', risk: 'low', bypassRequired: false, details: 'Standard WordPress session and settings cookies.' },
+	{ pattern: /^PHPSESSID$|^JSESSIONID$|^ASP\.NET_SessionId$|^CFID$|^CFTOKEN$/, provider: 'Application Session', purpose: 'Server-side session identifier', category: 'session', risk: 'medium', bypassRequired: false, details: 'Standard server-side session cookie. Session fixation attacks may be possible if improperly implemented.' },
+	{ pattern: /^_shopify_/, provider: 'Shopify', purpose: 'E-commerce session / cart', category: 'session', risk: 'medium', bypassRequired: false, details: 'Shopify platform session, cart, and storefront tracking.' },
 ];
 
-// ─── Engine ──────────────────────────────────────────────────────────
-
-function matchesRule(rule: FingerprintRule, resp: ResponseInfo): string[] {
-	const evidence: string[] = [];
-	const m = rule.match;
-
-	// Check cookie name pattern
-	if (m.cookie) {
-		const re = new RegExp(m.cookie, 'i');
-		for (const cookieName of Object.keys(resp.cookies)) {
-			if (re.test(cookieName)) {
-				evidence.push(`Cookie: ${cookieName}=${resp.cookies[cookieName].slice(0, 40)}${resp.cookies[cookieName].length > 40 ? '...' : ''}`);
-			}
+function classifyCookie(name: string, value: string): CookieAnalysis | null {
+	for (const p of COOKIE_PATTERNS) {
+		if (p.pattern.test(name)) {
+			return {
+				name,
+				value: value.length > 48 ? value.slice(0, 45) + '...' : value,
+				provider: p.provider,
+				purpose: p.purpose,
+				category: p.category,
+				risk: p.risk,
+				bypassRequired: p.bypassRequired,
+				details: p.details,
+			};
 		}
 	}
-
-	// Check header presence and optionally value
-	if (m.header) {
-		const headerLower = m.header.toLowerCase();
-		for (const [name, value] of Object.entries(resp.headers)) {
-			const nameLower = name.toLowerCase();
-			// Support prefix matching (e.g. "x-px-" matches "x-px-something")
-			if (nameLower === headerLower || (headerLower.endsWith('-') && nameLower.startsWith(headerLower))) {
-				if (m.headerValue) {
-					const re = new RegExp(m.headerValue, 'i');
-					if (re.test(value)) {
-						evidence.push(`Header: ${name}: ${value}`);
-					}
-				} else {
-					evidence.push(`Header: ${name}: ${value}`);
-				}
-			}
-		}
+	// Unknown private prefix cookies — possibly custom bot protection
+	if (name.startsWith('__') || name.startsWith('_')) {
+		return {
+			name,
+			value: value.length > 48 ? value.slice(0, 45) + '...' : value,
+			provider: 'Unknown',
+			purpose: 'Unrecognized private/tracking cookie',
+			category: 'unknown',
+			risk: 'medium',
+			bypassRequired: false,
+			details: 'Private-prefix cookie with no known provider match. Could be custom bot protection, analytics, or session management.',
+		};
 	}
-
-	// Check body pattern
-	if (m.bodyPattern && resp.body) {
-		const re = new RegExp(m.bodyPattern, 'i');
-		if (re.test(resp.body)) {
-			evidence.push(`Body pattern: ${m.bodyPattern}`);
-		}
-	}
-
-	// Check status code
-	if (m.statusCode !== undefined) {
-		if (resp.status_code === m.statusCode) {
-			if (evidence.length > 0 || (!m.cookie && !m.header && !m.bodyPattern)) {
-				evidence.push(`Status: ${resp.status_code}`);
-			}
-		} else if (!m.cookie && !m.header && !m.bodyPattern) {
-			return [];
-		}
-	}
-
-	return evidence;
+	return null;
 }
 
+// ─── Main Fingerprint Function ────────────────────────────────────────
+
 export function fingerprint(responses: ResponseInfo[]): FingerprintResult {
-	const matchMap = new Map<string, FingerprintMatch>();
+	const mergedHeaders: Record<string, string> = {};
+	const mergedCookies: Record<string, string> = {};
+	let mergedBody = '';
 
-	// Merge all headers/cookies across responses for raw evidence
-	const allHeaders: Record<string, string> = {};
-	const allCookies: Record<string, string> = {};
-
-	for (const resp of responses) {
-		for (const [k, v] of Object.entries(resp.headers)) allHeaders[k] = v;
-		for (const [k, v] of Object.entries(resp.cookies)) allCookies[k] = v;
+	for (const r of responses) {
+		for (const [k, v] of Object.entries(r.headers)) {
+			mergedHeaders[k.toLowerCase()] = v;
+		}
+		for (const [k, v] of Object.entries(r.cookies)) {
+			mergedCookies[k] = v;
+		}
+		if (r.body) mergedBody += r.body;
 	}
 
+	const rawMatches: FingerprintMatch[] = [];
+
 	for (const rule of rules) {
-		for (const resp of responses) {
-			const evidence = matchesRule(rule, resp);
-			if (evidence.length > 0) {
-				const key = `${rule.category}:${rule.name}`;
-				const existing = matchMap.get(key);
-				if (existing) {
-					for (const e of evidence) {
-						if (!existing.evidence.includes(e)) existing.evidence.push(e);
-					}
-					if (rule.confidence === 'high') existing.rule = { ...existing.rule, confidence: 'high' };
-				} else {
-					matchMap.set(key, { rule, evidence: [...evidence] });
+		const evidence: string[] = [];
+		let matched = false;
+
+		if (rule.match.cookie) {
+			const rx = new RegExp(rule.match.cookie, 'i');
+			for (const [k, v] of Object.entries(mergedCookies)) {
+				if (rx.test(k)) {
+					evidence.push(`Cookie: ${k}=${v.slice(0, 36)}${v.length > 36 ? '...' : ''}`);
+					matched = true;
 				}
 			}
 		}
+		if (rule.match.header) {
+			const hval = mergedHeaders[rule.match.header.toLowerCase()];
+			if (hval !== undefined) {
+				if (!rule.match.headerValue || new RegExp(rule.match.headerValue, 'i').test(hval)) {
+					evidence.push(`Header: ${rule.match.header}: ${hval.slice(0, 70)}`);
+					matched = true;
+				}
+			}
+		}
+		if (rule.match.bodyPattern && mergedBody) {
+			if (new RegExp(rule.match.bodyPattern, 'i').test(mergedBody)) {
+				evidence.push(`Body: matched /${rule.match.bodyPattern}/`);
+				matched = true;
+			}
+		}
+		if (rule.match.statusCode) {
+			if (responses.some(r => r.status_code === rule.match.statusCode)) {
+				evidence.push(`Status: ${rule.match.statusCode}`);
+				matched = true;
+			}
+		}
+
+		if (matched) rawMatches.push({ rule, evidence });
 	}
 
-	// Auto-detect Server header value even if no specific rule matched
-	const serverHeader = Object.entries(allHeaders).find(([k]) => k.toLowerCase() === 'server');
-	if (serverHeader) {
-		const [hdrName, hdrValue] = serverHeader;
-		const hasServerMatch = Array.from(matchMap.values()).some(
-			m => m.rule.category === 'server' || m.evidence.some(e => e.toLowerCase().includes('header: server:'))
-		);
-		if (!hasServerMatch) {
-			// No rule matched the Server header — add it as a generic detection
-			matchMap.set('server:' + hdrValue, {
-				rule: {
-					id: 'server-auto', name: hdrValue, category: 'server', confidence: 'high',
-					match: {}, description: `Server: ${hdrValue}`,
-				},
-				evidence: [`Header: ${hdrName}: ${hdrValue}`],
-			});
+	// Deduplicate by name — merge evidence, prefer high confidence
+	const seenNames = new Map<string, FingerprintMatch>();
+	for (const m of rawMatches) {
+		const existing = seenNames.get(m.rule.name);
+		if (!existing) {
+			seenNames.set(m.rule.name, { rule: m.rule, evidence: [...m.evidence] });
+		} else {
+			if (m.rule.confidence === 'high' && existing.rule.confidence !== 'high') {
+				seenNames.set(m.rule.name, { rule: m.rule, evidence: [...existing.evidence, ...m.evidence] });
+			} else {
+				existing.evidence.push(...m.evidence);
+			}
 		}
 	}
+	const matches = Array.from(seenNames.values());
 
-	// Auto-detect X-Powered-By if no framework rule matched it
-	const poweredBy = Object.entries(allHeaders).find(([k]) => k.toLowerCase() === 'x-powered-by');
-	if (poweredBy) {
-		const [hdrName, hdrValue] = poweredBy;
-		const hasFrameworkMatch = Array.from(matchMap.values()).some(
-			m => m.rule.category === 'framework' && m.evidence.some(e => e.toLowerCase().includes('x-powered-by'))
-		);
-		if (!hasFrameworkMatch) {
-			matchMap.set('framework:' + hdrValue, {
-				rule: {
-					id: 'framework-auto', name: hdrValue, category: 'framework', confidence: 'high',
-					match: {}, description: `X-Powered-By: ${hdrValue}`,
-				},
-				evidence: [`Header: ${hdrName}: ${hdrValue}`],
-			});
-		}
-	}
+	// Build stack summary
+	const stack: StackEntry[] = Array.from(
+		new Map(
+			matches
+				.filter(m => ['waf', 'cdn', 'server', 'framework', 'cms', 'antibot', 'captcha', 'hosting'].includes(m.rule.category))
+				.map(m => [m.rule.name, { name: m.rule.name, category: m.rule.category, confidence: m.rule.confidence }])
+		).values()
+	);
 
-	// Build security headers summary
-	const headersLower = new Map<string, string>();
-	for (const [k, v] of Object.entries(allHeaders)) {
-		headersLower.set(k.toLowerCase(), v);
-	}
-
-	const securityHeaders = SECURITY_HEADERS.map(name => ({
-		name,
-		present: headersLower.has(name),
-		value: headersLower.get(name),
+	// Security headers
+	const SECURITY_HEADERS = [
+		'strict-transport-security', 'content-security-policy', 'x-frame-options',
+		'x-content-type-options', 'x-xss-protection', 'referrer-policy',
+		'permissions-policy', 'access-control-allow-origin',
+		'cross-origin-opener-policy', 'cross-origin-resource-policy',
+	];
+	const securityHeaders = SECURITY_HEADERS.map(h => ({
+		name: h,
+		present: h in mergedHeaders,
+		value: mergedHeaders[h],
 	}));
 
-	// Sort matches
-	const categoryOrder: Record<string, number> = {
-		waf: 0, bot_protection: 1, cdn: 2, server: 3, framework: 4, session: 5, security: 6,
-	};
-	const confidenceOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
-
-	const matches = Array.from(matchMap.values()).sort((a, b) => {
-		const catDiff = (categoryOrder[a.rule.category] ?? 9) - (categoryOrder[b.rule.category] ?? 9);
-		if (catDiff !== 0) return catDiff;
-		return (confidenceOrder[a.rule.confidence] ?? 9) - (confidenceOrder[b.rule.confidence] ?? 9);
-	});
-
-	// Build top-level stack summary (unique names from non-security matches)
-	const seen = new Set<string>();
-	const stack: StackEntry[] = [];
-	for (const m of matches) {
-		if (m.rule.category === 'security') continue;
-		const name = m.rule.name;
-		if (seen.has(name)) continue;
-		seen.add(name);
-		stack.push({ name, category: m.rule.category, confidence: m.rule.confidence });
+	// Cookie analysis
+	const cookieAnalysis: CookieAnalysis[] = [];
+	for (const [name, value] of Object.entries(mergedCookies)) {
+		const analysis = classifyCookie(name, value);
+		if (analysis) cookieAnalysis.push(analysis);
 	}
+	// Sort by risk severity
+	const riskOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+	cookieAnalysis.sort((a, b) => (riskOrder[a.risk] ?? 4) - (riskOrder[b.risk] ?? 4));
 
 	return {
 		stack,
 		matches,
 		securityHeaders,
-		raw: { headers: allHeaders, cookies: allCookies },
+		cookieAnalysis,
+		raw: { headers: mergedHeaders, cookies: mergedCookies },
 	};
 }
 
-// Group matches by display category
-export function groupMatches(matches: FingerprintMatch[]): { label: string; matches: FingerprintMatch[] }[] {
-	const groups: { label: string; categories: string[]; matches: FingerprintMatch[] }[] = [
-		{ label: 'WAF / Bot Protection', categories: ['waf', 'bot_protection'], matches: [] },
-		{ label: 'Server & Infrastructure', categories: ['cdn', 'server'], matches: [] },
-		{ label: 'Framework & Language', categories: ['framework', 'session'], matches: [] },
-	];
-
+export function groupMatches(matches: FingerprintMatch[]): { label: string; icon: string; matches: FingerprintMatch[] }[] {
+	const ORDER = ['antibot', 'waf', 'captcha', 'cdn', 'server', 'framework', 'cms', 'hosting', 'analytics', 'tracking', 'identity'];
+	const LABELS: Record<string, string> = {
+		antibot: 'Bot Protection', waf: 'WAF / Firewall', captcha: 'CAPTCHA',
+		cdn: 'CDN', server: 'Server', framework: 'Framework',
+		cms: 'CMS', hosting: 'Hosting Platform',
+		analytics: 'Analytics / RUM', tracking: 'Ad Tracking', identity: 'Identity',
+	};
+	const ICONS: Record<string, string> = {
+		antibot: 'shield-x', waf: 'shield', captcha: 'puzzle',
+		cdn: 'globe', server: 'server', framework: 'code',
+		cms: 'layers', hosting: 'cloud', analytics: 'bar-chart', tracking: 'target', identity: 'user',
+	};
+	const groups: Record<string, FingerprintMatch[]> = {};
 	for (const m of matches) {
-		if (m.rule.category === 'security') continue;
-		const group = groups.find(g => g.categories.includes(m.rule.category));
-		if (group) group.matches.push(m);
+		const cat = m.rule.category;
+		if (!groups[cat]) groups[cat] = [];
+		groups[cat].push(m);
 	}
-
-	return groups.filter(g => g.matches.length > 0).map(g => ({ label: g.label, matches: g.matches }));
+	return ORDER
+		.filter(cat => groups[cat]?.length)
+		.map(cat => ({ label: LABELS[cat] ?? cat, icon: ICONS[cat] ?? 'shield', matches: groups[cat] }));
 }

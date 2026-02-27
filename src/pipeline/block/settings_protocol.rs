@@ -51,6 +51,12 @@ pub struct FtpRequestSettings {
     /// Remote path used for RETR, STOR, DELE, MKD, RMD, CWD
     #[serde(default)]
     pub remote_path: String,
+    /// Local file to upload (STOR action)
+    #[serde(default)]
+    pub local_path: String,
+    /// Local directory to save downloaded file (RETR action)
+    #[serde(default)]
+    pub output_dir: String,
     pub output_var: String,
     pub timeout_ms: u64,
     pub capture: bool,
@@ -62,6 +68,7 @@ impl Default for FtpRequestSettings {
             host: String::new(), port: 21,
             username: String::new(), password: String::new(),
             command: "LIST".into(), remote_path: String::new(),
+            local_path: String::new(), output_dir: String::new(),
             output_var: "FTP_RESPONSE".into(), timeout_ms: 10000, capture: false,
         }
     }

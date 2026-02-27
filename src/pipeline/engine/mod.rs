@@ -221,9 +221,11 @@ impl ExecutionContext {
                 }
             }
 
-            // Stop if status changed to non-None
-            if self.status != BotStatus::None {
-                break;
+            // Halt on terminal/retry statuses; continue on Success/Fail so
+            // downstream blocks (e.g. ParseJSON to capture balance) can still run.
+            match self.status {
+                BotStatus::Error | BotStatus::Ban | BotStatus::Retry => break,
+                _ => {}
             }
         }
         Ok(())
@@ -250,6 +252,9 @@ impl ExecutionContext {
             }
             BlockSettings::ParseCookie(settings) => {
                 self.execute_parse_cookie(settings)
+            }
+            BlockSettings::Parse(settings) => {
+                self.execute_parse(settings)
             }
             BlockSettings::KeyCheck(settings) => {
                 self.execute_keycheck(settings)

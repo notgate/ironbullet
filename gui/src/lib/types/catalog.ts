@@ -3,13 +3,7 @@ import type { BlockMeta } from './ui';
 
 export const BLOCK_CATALOG: BlockMeta[] = [
 	{ type: 'HttpRequest', label: 'HTTP Request', category: 'Requests', color: '#0078d4', icon: 'globe' },
-	{ type: 'ParseLR', label: 'Parse LR', category: 'Parsing', color: '#4ec9b0', icon: 'scissors' },
-	{ type: 'ParseRegex', label: 'Parse Regex', category: 'Parsing', color: '#4ec9b0', icon: 'regex' },
-	{ type: 'ParseJSON', label: 'Parse JSON', category: 'Parsing', color: '#4ec9b0', icon: 'braces' },
-	{ type: 'ParseCSS', label: 'Parse CSS', category: 'Parsing', color: '#4ec9b0', icon: 'code' },
-	{ type: 'ParseXPath', label: 'Parse XPath', category: 'Parsing', color: '#4ec9b0', icon: 'file-code' },
-	{ type: 'ParseCookie', label: 'Parse Cookie', category: 'Parsing', color: '#4ec9b0', icon: 'cookie' },
-	{ type: 'LambdaParser', label: 'Lambda Parser', category: 'Parsing', color: '#4ec9b0', icon: 'workflow' },
+	{ type: 'Parse', label: 'Parse', category: 'Parsing', color: '#4ec9b0', icon: 'scissors' },
 	{ type: 'KeyCheck', label: 'Key Check', category: 'Checks', color: '#d7ba7d', icon: 'shield-check' },
 	{ type: 'StringFunction', label: 'String Function', category: 'Functions', color: '#c586c0', icon: 'type' },
 	{ type: 'ListFunction', label: 'List Function', category: 'Functions', color: '#c586c0', icon: 'list' },

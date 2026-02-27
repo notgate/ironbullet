@@ -173,9 +173,9 @@
 						<Tabs.Content value="debugger" class="flex-1 overflow-hidden"><DebugPanel /></Tabs.Content>
 						<Tabs.Content value="code" class="flex-1 overflow-hidden"><CodeView /></Tabs.Content>
 						<Tabs.Content value="data" class="flex-1 overflow-hidden"><DataPanel /></Tabs.Content>
-						<Tabs.Content value="jobs" class="flex-1 overflow-hidden"><JobMonitor /></Tabs.Content>
-						<Tabs.Content value="network" class="flex-1 overflow-hidden"><NetworkViewer /></Tabs.Content>
-						<Tabs.Content value="variables" class="flex-1 overflow-hidden"><VariableInspector /></Tabs.Content>
+						<Tabs.Content value="jobs" class="flex-1 overflow-y-auto min-h-0"><JobMonitor /></Tabs.Content>
+						<Tabs.Content value="network" class="flex-1 overflow-y-auto min-h-0"><NetworkViewer /></Tabs.Content>
+						<Tabs.Content value="variables" class="flex-1 overflow-y-auto min-h-0"><VariableInspector /></Tabs.Content>
 					{/if}
 				</Tabs.Root>
 			</div>

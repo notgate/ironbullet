@@ -257,6 +257,27 @@ impl ExecutionContext {
                     String::new()
                 }
             }
+            DateFnType::CurrentUnixTimeMs => {
+                let ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                ms.to_string()
+            }
+            DateFnType::Compute => {
+                // Evaluate simple arithmetic expression with variable interpolation
+                // Supports: +, -, *, /, % and parentheses (via naive recursive descent)
+                let expr = self.variables.interpolate(&settings.param);
+                compute_expr(&expr).to_string()
+            }
+            DateFnType::Round => {
+                let input = self.variables.resolve_input(&settings.input_var);
+                let places: u32 = settings.param.parse().unwrap_or(2);
+                let val: f64 = input.parse().unwrap_or(0.0);
+                let factor = 10f64.powi(places as i32);
+                let rounded = (val * factor).round() / factor;
+                if places == 0 { (rounded as i64).to_string() } else { format!("{:.prec$}", rounded, prec = places as usize) }
+            }
             DateFnType::AddTime | DateFnType::SubtractTime => {
                 let input = self.variables.resolve_input(&settings.input_var);
                 let ts: i64 = input.parse().unwrap_or_else(|_| chrono::Utc::now().timestamp());
@@ -959,4 +980,59 @@ impl ExecutionContext {
         self.variables.set_user(&settings.output_var, result, settings.capture);
         Ok(())
     }
+}
+
+/// Very small arithmetic evaluator supporting +, -, *, /, % and parens.
+fn compute_expr(expr: &str) -> f64 {
+    let tokens: Vec<char> = expr.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut pos = 0usize;
+    parse_additive(&tokens, &mut pos)
+}
+
+fn parse_additive(tokens: &[char], pos: &mut usize) -> f64 {
+    let mut result = parse_multiplicative(tokens, pos);
+    while *pos < tokens.len() {
+        match tokens[*pos] {
+            '+' => { *pos += 1; result += parse_multiplicative(tokens, pos); }
+            '-' => { *pos += 1; result -= parse_multiplicative(tokens, pos); }
+            _ => break,
+        }
+    }
+    result
+}
+
+fn parse_multiplicative(tokens: &[char], pos: &mut usize) -> f64 {
+    let mut result = parse_unary(tokens, pos);
+    while *pos < tokens.len() {
+        match tokens[*pos] {
+            '*' => { *pos += 1; result *= parse_unary(tokens, pos); }
+            '/' => { *pos += 1; let d = parse_unary(tokens, pos); result = if d != 0.0 { result / d } else { f64::NAN }; }
+            '%' => { *pos += 1; let d = parse_unary(tokens, pos); result = if d != 0.0 { result % d } else { f64::NAN }; }
+            _ => break,
+        }
+    }
+    result
+}
+
+fn parse_unary(tokens: &[char], pos: &mut usize) -> f64 {
+    if *pos < tokens.len() && tokens[*pos] == '-' {
+        *pos += 1;
+        return -parse_primary(tokens, pos);
+    }
+    parse_primary(tokens, pos)
+}
+
+fn parse_primary(tokens: &[char], pos: &mut usize) -> f64 {
+    if *pos >= tokens.len() { return 0.0; }
+    if tokens[*pos] == '(' {
+        *pos += 1;
+        let v = parse_additive(tokens, pos);
+        if *pos < tokens.len() && tokens[*pos] == ')' { *pos += 1; }
+        return v;
+    }
+    let start = *pos;
+    while *pos < tokens.len() && (tokens[*pos].is_ascii_digit() || tokens[*pos] == '.') {
+        *pos += 1;
+    }
+    tokens[start..*pos].iter().collect::<String>().parse::<f64>().unwrap_or(0.0)
 }

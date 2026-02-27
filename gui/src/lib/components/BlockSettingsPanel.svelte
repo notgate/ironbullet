@@ -36,7 +36,7 @@
 	}
 
 	const HTTP_TYPES = ['HttpRequest'];
-	const PARSE_TYPES = ['ParseLR', 'ParseJSON', 'ParseRegex', 'ParseCSS', 'ParseXPath', 'ParseCookie', 'LambdaParser'];
+	const PARSE_TYPES = ['ParseLR', 'ParseJSON', 'ParseRegex', 'ParseCSS', 'ParseXPath', 'ParseCookie', 'LambdaParser', 'Parse'];
 	const KEYCHECK_TYPES = ['KeyCheck'];
 	const FUNCTION_TYPES = ['StringFunction', 'ListFunction', 'CryptoFunction', 'ConversionFunction', 'ByteArray', 'Constants', 'Dictionary', 'FloatFunction', 'IntegerFunction', 'TimeFunction', 'GenerateGUID', 'PhoneCountry', 'FileSystem'];
 	const CONTROL_TYPES = ['IfElse', 'Loop', 'Delay', 'Script', 'Log', 'SetVariable', 'ClearCookies'];

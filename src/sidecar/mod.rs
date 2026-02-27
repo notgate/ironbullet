@@ -11,10 +11,14 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 
 use protocol::{SidecarRequest, SidecarResponse};
 
+type ReqTx = mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>;
+
 pub struct SidecarManager {
     process: Option<Child>,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<SidecarResponse>>>>,
     writer_tx: Option<mpsc::Sender<String>>,
+    /// Stored so jobs can get a sender without restarting the sidecar
+    req_tx: Option<ReqTx>,
 }
 
 impl SidecarManager {
@@ -23,10 +27,12 @@ impl SidecarManager {
             process: None,
             pending: Arc::new(Mutex::new(HashMap::new())),
             writer_tx: None,
+            req_tx: None,
         }
     }
 
-    pub async fn start(&mut self, sidecar_path: &str) -> crate::error::Result<mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>> {
+    /// Start the sidecar process. Returns a cloneable sender for sending requests.
+    pub async fn start(&mut self, sidecar_path: &str) -> crate::error::Result<ReqTx> {
         let mut child = Command::new(sidecar_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -45,17 +51,13 @@ impl SidecarManager {
         let mut stdin = stdin;
         tokio::spawn(async move {
             while let Some(line) = writer_rx.recv().await {
-                if stdin.write_all(line.as_bytes()).await.is_err() {
-                    break;
-                }
-                if stdin.write_all(b"\n").await.is_err() {
-                    break;
-                }
+                if stdin.write_all(line.as_bytes()).await.is_err() { break; }
+                if stdin.write_all(b"\n").await.is_err() { break; }
                 let _ = stdin.flush().await;
             }
         });
 
-        // Reader task
+        // Reader task — routes responses back to waiting callers
         let pending = self.pending.clone();
         tokio::spawn(async move {
             let reader = BufReader::new(stdout);
@@ -70,7 +72,7 @@ impl SidecarManager {
             }
         });
 
-        // Request channel
+        // Request multiplexer channel — serialize requests onto the writer
         let (req_tx, mut req_rx) = mpsc::channel::<(SidecarRequest, oneshot::Sender<SidecarResponse>)>(1024);
         let writer_tx2 = writer_tx.clone();
         let pending2 = self.pending.clone();
@@ -86,7 +88,25 @@ impl SidecarManager {
 
         self.process = Some(child);
         self.writer_tx = Some(writer_tx);
+        self.req_tx = Some(req_tx.clone());
         Ok(req_tx)
+    }
+
+    /// Return a sender for an already-running sidecar, or None if not running.
+    pub fn get_req_tx(&self) -> Option<ReqTx> {
+        self.req_tx.clone()
+    }
+
+    /// Get or start: reuse existing sender if the sidecar is running, otherwise start fresh.
+    pub async fn get_or_start(&mut self, sidecar_path: &str) -> crate::error::Result<ReqTx> {
+        if self.is_running() {
+            if let Some(tx) = self.get_req_tx() {
+                return Ok(tx);
+            }
+        }
+        // Not running or no tx — start fresh
+        self.stop().await;
+        self.start(sidecar_path).await
     }
 
     pub async fn stop(&mut self) {
@@ -94,6 +114,7 @@ impl SidecarManager {
             let _ = child.kill().await;
         }
         self.writer_tx = None;
+        self.req_tx = None;
     }
 
     pub fn is_running(&self) -> bool {

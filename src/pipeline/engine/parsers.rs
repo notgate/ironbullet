@@ -281,4 +281,44 @@ impl ExecutionContext {
             input.to_string()
         }
     }
+
+    // ── Unified Parse dispatch ────────────────────────────────────────
+    pub(super) fn execute_parse(&mut self, s: &crate::pipeline::block::ParseSettings) -> crate::error::Result<()> {
+        use crate::pipeline::block::{ParseMode, ParseLRSettings, ParseRegexSettings, ParseJSONSettings, ParseCSSSettings, ParseXPathSettings, ParseCookieSettings, LambdaParserSettings};
+        match &s.parse_mode {
+            ParseMode::LR => self.execute_parse_lr(&ParseLRSettings {
+                input_var: s.input_var.clone(), left: s.left.clone(), right: s.right.clone(),
+                output_var: s.output_var.clone(), capture: s.capture,
+                recursive: s.recursive, case_insensitive: s.case_insensitive,
+            }),
+            ParseMode::Regex => self.execute_parse_regex(&ParseRegexSettings {
+                input_var: s.input_var.clone(), pattern: s.pattern.clone(),
+                output_format: s.output_format.clone(), output_var: s.output_var.clone(),
+                capture: s.capture, multi_line: s.multi_line,
+            }),
+            ParseMode::Json => self.execute_parse_json(&ParseJSONSettings {
+                input_var: s.input_var.clone(), json_path: s.json_path.clone(),
+                output_var: s.output_var.clone(), capture: s.capture,
+            }),
+            ParseMode::Css => self.execute_parse_css(&ParseCSSSettings {
+                input_var: s.input_var.clone(), selector: s.selector.clone(),
+                attribute: s.attribute.clone(), output_var: s.output_var.clone(),
+                capture: s.capture, index: s.index,
+            }),
+            ParseMode::XPath => self.execute_parse_xpath(&ParseXPathSettings {
+                input_var: s.input_var.clone(), xpath: s.xpath.clone(),
+                output_var: s.output_var.clone(), capture: s.capture,
+            }),
+            ParseMode::Cookie => self.execute_parse_cookie(&ParseCookieSettings {
+                input_var: s.input_var.clone(), cookie_name: s.cookie_name.clone(),
+                output_var: s.output_var.clone(), capture: s.capture,
+            }),
+            ParseMode::Lambda => self.execute_lambda_parser(&LambdaParserSettings {
+                input_var: s.input_var.clone(), lambda_expression: s.lambda_expression.clone(),
+                output_var: s.output_var.clone(), capture: s.capture,
+            }),
+        }
+    }
 }
+
+

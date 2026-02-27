@@ -151,9 +151,26 @@
 		{#if ['RETR','STOR','DELE','MKD','RMD','CWD'].includes(block.settings.command || '')}
 			<div class="relative">
 				<label class={labelCls}>Remote Path</label>
-				<VariableInput value={block.settings.remote_path || ''} placeholder="/path/to/file" class={inputCls}
+				<VariableInput value={block.settings.remote_path || ''} placeholder="/path/to/remote/file" class={inputCls}
 					oninput={(e) => updateSettings('remote_path', (e.target as HTMLInputElement).value)} />
 				{@render embedBadge(block.settings.remote_path)}
+			</div>
+		{/if}
+		{#if block.settings.command === 'RETR'}
+			<div class="relative">
+				<label class={labelCls}>Save To Directory</label>
+				<VariableInput value={block.settings.output_dir || ''} placeholder="./downloads" class={inputCls}
+					oninput={(e) => updateSettings('output_dir', (e.target as HTMLInputElement).value)} />
+				{@render embedBadge(block.settings.output_dir)}
+				<p class="text-[9px] text-muted-foreground mt-0.5">Directory where the downloaded file will be saved. Filename is taken from remote path.</p>
+			</div>
+		{/if}
+		{#if block.settings.command === 'STOR'}
+			<div class="relative">
+				<label class={labelCls}>Local File to Upload</label>
+				<VariableInput value={block.settings.local_path || ''} placeholder="/path/to/local/file.txt" class={inputCls}
+					oninput={(e) => updateSettings('local_path', (e.target as HTMLInputElement).value)} />
+				{@render embedBadge(block.settings.local_path)}
 			</div>
 		{/if}
 		<div class="flex gap-2">
