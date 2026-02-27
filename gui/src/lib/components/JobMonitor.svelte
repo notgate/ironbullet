@@ -251,6 +251,10 @@ Error handling
 	let newJobDelaySecs = $state(0);
 	let proxyCheckUrl = $state('http://www.google.com');
 	let proxyCheckList = $state('');
+	// Per-job proxy override for Config jobs
+	let newJobProxyMode = $state<'pipeline' | 'file' | 'group'>('pipeline');
+	let newJobProxyFile = $state('');
+	let newJobProxyGroup = $state('');
 
 	// Edit job dialog state
 	let editingJob = $state<any>(null);
@@ -302,6 +306,17 @@ Error handling
 		}
 	});
 
+	// When a proxy file browse completes, fill the proxy override file field
+	$effect(() => {
+		const picked = app.pendingJobProxyFile;
+		if (picked && showNewJob) {
+			newJobProxyFile = picked;
+			newJobProxyMode = 'file';
+			console.log('[JobMonitor] pendingJobProxyFile applied:', picked);
+			app.pendingJobProxyFile = null;
+		}
+	});
+
 	function createJob() {
 		console.log('[JobMonitor] createJob: jobType=', newJobType, 'dataType=', newJobDataType, 'threads=', newJobThreads);
 		send('create_job', {
@@ -318,11 +333,20 @@ Error handling
 			start_condition: newJobStartCondition === 'Immediate'
 				? 'Immediate'
 				: { Delayed: { delay_secs: newJobDelaySecs } },
+			// Per-job proxy override (Config jobs only)
+			...(newJobType === 'Config' && newJobProxyMode !== 'pipeline' ? {
+				proxy_override_mode: newJobProxyMode,
+				proxy_override_file: newJobProxyMode === 'file' ? newJobProxyFile : undefined,
+				proxy_override_group: newJobProxyMode === 'group' ? newJobProxyGroup : undefined,
+			} : {}),
 		});
 		showNewJob = false;
 		newJobName = '';
 		newJobDataSource = '';
 		proxyCheckList = '';
+		newJobProxyMode = 'pipeline';
+		newJobProxyFile = '';
+		newJobProxyGroup = '';
 	}
 
 	function refreshJobs() {
@@ -475,6 +499,57 @@ Error handling
 							<input type="number" min="0" bind:value={newJobDelaySecs} class="skeu-input w-full text-xs" />
 						</div>
 					{/if}
+
+					<!-- Per-job proxy override -->
+					<div class="col-span-2">
+						<label class="text-muted-foreground text-[10px]">Proxy Source</label>
+						<div class="flex gap-1 mt-0.5">
+							<!-- Mode selector — inline segmented buttons -->
+							<div class="flex rounded border border-border overflow-hidden shrink-0">
+								{#each [['pipeline','Pipeline'],['file','File'],['group','Group']] as [val, label]}
+									<button
+										class="px-2 py-0.5 text-[10px] transition-colors {newJobProxyMode === val ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent/20'}"
+										onclick={() => { newJobProxyMode = val as any; }}
+									>{label}</button>
+								{/each}
+							</div>
+
+							{#if newJobProxyMode === 'file'}
+								<!-- Custom proxy file path + browse -->
+								<input
+									type="text"
+									bind:value={newJobProxyFile}
+									placeholder="Path to proxy file..."
+									class="skeu-input flex-1 text-[10px] font-mono"
+								/>
+								<button
+									class="skeu-btn text-[10px] shrink-0"
+									onclick={() => send('browse_file', { field: 'job_proxy_file' })}
+								>Browse</button>
+							{:else if newJobProxyMode === 'group'}
+								<!-- Dropdown of groups defined in the pipeline -->
+								{#if app.pipeline.proxy_settings.proxy_groups.length === 0}
+									<span class="text-[10px] text-muted-foreground/60 italic px-2 self-center">No proxy groups defined in this pipeline.</span>
+								{:else}
+									<SkeuSelect
+										value={newJobProxyGroup || app.pipeline.proxy_settings.proxy_groups[0]?.name || ''}
+										onValueChange={(v) => { newJobProxyGroup = v; }}
+										options={app.pipeline.proxy_settings.proxy_groups.map(g => ({ value: g.name, label: `${g.name} (${g.sources.length} src, ${g.mode})` }))}
+										class="flex-1 text-[10px]"
+									/>
+								{/if}
+							{:else}
+								<!-- Pipeline mode: show what the pipeline uses -->
+								<span class="text-[10px] text-muted-foreground/70 px-2 self-center">
+									{app.pipeline.proxy_settings.proxy_mode === 'None'
+										? 'No proxies (pipeline has mode=None)'
+										: app.pipeline.proxy_settings.active_group
+											? `Group: ${app.pipeline.proxy_settings.active_group}`
+											: `${app.pipeline.proxy_settings.proxy_sources.length} source(s), mode: ${app.pipeline.proxy_settings.proxy_mode}`}
+								</span>
+							{/if}
+						</div>
+					</div>
 				{:else}
 					<!-- Proxy Check fields -->
 					<div class="col-span-2">

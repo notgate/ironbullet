@@ -103,6 +103,7 @@ interface AppState {
 	setupDirsDone: boolean;
 	setupDirsPaths: Record<string, string>;
 	pendingJobWordlist: { path: string; isFolder: boolean } | null;
+	pendingJobProxyFile: string | null;
 
 	// Security
 	securityIssues: Array<{ severity: string; title: string; description: string; code_snippet: string }>;
@@ -216,6 +217,7 @@ function createAppState(): AppState {
 	let setupDirsDone = $state(false);
 	let setupDirsPaths = $state<Record<string, string>>({});
 	let pendingJobWordlist = $state<{ path: string; isFolder: boolean } | null>(null);
+	let pendingJobProxyFile = $state<string | null>(null);
 	let securityIssues = $state<Array<{ severity: string; title: string; description: string; code_snippet: string }>>([]);
 
 	// Update state
@@ -356,6 +358,8 @@ function createAppState(): AppState {
 		set setupDirsPaths(v) { setupDirsPaths = v; },
 		get pendingJobWordlist() { return pendingJobWordlist; },
 		set pendingJobWordlist(v) { pendingJobWordlist = v; },
+		get pendingJobProxyFile() { return pendingJobProxyFile; },
+		set pendingJobProxyFile(v) { pendingJobProxyFile = v; },
 		get securityIssues() { return securityIssues; },
 		set securityIssues(v) { securityIssues = v; },
 		get updateAvailable() { return updateAvailable; },

@@ -219,6 +219,7 @@ export function registerCallbacks() {
 					if (field === 'wordlist') app.wordlistPath = path;
 					else if (field === 'proxies') app.proxyPath = path;
 					else if (field === 'job_wordlist' || field === 'proxy_check_list') app.pendingJobWordlist = { path, isFolder: false };
+					else if (field === 'job_proxy_file') app.pendingJobProxyFile = path;
 				}
 				break;
 			case 'recent_configs':
