@@ -43,6 +43,7 @@ pub(crate) async fn run_worker(
         follow_redirects: Some(true),
         max_redirects: Some(8),
         ssl_verify: None,
+                    custom_ciphers: None,
 
     };
     let (resp_tx, _) = oneshot::channel();
@@ -130,6 +131,7 @@ pub(crate) async fn run_worker(
         proxy: None, browser: None, ja3: None, http2fp: None,
         follow_redirects: None, max_redirects: None,
         ssl_verify: None,
+                    custom_ciphers: None,
 
     };
     let (resp_tx, _) = oneshot::channel();

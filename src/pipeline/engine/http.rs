@@ -47,6 +47,7 @@ impl ExecutionContext {
             follow_redirects: Some(settings.follow_redirects),
             max_redirects: Some(settings.max_redirects as i64),
             ssl_verify: if settings.ssl_verify { None } else { Some(false) },
+            custom_ciphers: if settings.cipher_suites.is_empty() { None } else { Some(settings.cipher_suites.clone()) },
         };
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();

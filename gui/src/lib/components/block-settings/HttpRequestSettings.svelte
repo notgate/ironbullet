@@ -265,16 +265,49 @@
 
 	<!-- TLS / SSL -->
 	<div class="my-1.5 groove-h h-px"></div>
-	<label class="flex items-center gap-2 text-[11px] text-foreground">
-		<input type="checkbox" checked={block.settings.ssl_verify !== false}
-			onchange={() => updateSettings('ssl_verify', block.settings.ssl_verify === false ? true : false)}
-			class="skeu-checkbox" />
-		Verify TLS certificate
-		{#if block.settings.ssl_verify === false}
-			<span class="text-[9px] text-orange bg-orange/10 px-1 rounded">⚠ insecure</span>
-		{/if}
-	</label>
-	<p class="text-[9px] text-muted-foreground -mt-0.5">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
+	<div class="space-y-1">
+		<label class="flex items-center gap-2 text-[11px] text-foreground">
+			<input type="checkbox" checked={block.settings.ssl_verify !== false}
+				onchange={() => updateSettings('ssl_verify', block.settings.ssl_verify === false ? true : false)}
+				class="skeu-checkbox" />
+			Verify TLS certificate
+			{#if block.settings.ssl_verify === false}
+				<span class="text-[9px] text-orange bg-orange/10 px-1 rounded">⚠ insecure</span>
+			{/if}
+		</label>
+		<p class="text-[9px] text-muted-foreground">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
+
+		<div>
+			<label class={labelCls}>Custom Cipher Suites <span class="text-muted-foreground/60">(optional)</span></label>
+			<textarea
+				value={block.settings.cipher_suites || ''}
+				rows={2}
+				placeholder={'Leave empty to use browser profile defaults.\nDash-separated IANA IDs, e.g:\n4865-4866-4867-49195-49199-49196-49200-52393-52392'}
+				class="w-full skeu-input text-[10px] font-mono resize-y mt-0.5"
+				oninput={(e) => updateSettings('cipher_suites', (e.target as HTMLTextAreaElement).value.trim())}
+			></textarea>
+			<details class="mt-0.5">
+				<summary class="text-[9px] text-primary/70 cursor-pointer select-none">Common cipher IDs reference</summary>
+				<div class="text-[9px] text-muted-foreground font-mono space-y-0.5 mt-1 bg-background/50 rounded p-1.5 leading-relaxed">
+					<div><span class="text-foreground/80">4865</span> TLS_AES_128_GCM_SHA256 (TLS 1.3)</div>
+					<div><span class="text-foreground/80">4866</span> TLS_AES_256_GCM_SHA384 (TLS 1.3)</div>
+					<div><span class="text-foreground/80">4867</span> TLS_CHACHA20_POLY1305_SHA256 (TLS 1.3)</div>
+					<div><span class="text-foreground/80">49195</span> TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256</div>
+					<div><span class="text-foreground/80">49199</span> TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256</div>
+					<div><span class="text-foreground/80">49196</span> TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384</div>
+					<div><span class="text-foreground/80">49200</span> TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384</div>
+					<div><span class="text-foreground/80">52393</span> TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305</div>
+					<div><span class="text-foreground/80">52392</span> TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305</div>
+					<div><span class="text-foreground/80">49171</span> TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA</div>
+					<div><span class="text-foreground/80">49172</span> TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA</div>
+					<div><span class="text-foreground/80">156</span> TLS_RSA_WITH_AES_128_GCM_SHA256</div>
+					<div><span class="text-foreground/80">157</span> TLS_RSA_WITH_AES_256_GCM_SHA384</div>
+					<div><span class="text-foreground/80">47</span> TLS_RSA_WITH_AES_128_CBC_SHA</div>
+					<div><span class="text-foreground/80">53</span> TLS_RSA_WITH_AES_256_CBC_SHA</div>
+				</div>
+			</details>
+		</div>
+	</div>
 
 	<!-- Copy as curl/PowerShell -->
 	<div class="my-1.5 groove-h h-px"></div>

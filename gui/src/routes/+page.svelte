@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Tabs } from 'bits-ui';
 	import { registerCallbacks } from '$lib/ipc';
 	import { app } from '$lib/state.svelte';
+	import { dock } from '$lib/state/dock.svelte';
+	import type { PanelId } from '$lib/state/dock.svelte';
 	import { createKeydownHandler } from '$lib/keyboard';
+	import DockZoneTabs from '$lib/components/DockZoneTabs.svelte';
+	import FloatingPanel from '$lib/components/FloatingPanel.svelte';
 	import TitleBar from '$lib/components/TitleBar.svelte';
 	import ConfigTabBar from '$lib/components/ConfigTabBar.svelte';
 	import Toolbar from '$lib/components/Toolbar.svelte';
@@ -30,12 +33,25 @@
 	import FingerprintDialog from '$lib/components/FingerprintDialog.svelte';
 	import HitsDialog from '$lib/components/HitsDialog.svelte';
 	import Toast from '$lib/components/Toast.svelte';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import ChevronUp from '@lucide/svelte/icons/chevron-up';
-
 	import type { Block } from '$lib/types';
 
 	let bottomPanelCollapsed = $state(false);
+	let activeBottomTab = $state<string>('debugger');
+	let activeRightTab = $state<string>('');
+
+	// Keep activeBottomTab valid when panels move zones
+	$effect(() => {
+		const bottomPanels = dock.panelsIn('bottom');
+		if (!bottomPanels.find(p => p.id === activeBottomTab) && bottomPanels.length > 0) {
+			activeBottomTab = bottomPanels[0].id;
+		}
+	});
+	$effect(() => {
+		const rightPanels = dock.panelsIn('right');
+		if (!rightPanels.find(p => p.id === activeRightTab) && rightPanels.length > 0) {
+			activeRightTab = rightPanels[0].id;
+		}
+	});
 
 	// Block clipboard for Ctrl+C / Ctrl+V
 	let clipboardBlocks: Block[] = $state([]);
@@ -92,6 +108,19 @@
 		window.addEventListener('mousemove', onMove);
 		window.addEventListener('mouseup', onUp);
 	}
+
+	// Right dock panel width (for secondary docked panels)
+	let rightDockWidth = $state(300);
+	function startResizeRightDock(e: MouseEvent) {
+		const startX = e.clientX;
+		const startW = rightDockWidth;
+		const onMove = (ev: MouseEvent) => { rightDockWidth = Math.max(180, Math.min(600, startW - (ev.clientX - startX))); };
+		const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+	}
+
+
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -136,11 +165,37 @@
 				<div class="flex-1 min-w-0 relative">
 					<PipelineEditor />
 				</div>
-				{#if app.editingBlockId !== null}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="groove-v resize-handle w-[3px] shrink-0" onmousedown={startResizeRight}></div>
-				{/if}
-				<BlockSettingsPanel />
+
+				<!-- Right panel: Block Settings + optional docked panels -->
+				<div class="flex shrink-0">
+					{#if app.editingBlockId !== null}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="groove-v resize-handle w-[3px] shrink-0" onmousedown={startResizeRight}></div>
+						<BlockSettingsPanel />
+					{/if}
+
+					<!-- Secondary right dock zone (panels dragged here) -->
+					{#if dock.panelsIn('right').length > 0}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="groove-v resize-handle w-[3px] shrink-0" onmousedown={startResizeRightDock}></div>
+						<div style="width: {rightDockWidth}px" class="shrink-0 flex flex-col border-l border-border bg-surface">
+							<DockZoneTabs
+								zone="right"
+								bind:activeTab={activeRightTab}
+							>
+								{#snippet children(id: PanelId)}
+									{#if id === 'debugger'}<DebugPanel />
+									{:else if id === 'code'}<CodeView />
+									{:else if id === 'data'}<DataPanel />
+									{:else if id === 'jobs'}<div class="overflow-y-auto h-full"><JobMonitor /></div>
+									{:else if id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
+									{:else if id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
+									{/if}
+								{/snippet}
+							</DockZoneTabs>
+						</div>
+					{/if}
+				</div>
 			</div>
 
 			{#if !bottomPanelCollapsed}
@@ -148,39 +203,56 @@
 				<div class="groove-h resize-handle-h h-[3px] shrink-0" onmousedown={startResizeBottom}></div>
 			{/if}
 
-			<!-- Bottom panel with Tabs -->
-			<div style="height: {bottomPanelCollapsed ? 'auto' : `${app.bottomPanelHeight}px`}" class="shrink-0 flex flex-col">
-				<Tabs.Root bind:value={app.bottomTab} class="flex flex-col h-full">
-					<div class="bg-surface shrink-0 px-1 flex items-center border-b border-border-dark">
-						<Tabs.List class="flex gap-0 flex-1">
-							<Tabs.Trigger value="debugger" class="tab-trigger">Debugger</Tabs.Trigger>
-							<Tabs.Trigger value="code" class="tab-trigger">Code View</Tabs.Trigger>
-							<Tabs.Trigger value="data" class="tab-trigger">Data / Proxy</Tabs.Trigger>
-							<Tabs.Trigger value="jobs" class="tab-trigger">Jobs</Tabs.Trigger>
-							<Tabs.Trigger value="network" class="tab-trigger">Network</Tabs.Trigger>
-							<Tabs.Trigger value="variables" class="tab-trigger">Variables</Tabs.Trigger>
-						</Tabs.List>
-						<button
-							class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-							onclick={() => { bottomPanelCollapsed = !bottomPanelCollapsed; }}
-							title={bottomPanelCollapsed ? 'Expand panel' : 'Collapse panel'}
-						>
-							{#if bottomPanelCollapsed}<ChevronUp size={12} />{:else}<ChevronDown size={12} />{/if}
-						</button>
-					</div>
-
-					{#if !bottomPanelCollapsed}
-						<Tabs.Content value="debugger" class="flex-1 overflow-hidden"><DebugPanel /></Tabs.Content>
-						<Tabs.Content value="code" class="flex-1 overflow-hidden"><CodeView /></Tabs.Content>
-						<Tabs.Content value="data" class="flex-1 overflow-hidden"><DataPanel /></Tabs.Content>
-						<Tabs.Content value="jobs" class="flex-1 overflow-y-auto min-h-0"><JobMonitor /></Tabs.Content>
-						<Tabs.Content value="network" class="flex-1 overflow-y-auto min-h-0"><NetworkViewer /></Tabs.Content>
-						<Tabs.Content value="variables" class="flex-1 overflow-y-auto min-h-0"><VariableInspector /></Tabs.Content>
-					{/if}
-				</Tabs.Root>
-			</div>
+			<!-- Bottom panel — dockable tabs -->
+			{#if dock.panelsIn('bottom').length > 0}
+				<div style="height: {bottomPanelCollapsed ? 'auto' : `${app.bottomPanelHeight}px`}" class="shrink-0 flex flex-col">
+					<DockZoneTabs
+						zone="bottom"
+						bind:activeTab={activeBottomTab}
+						bind:collapsed={bottomPanelCollapsed}
+						onToggleCollapse={() => { bottomPanelCollapsed = !bottomPanelCollapsed; }}
+						showDockToRight={true}
+					>
+						{#snippet children(id: PanelId)}
+							{#if id === 'debugger'}<DebugPanel />
+							{:else if id === 'code'}<CodeView />
+							{:else if id === 'data'}<DataPanel />
+							{:else if id === 'jobs'}<div class="overflow-y-auto h-full"><JobMonitor /></div>
+							{:else if id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
+							{:else if id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
+							{/if}
+						{/snippet}
+					</DockZoneTabs>
+				</div>
+			{:else}
+				<!-- Empty drop zone when all panels are moved away -->
+				<div
+					class="h-8 shrink-0 flex items-center justify-center border-t border-border text-[10px] text-muted-foreground/50 bg-surface"
+					ondragover={(e) => { e.preventDefault(); dock.dragOver = 'bottom'; }}
+					ondrop={(e) => { e.preventDefault(); if (dock.dragging) dock.movePanel(dock.dragging, 'bottom'); dock.dragging = null; dock.dragOver = null; }}
+					role="region"
+					aria-label="Bottom panel drop zone"
+				>
+					Drop panels here
+				</div>
+			{/if}
 		</div>
 	</div>
+
+	<!-- Floating panels (rendered at top level, above everything) -->
+	{#each dock.panelsIn('float') as panel (panel.id)}
+		<FloatingPanel id={panel.id}>
+			{#snippet children()}
+				{#if panel.id === 'debugger'}<DebugPanel />
+				{:else if panel.id === 'code'}<CodeView />
+				{:else if panel.id === 'data'}<DataPanel />
+				{:else if panel.id === 'jobs'}<div class="overflow-y-auto h-full"><JobMonitor /></div>
+				{:else if panel.id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
+				{:else if panel.id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
+				{/if}
+			{/snippet}
+		</FloatingPanel>
+	{/each}
 	</div>
 	{/if}
 </div>

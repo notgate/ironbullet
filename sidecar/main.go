@@ -26,6 +26,10 @@ type SidecarRequest struct {
 	MaxRedirects    int64      `json:"max_redirects,omitempty"`
 	// SslVerify: nil = default (verify), false = skip TLS verification
 	SslVerify       *bool      `json:"ssl_verify,omitempty"`
+	// CustomCiphers: optional dash-separated cipher suite IDs to override the browser profile's default.
+	// e.g. "4865-4866-4867-49195-49199-49196-49200-52393-52392"
+	// Cipher IDs are IANA decimal values. Applied via azuretls JA3 override.
+	CustomCiphers   string     `json:"custom_ciphers,omitempty"`
 }
 
 // SidecarResponse to Rust

@@ -32,6 +32,10 @@ pub struct SidecarRequest {
     /// Skip TLS certificate verification when false (default = verify = true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ssl_verify: Option<bool>,
+    /// Dash-separated IANA cipher suite IDs overriding the browser profile defaults.
+    /// e.g. "4865-4866-4867-49195-49199-49196-49200"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_ciphers: Option<String>,
 }
 
 /// Response from Go sidecar back to Rust

@@ -46,6 +46,7 @@ impl ExecutionContext {
             follow_redirects: Some(true),
             max_redirects: Some(5),
             ssl_verify: None,
+                    custom_ciphers: None,
 
         };
 
@@ -179,6 +180,7 @@ impl ExecutionContext {
             follow_redirects: Some(true),
             max_redirects: Some(5),
             ssl_verify: None,
+                    custom_ciphers: None,
 
         };
 
@@ -231,6 +233,7 @@ impl ExecutionContext {
             follow_redirects: Some(true),
             max_redirects: Some(5),
             ssl_verify: None,
+                    custom_ciphers: None,
 
         };
 
@@ -391,6 +394,7 @@ impl ExecutionContext {
             proxy: None, browser: None, ja3: None, http2fp: None,
             follow_redirects: Some(true), max_redirects: Some(5),
             ssl_verify: None,
+                    custom_ciphers: None,
 
         };
 
@@ -432,6 +436,7 @@ impl ExecutionContext {
                 proxy: None, browser: None, ja3: None, http2fp: None,
                 follow_redirects: Some(true), max_redirects: Some(5),
                 ssl_verify: None,
+                    custom_ciphers: None,
 
             };
 
@@ -485,6 +490,7 @@ impl ExecutionContext {
             proxy: None, browser: None, ja3: None, http2fp: None,
             follow_redirects: Some(true), max_redirects: Some(5),
             ssl_verify: None,
+                    custom_ciphers: None,
 
         };
 
@@ -676,6 +682,7 @@ impl ExecutionContext {
             follow_redirects: Some(true),
             max_redirects: Some(5),
             ssl_verify: None,
+                    custom_ciphers: None,
 
         };
 
