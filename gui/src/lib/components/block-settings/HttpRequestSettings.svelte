@@ -263,9 +263,34 @@
 		</div>
 	{/if}
 
-	<!-- TLS / SSL -->
+	<!-- TLS Client + SSL -->
 	<div class="my-1.5 groove-h h-px"></div>
 	<div class="space-y-1">
+
+		<!-- TLS client selector -->
+		<div>
+			<label class={labelCls}>TLS Client</label>
+			<SkeuSelect
+				value={block.settings.tls_client || 'AzureTLS'}
+				onValueChange={(v) => updateSettings('tls_client', v)}
+				options={[
+					{ value: 'AzureTLS', label: 'AzureTLS (Go sidecar · JA3 + fingerprinting)' },
+					{ value: 'RustTLS',  label: 'RustTLS (Rust native · standard HTTPS)' },
+				]}
+				placeholder="Select TLS client..."
+			/>
+			{#if (block.settings.tls_client || 'AzureTLS') === 'RustTLS'}
+				<p class="text-[9px] text-muted-foreground mt-0.5">
+					Uses reqwest + rustls — all standard settings apply.
+					JA3 / browser fingerprinting / custom cipher suites are AzureTLS-only.
+				</p>
+			{:else}
+				<p class="text-[9px] text-muted-foreground mt-0.5">
+					Uses Go sidecar (azuretls) — supports JA3 fingerprinting, browser TLS imitation, HTTP/2 fingerprinting, and custom cipher suites.
+				</p>
+			{/if}
+		</div>
+
 		<label class="flex items-center gap-2 text-[11px] text-foreground">
 			<input type="checkbox" checked={block.settings.ssl_verify !== false}
 				onchange={() => updateSettings('ssl_verify', block.settings.ssl_verify === false ? true : false)}
@@ -277,8 +302,10 @@
 		</label>
 		<p class="text-[9px] text-muted-foreground">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
 
+		<!-- Cipher suites — AzureTLS only -->
+		{#if (block.settings.tls_client || 'AzureTLS') === 'AzureTLS'}
 		<div>
-			<label class={labelCls}>Custom Cipher Suites <span class="text-muted-foreground/60">(optional)</span></label>
+			<label class={labelCls}>Custom Cipher Suites <span class="text-muted-foreground/60">(AzureTLS · optional)</span></label>
 			<textarea
 				value={block.settings.cipher_suites || ''}
 				rows={2}
@@ -307,6 +334,7 @@
 				</div>
 			</details>
 		</div>
+		{/if}
 	</div>
 
 	<!-- Copy as curl/PowerShell -->

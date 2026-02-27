@@ -23,7 +23,7 @@ sha2 = "0.10"
 md-5 = "0.10"
 hmac = "0.12"
 raw-window-handle = "0.6"
-reqwest = { version = "0.12", features = ["cookies", "gzip", "deflate", "brotli", "json", "stream"] }
+reqwest = { version = "0.12", features = ["cookies", "gzip", "deflate", "brotli", "json", "stream", "rustls-tls", "socks"] }
 chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
 futures = "0.3"
 crc32fast = "1"
