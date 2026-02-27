@@ -115,6 +115,8 @@ enum Evt {
     MinimizeWindow,
     MaximizeWindow,
     CloseWindow,
+    /// Open a panel as a real native OS window (wry/tao multi-window).
+    FloatPanel(String),
 }
 
 /// Check if we should run in CLI mode (any --config or --help arg present)
@@ -374,6 +376,17 @@ fn run_gui() {
                         let _ = proxy.send_event(Evt::CloseWindow);
                         return;
                     }
+                    "float_panel_native" => {
+                        // Open a panel as a real native OS window
+                        let panel_id = cmd.data.get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if !panel_id.is_empty() {
+                            let _ = proxy.send_event(Evt::FloatPanel(panel_id));
+                        }
+                        return;
+                    }
                     _ => {}
                 }
 
@@ -390,22 +403,117 @@ fn run_gui() {
         .build(&window)
         .expect("Failed to create webview");
 
-    event_loop.run(move |event, _, control_flow| {
+    // Track panel sub-windows: (native window, webview, panel_id)
+    // These are real OS windows created when the user floats a panel.
+    let mut panel_windows: Vec<(tao::window::Window, wry::WebView, String)> = Vec::new();
+
+    event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                // Redirect to frontend so it can prompt for unsaved tabs
-                let _ = webview.evaluate_script(
-                    "window.dispatchEvent(new Event('native-close-requested'))"
-                );
+            Event::WindowEvent { window_id, event: WindowEvent::CloseRequested, .. } => {
+                // Check if it's a panel sub-window being closed
+                if let Some(idx) = panel_windows.iter().position(|(w, _, _)| w.id() == window_id) {
+                    let (_, _, panel_id) = panel_windows.remove(idx);
+                    // Tell main window to re-dock this panel to bottom
+                    let js = format!("if (window.__ibPanelClosed) window.__ibPanelClosed('{}')", panel_id);
+                    let _ = webview.evaluate_script(&js);
+                } else {
+                    // Main window close — redirect to frontend for unsaved-changes prompt
+                    let _ = webview.evaluate_script(
+                        "window.dispatchEvent(new Event('native-close-requested'))"
+                    );
+                }
             }
             Event::UserEvent(evt) => match evt {
                 Evt::EvalJs(js) => {
+                    // Broadcast to main window AND all open panel sub-windows
                     let _ = webview.evaluate_script(&js);
+                    for (_, pw, _) in &panel_windows {
+                        let _ = pw.evaluate_script(&js);
+                    }
+                }
+                Evt::FloatPanel(panel_id) => {
+                    // Focus existing panel window if already open
+                    if let Some((pw, _, _)) = panel_windows.iter().find(|(_, _, id)| id == &panel_id) {
+                        pw.set_focus();
+                        return;
+                    }
+
+                    let label = match panel_id.as_str() {
+                        "debugger"  => "Debugger",
+                        "code"      => "Code View",
+                        "data"      => "Data / Proxy",
+                        "jobs"      => "Jobs",
+                        "network"   => "Network",
+                        "variables" => "Variables",
+                        _           => "Panel",
+                    };
+
+                    let panel_window = match WindowBuilder::new()
+                        .with_title(format!("IronBullet — {}", label))
+                        .with_inner_size(tao::dpi::LogicalSize::new(800.0_f64, 500.0_f64))
+                        .with_decorations(true)
+                        .build(elwt)
+                    {
+                        Ok(w) => w,
+                        Err(e) => { eprintln!("[float panel] window error: {}", e); return; }
+                    };
+
+                    let url = format!("ironbullet://localhost/?panel={}", panel_id);
+                    let sub_state = state.clone();
+                    let sub_proxy = proxy.clone();
+
+                    let panel_webview = match WebViewBuilder::new()
+                        .with_devtools(true)
+                        .with_custom_protocol("ironbullet".into(), move |_wv, req| {
+                            use std::borrow::Cow;
+                            let uri = req.uri().to_string();
+                            let path = uri.strip_prefix("ironbullet://localhost").unwrap_or(&uri);
+                            let path = if path.is_empty() || path == "/" { "/index.html" } else { path };
+                            let path = path.trim_start_matches('/');
+                            let path = path.split('?').next().unwrap_or(path);
+                            let (body, mime): (Cow<'static, [u8]>, &str) = match GUI_DIR.get_file(path) {
+                                Some(f) => (Cow::Borrowed(f.contents()), mime_for(path)),
+                                None => match GUI_DIR.get_file("index.html") {
+                                    Some(f) => (Cow::Borrowed(f.contents()), "text/html"),
+                                    None => (Cow::Borrowed(b"404 Not Found"), "text/plain"),
+                                },
+                            };
+                            wry::http::Response::builder()
+                                .header("Content-Type", mime)
+                                .header("Access-Control-Allow-Origin", "*")
+                                .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                                .body(body)
+                                .unwrap()
+                        })
+                        .with_url(&url)
+                        .with_ipc_handler(move |req: wry::http::Request<String>| {
+                            let body = req.body();
+                            if let Ok(cmd) = serde_json::from_str::<IpcCmd>(body) {
+                                let eval_proxy = sub_proxy.clone();
+                                let state_clone = sub_state.clone();
+                                tokio::spawn(async move {
+                                    ipc::handle_ipc_cmd(&cmd, &state_clone, move |js| {
+                                        let _ = eval_proxy.send_event(Evt::EvalJs(js));
+                                    });
+                                });
+                            }
+                        })
+                        .build(&panel_window)
+                    {
+                        Ok(wv) => wv,
+                        Err(e) => { eprintln!("[float panel] webview error: {}", e); return; }
+                    };
+
+                    // Notify main window that this panel is now in a native window
+                    let notify_js = format!(
+                        "if (window.__ibPanelOpened) window.__ibPanelOpened('{}')",
+                        panel_id
+                    );
+                    let _ = webview.evaluate_script(&notify_js);
+
+                    panel_windows.push((panel_window, panel_webview, panel_id));
                 }
                 Evt::DragWindow => {
                     let _ = window.drag_window();

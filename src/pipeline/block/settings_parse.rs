@@ -152,14 +152,22 @@ impl Default for ParseCookieSettings {
 // ── Unified Parse Block ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
 pub enum ParseMode {
+    // Explicit variant names must match frontend option values exactly.
+    // Legacy snake_case aliases are included for backward compatibility.
+    #[serde(alias = "l_r")]
     LR,
+    #[serde(alias = "regex")]
     Regex,
+    #[serde(alias = "json")]
     Json,
+    #[serde(alias = "css")]
     Css,
+    #[serde(alias = "x_path")]
     XPath,
+    #[serde(alias = "cookie")]
     Cookie,
+    #[serde(alias = "lambda")]
     Lambda,
 }
 

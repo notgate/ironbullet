@@ -5,7 +5,12 @@
  */
 
 export type PanelId = 'debugger' | 'code' | 'data' | 'jobs' | 'network' | 'variables';
-export type DockZone = 'bottom' | 'right' | 'float';
+/** Dock zones:
+ * - bottom / right / left: docked tab areas in the main window
+ * - float:   CSS overlay (legacy, kept for non-Windows)
+ * - native:  panel is open in a real native OS window (managed by Rust)
+ */
+export type DockZone = 'bottom' | 'right' | 'float' | 'left' | 'native';
 
 export interface FloatState {
 	x: number;
@@ -31,7 +36,7 @@ export const PANEL_LABELS: Record<PanelId, string> = {
 	variables: 'Variables',
 };
 
-const STORAGE_KEY = 'ironbullet_dock_layout_v1';
+const STORAGE_KEY = 'ironbullet_dock_layout_v2';
 
 const DEFAULT_PANELS: PanelConfig[] = [
 	{ id: 'debugger', zone: 'bottom', order: 0 },
@@ -47,10 +52,17 @@ function loadFromStorage(): PanelConfig[] {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (raw) {
 			const parsed = JSON.parse(raw) as PanelConfig[];
-			// Validate and fill missing panels
-			const ids = parsed.map(p => p.id);
+			// Reset transient zones to 'bottom' on startup:
+			// 'native' = OS windows don't persist; 'float' = CSS overlays don't persist
+			const normalized = parsed.map(p =>
+				(p.zone === 'native' || p.zone === 'float')
+					? { ...p, zone: 'bottom' as DockZone }
+					: p
+			);
+			// Fill any missing panels with their defaults
+			const ids = normalized.map(p => p.id);
 			const defaults = DEFAULT_PANELS.filter(d => !ids.includes(d.id));
-			return [...parsed, ...defaults];
+			return [...normalized, ...defaults];
 		}
 	} catch {}
 	return [...DEFAULT_PANELS];
@@ -80,7 +92,7 @@ function createDockState() {
 				: p.float };
 		});
 		// Re-normalize orders within zones
-		(['bottom', 'right', 'float'] as DockZone[]).forEach(z => {
+		(['bottom', 'right', 'float', 'left', 'native'] as DockZone[]).forEach(z => {
 			panelsIn(z).forEach((p, i) => {
 				const found = panels.find(x => x.id === p.id);
 				if (found) found.order = i;

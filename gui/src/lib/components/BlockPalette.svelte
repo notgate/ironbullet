@@ -123,6 +123,15 @@
 	let searchFilter = $state('');
 	let expandedCategories = $state<Set<string>>(new Set(['Requests', 'Parsing', 'Checks', 'Functions', 'Control', 'Browser', 'Utilities', 'Bypass', 'Sensors']));
 
+	// Auto-expand any category that appears after initial load (e.g. plugin categories)
+	$effect(() => {
+		const allCats = [...categories().keys()];
+		const newCats = allCats.filter(c => !expandedCategories.has(c));
+		if (newCats.length > 0) {
+			expandedCategories = new Set([...expandedCategories, ...newCats]);
+		}
+	});
+
 	const categories = $derived(() => {
 		const cats = new Map<string, BlockMeta[]>();
 		const allBlocks: BlockMeta[] = [
