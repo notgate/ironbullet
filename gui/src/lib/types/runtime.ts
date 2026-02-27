@@ -1,5 +1,16 @@
 import type { BlockType } from './pipeline';
 
+/** Single live check result from the runner's ring buffer. */
+export interface ResultEntry {
+	data_line: string;
+	/** "SUCCESS" | "FAIL" | "BAN" | "RETRY" | "ERROR" | "NONE" */
+	status: string;
+	proxy?: string | null;
+	captures: Record<string, string>;
+	error?: string | null;
+	ts_ms: number;
+}
+
 export interface RunnerStats {
 	total: number;
 	processed: number;
@@ -11,6 +22,8 @@ export interface RunnerStats {
 	cpm: number;
 	active_threads: number;
 	elapsed_secs: number;
+	/** Last ≤100 live results from the ring buffer. Empty when idle. */
+	recent_results: ResultEntry[];
 }
 
 export interface BlockResult {

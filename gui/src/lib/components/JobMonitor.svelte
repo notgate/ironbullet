@@ -511,10 +511,13 @@ Error handling
 					<tr class="border-b border-border text-muted-foreground text-left">
 						<th class="px-2 py-1 font-medium">Name</th>
 						<th class="px-2 py-1 font-medium">State</th>
-						<th class="px-2 py-1 font-medium w-32">Progress</th>
+						<th class="px-2 py-1 font-medium w-28">Progress</th>
 						<th class="px-2 py-1 font-medium text-right">CPM</th>
-						<th class="px-2 py-1 font-medium text-right">Hits</th>
-						<th class="px-2 py-1 font-medium text-right">Processed</th>
+						<th class="px-2 py-1 font-medium text-right text-green">Hits</th>
+						<th class="px-2 py-1 font-medium text-right text-red-400">Fails</th>
+						<th class="px-2 py-1 font-medium text-right text-orange-400">Bans</th>
+						<th class="px-2 py-1 font-medium text-right text-muted-foreground">Errs</th>
+						<th class="px-2 py-1 font-medium text-right">Done/Total</th>
 						<th class="px-2 py-1 font-medium text-right">Time</th>
 						<th class="px-2 py-1 font-medium text-center">Actions</th>
 					</tr>
@@ -547,10 +550,13 @@ Error handling
 									<span class="text-muted-foreground w-8 text-right">{Math.round(pct)}%</span>
 								</div>
 							</td>
-							<td class="px-2 py-1 text-right">{job.stats ? Math.round(job.stats.cpm) : 0}</td>
-							<td class="px-2 py-1 text-right text-green">{job.stats ? fmt(job.stats.hits) : 0}</td>
-							<td class="px-2 py-1 text-right text-muted-foreground">{job.stats ? `${fmt(job.stats.processed)}/${fmt(job.stats.total)}` : '0/0'}</td>
-							<td class="px-2 py-1 text-right text-muted-foreground">{job.stats ? formatDuration(job.stats.elapsed_secs) : '0:00'}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px]">{job.stats ? Math.round(job.stats.cpm) : 0}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] text-green font-semibold">{job.stats ? fmt(job.stats.hits) : 0}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.fails ?? 0) > 0 ? 'text-red-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.fails) : 0}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.bans ?? 0) > 0 ? 'text-orange-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.bans) : 0}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.errors ?? 0) > 0 ? 'text-yellow-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.errors) : 0}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">{job.stats ? `${fmt(job.stats.processed)}/${fmt(job.stats.total)}` : '0/0'}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">{job.stats ? formatDuration(job.stats.elapsed_secs) : '0:00'}</td>
 							<td class="px-2 py-1 text-center" onclick={(e) => e.stopPropagation()}>
 								<div class="flex items-center justify-center gap-0.5">
 									{#if job.state === 'Queued' || job.state === 'Waiting'}
@@ -578,6 +584,44 @@ Error handling
 								</div>
 							</td>
 						</tr>
+
+						<!-- Live result log — visible only for selected job when it has recent results -->
+						{#if isActive && job.stats?.recent_results?.length}
+							<tr class="border-b border-border/30 bg-background/60">
+								<td colspan="11" class="px-2 pt-1 pb-2">
+									<div class="text-[9px] text-muted-foreground mb-0.5 flex items-center gap-1">
+										<span class="w-1.5 h-1.5 rounded-full bg-green animate-pulse inline-block"></span>
+										Live results (last {job.stats.recent_results.length})
+									</div>
+									<div class="font-mono text-[10px] max-h-36 overflow-y-auto space-y-px pr-1"
+										style="scrollbar-width: thin;">
+										{#each [...job.stats.recent_results].reverse() as r}
+											{@const statusColor =
+												r.status === 'SUCCESS' ? 'text-green bg-green/10 border-green/30' :
+												r.status === 'FAIL'    ? 'text-red-400 bg-red-400/10 border-red-400/30' :
+												r.status === 'BAN'     ? 'text-orange-400 bg-orange-400/10 border-orange-400/30' :
+												r.status === 'RETRY'   ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' :
+												                         'text-muted-foreground bg-muted/10 border-border'}
+											<div class="flex items-center gap-1.5 py-0.5 hover:bg-accent/10 rounded px-1">
+												<span class="shrink-0 border rounded px-1 py-px text-[9px] font-semibold {statusColor}">{r.status}</span>
+												<span class="truncate text-foreground/80 flex-1">{r.data_line}</span>
+												{#if r.proxy}
+													<span class="shrink-0 text-muted-foreground/60 text-[9px] truncate max-w-[100px]" title={r.proxy}>via {r.proxy.replace(/https?:\/\//, '')}</span>
+												{/if}
+												{#if r.error}
+													<span class="shrink-0 text-red-400/70 text-[9px] truncate max-w-[140px]" title={r.error}>{r.error}</span>
+												{/if}
+												{#if r.status === 'SUCCESS' && Object.keys(r.captures ?? {}).length}
+													<span class="shrink-0 text-green/70 text-[9px]">
+														{Object.entries(r.captures).map(([k, v]) => `${k}=${v}`).join(' · ')}
+													</span>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								</td>
+							</tr>
+						{/if}
 					{/each}
 				</tbody>
 			</table>
