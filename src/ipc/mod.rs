@@ -61,6 +61,9 @@ impl IpcResponse {
 pub struct AppState {
     pub config: GuiConfig,
     pub pipeline: Pipeline,
+    /// Last file path the pipeline was saved to or loaded from.
+    /// When set, block mutations will auto-save to this path.
+    pub pipeline_path: Option<String>,
     pub sidecar: SidecarManager,
     pub runner: Option<Arc<RunnerOrchestrator>>,
     pub hits: Vec<HitResult>,
@@ -75,9 +78,15 @@ impl AppState {
         if !cfg.plugins_path.is_empty() {
             pm.scan_directory(&cfg.plugins_path);
         }
+        let pipeline_path = if !cfg.last_config_path.is_empty() {
+            Some(cfg.last_config_path.clone())
+        } else {
+            None
+        };
         Self {
             config: cfg,
             pipeline: Pipeline::default(),
+            pipeline_path,
             sidecar: SidecarManager::new(),
             runner: None,
             hits: Vec::new(),

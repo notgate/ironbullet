@@ -98,6 +98,14 @@
 		</div>
 		<div><label class={labelCls}>Data to send</label><textarea value={block.settings.data} placeholder="Raw data..." class="w-full skeu-input text-[11px] font-mono min-h-[60px] resize-y mt-0.5" oninput={(e) => updateSettings('data', (e.target as HTMLTextAreaElement).value)}></textarea></div>
 		<label class="flex items-center gap-2 text-[11px] text-foreground"><input type="checkbox" checked={block.settings.use_tls} onchange={() => updateSettings('use_tls', !block!.settings.use_tls)} class="skeu-checkbox" /> Use TLS</label>
+		{#if block.settings.use_tls}
+		<label class="flex items-center gap-2 text-[11px] text-muted-foreground ml-4">
+			<input type="checkbox" checked={block.settings.ssl_verify !== false}
+				onchange={() => updateSettings('ssl_verify', block.settings.ssl_verify === false ? true : false)}
+				class="skeu-checkbox" /> Verify TLS certificate
+			{#if block.settings.ssl_verify === false}<span class="text-[9px] text-orange">⚠ insecure</span>{/if}
+		</label>
+		{/if}
 		<div class="flex gap-2">
 			<div class="flex-1"><label class={labelCls}>Output var</label><VariableInput value={block.settings.output_var} class={inputCls} oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)} /></div>
 			<label class="flex items-center gap-1 text-xs text-foreground pt-4"><input type="checkbox" checked={block.settings.capture} onchange={() => updateSettings('capture', !block!.settings.capture)} class="skeu-checkbox" /> CAP</label>
@@ -230,6 +238,14 @@
 			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="<PASS>" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
 		</div>
 		<label class="flex items-center gap-2 text-[11px] text-foreground"><input type="checkbox" checked={block.settings.use_tls} onchange={() => updateSettings('use_tls', !block!.settings.use_tls)} class="skeu-checkbox" /> Use TLS</label>
+		{#if block.settings.use_tls}
+		<label class="flex items-center gap-2 text-[11px] text-muted-foreground ml-4">
+			<input type="checkbox" checked={block.settings.ssl_verify !== false}
+				onchange={() => updateSettings('ssl_verify', block.settings.ssl_verify === false ? true : false)}
+				class="skeu-checkbox" /> Verify TLS certificate
+			{#if block.settings.ssl_verify === false}<span class="text-[9px] text-orange">⚠ insecure</span>{/if}
+		</label>
+		{/if}
 		<div>
 			<label class={labelCls}>Action</label>
 			<SkeuSelect value={block.settings.command || 'LOGIN'}
@@ -277,6 +293,14 @@
 			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="<PASS>" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
 		</div>
 		<label class="flex items-center gap-2 text-[11px] text-foreground"><input type="checkbox" checked={block.settings.use_tls} onchange={() => updateSettings('use_tls', !block!.settings.use_tls)} class="skeu-checkbox" /> Use TLS</label>
+		{#if block.settings.use_tls}
+		<label class="flex items-center gap-2 text-[11px] text-muted-foreground ml-4">
+			<input type="checkbox" checked={block.settings.ssl_verify !== false}
+				onchange={() => updateSettings('ssl_verify', block.settings.ssl_verify === false ? true : false)}
+				class="skeu-checkbox" /> Verify TLS certificate
+			{#if block.settings.ssl_verify === false}<span class="text-[9px] text-orange">⚠ insecure</span>{/if}
+		</label>
+		{/if}
 		<div>
 			<label class={labelCls}>Action</label>
 			<SkeuSelect value={block.settings.action || 'VERIFY'}
@@ -334,6 +358,14 @@
 			<div class="flex-1"><label class={labelCls}>Password</label><VariableInput value={block.settings.password} placeholder="<PASS>" class={inputCls} oninput={(e) => updateSettings('password', (e.target as HTMLInputElement).value)} /></div>
 		</div>
 		<label class="flex items-center gap-2 text-[11px] text-foreground"><input type="checkbox" checked={block.settings.use_tls} onchange={() => updateSettings('use_tls', !block!.settings.use_tls)} class="skeu-checkbox" /> Use TLS</label>
+		{#if block.settings.use_tls}
+		<label class="flex items-center gap-2 text-[11px] text-muted-foreground ml-4">
+			<input type="checkbox" checked={block.settings.ssl_verify !== false}
+				onchange={() => updateSettings('ssl_verify', block.settings.ssl_verify === false ? true : false)}
+				class="skeu-checkbox" /> Verify TLS certificate
+			{#if block.settings.ssl_verify === false}<span class="text-[9px] text-orange">⚠ insecure</span>{/if}
+		</label>
+		{/if}
 		<div>
 			<label class={labelCls}>Action</label>
 			<SkeuSelect value={block.settings.command || 'STAT'}

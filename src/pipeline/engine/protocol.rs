@@ -16,8 +16,10 @@ impl ExecutionContext {
             .map_err(|e| crate::error::AppError::Pipeline(format!("TCP connect failed {}: {}", addr, e)))?;
 
         let response_body = if settings.use_tls {
-            let connector = native_tls::TlsConnector::new()
-                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS init error: {}", e)))?;
+            let connector = native_tls::TlsConnector::builder()
+                .danger_accept_invalid_certs(!settings.ssl_verify)
+                .build()
+                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
             let connector = tokio_native_tls::TlsConnector::from(connector);
             let mut tls_stream = connector.connect(&host, stream).await
                 .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake failed: {}", e)))?;
@@ -279,7 +281,9 @@ impl ExecutionContext {
         let mut last_ok = false;
 
         if settings.use_tls {
-            let connector = native_tls::TlsConnector::new()
+            let connector = native_tls::TlsConnector::builder()
+                .danger_accept_invalid_certs(!settings.ssl_verify)
+                .build()
                 .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
             let connector = tokio_native_tls::TlsConnector::from(connector);
             let tls = connector.connect(&host, stream).await
@@ -453,7 +457,9 @@ impl ExecutionContext {
         }
 
         if settings.use_tls {
-            let connector = native_tls::TlsConnector::new()
+            let connector = native_tls::TlsConnector::builder()
+                .danger_accept_invalid_certs(!settings.ssl_verify)
+                .build()
                 .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
             let connector = tokio_native_tls::TlsConnector::from(connector);
             let tls = connector.connect(&host, stream).await
@@ -658,7 +664,9 @@ impl ExecutionContext {
         }
 
         if settings.use_tls {
-            let connector = native_tls::TlsConnector::new()
+            let connector = native_tls::TlsConnector::builder()
+                .danger_accept_invalid_certs(!settings.ssl_verify)
+                .build()
                 .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
             let connector = tokio_native_tls::TlsConnector::from(connector);
             let tls = connector.connect(&host, stream).await

@@ -24,6 +24,8 @@ type SidecarRequest struct {
 	HTTP2FP         string     `json:"http2fp,omitempty"`
 	FollowRedirects *bool      `json:"follow_redirects,omitempty"`
 	MaxRedirects    int64      `json:"max_redirects,omitempty"`
+	// SslVerify: nil = default (verify), false = skip TLS verification
+	SslVerify       *bool      `json:"ssl_verify,omitempty"`
 }
 
 // SidecarResponse to Rust

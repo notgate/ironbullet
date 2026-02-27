@@ -29,6 +29,9 @@ pub struct SidecarRequest {
     pub follow_redirects: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_redirects: Option<i64>,
+    /// Skip TLS certificate verification when false (default = verify = true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssl_verify: Option<bool>,
 }
 
 /// Response from Go sidecar back to Rust

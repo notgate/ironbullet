@@ -8,6 +8,15 @@ use super::block_tree::{
     remove_block_recursive, set_block_disabled_recursive,
 };
 use super::{AppState, IpcResponse};
+use ironbullet::export::format::RfxConfig;
+
+/// If the pipeline has a known save path, silently persist the current state.
+pub(super) fn auto_save_if_known(state: &AppState) {
+    if let Some(ref path) = state.pipeline_path {
+        let config = RfxConfig::from_pipeline(&state.pipeline);
+        let _ = config.save_to_file(path); // ignore errors — UI will show dirty dot
+    }
+}
 
 pub(super) fn add_block(
     state: Arc<Mutex<AppState>>,
@@ -54,6 +63,7 @@ pub(super) fn add_block(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -84,6 +94,7 @@ pub(super) fn remove_block(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -117,6 +128,7 @@ pub(super) fn move_block(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -151,6 +163,7 @@ pub(super) fn add_block_nested(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -190,6 +203,7 @@ pub(super) fn move_block_to_nested(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -224,6 +238,7 @@ pub(super) fn update_block(
             if let (Some(tid), Some(obj)) = (tab_id, resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -258,6 +273,7 @@ pub(super) fn remove_blocks(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -309,6 +325,7 @@ pub(super) fn paste_blocks(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -344,6 +361,7 @@ pub(super) fn toggle_blocks(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -389,6 +407,7 @@ pub(super) fn move_blocks_to(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
@@ -443,6 +462,7 @@ pub(super) fn group_blocks(
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
             }
+            auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });

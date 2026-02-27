@@ -323,7 +323,7 @@
 				<label class={labelCls}>JSON path <span class="text-muted-foreground/60">(dot notation)</span></label>
 				<VariableInput value={block.settings.json_path || ''} placeholder="data.token" class={`${inputCls} font-mono`}
 					oninput={(e) => updateSettings('json_path', (e.target as HTMLInputElement).value)} />
-				<p class="text-[9px] text-muted-foreground mt-0.5">e.g. <code class="text-foreground/70">user.balance</code> → {"user": {"balance": 123}}</p>
+				<p class="text-[9px] text-muted-foreground mt-0.5">e.g. <code class="text-foreground/70">user.balance</code> → &lbrace;"user": &lbrace;"balance": 123&rbrace;&rbrace;</p>
 			</div>
 		{:else if mode === 'Css'}
 			<div>

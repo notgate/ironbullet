@@ -46,6 +46,7 @@ impl ExecutionContext {
             http2fp: self.override_http2fp.clone(),
             follow_redirects: Some(settings.follow_redirects),
             max_redirects: Some(settings.max_redirects as i64),
+            ssl_verify: if settings.ssl_verify { None } else { Some(false) },
         };
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();

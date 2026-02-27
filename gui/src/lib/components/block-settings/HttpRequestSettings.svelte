@@ -263,6 +263,19 @@
 		</div>
 	{/if}
 
+	<!-- TLS / SSL -->
+	<div class="my-1.5 groove-h h-px"></div>
+	<label class="flex items-center gap-2 text-[11px] text-foreground">
+		<input type="checkbox" checked={block.settings.ssl_verify !== false}
+			onchange={() => updateSettings('ssl_verify', block.settings.ssl_verify === false ? true : false)}
+			class="skeu-checkbox" />
+		Verify TLS certificate
+		{#if block.settings.ssl_verify === false}
+			<span class="text-[9px] text-orange bg-orange/10 px-1 rounded">⚠ insecure</span>
+		{/if}
+	</label>
+	<p class="text-[9px] text-muted-foreground -mt-0.5">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
+
 	<!-- Copy as curl/PowerShell -->
 	<div class="my-1.5 groove-h h-px"></div>
 	<div class="flex gap-1.5">

@@ -45,6 +45,8 @@ impl ExecutionContext {
             http2fp: self.override_http2fp.clone(),
             follow_redirects: Some(true),
             max_redirects: Some(5),
+            ssl_verify: None,
+
         };
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
@@ -176,6 +178,8 @@ impl ExecutionContext {
             browser: None, ja3: self.override_ja3.clone(), http2fp: self.override_http2fp.clone(),
             follow_redirects: Some(true),
             max_redirects: Some(5),
+            ssl_verify: None,
+
         };
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
@@ -226,6 +230,8 @@ impl ExecutionContext {
             browser: None, ja3: self.override_ja3.clone(), http2fp: self.override_http2fp.clone(),
             follow_redirects: Some(true),
             max_redirects: Some(5),
+            ssl_verify: None,
+
         };
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
@@ -384,6 +390,8 @@ impl ExecutionContext {
             timeout: Some(30000),
             proxy: None, browser: None, ja3: None, http2fp: None,
             follow_redirects: Some(true), max_redirects: Some(5),
+            ssl_verify: None,
+
         };
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
@@ -423,6 +431,8 @@ impl ExecutionContext {
                 timeout: Some(15000),
                 proxy: None, browser: None, ja3: None, http2fp: None,
                 follow_redirects: Some(true), max_redirects: Some(5),
+                ssl_verify: None,
+
             };
 
             let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
@@ -474,6 +484,8 @@ impl ExecutionContext {
             timeout: Some(settings.max_timeout_ms as i64),
             proxy: None, browser: None, ja3: None, http2fp: None,
             follow_redirects: Some(true), max_redirects: Some(5),
+            ssl_verify: None,
+
         };
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
@@ -663,6 +675,8 @@ impl ExecutionContext {
             http2fp: self.override_http2fp.clone(),
             follow_redirects: Some(true),
             max_redirects: Some(5),
+            ssl_verify: None,
+
         };
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();

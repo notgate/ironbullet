@@ -43,6 +43,8 @@ impl SessionPool {
             http2fp: None,
             follow_redirects: Some(true),
             max_redirects: Some(8),
+            ssl_verify: None,
+
         };
 
         let (resp_tx, resp_rx) = oneshot::channel();
@@ -82,6 +84,8 @@ impl SessionPool {
             http2fp: None,
             follow_redirects: None,
             max_redirects: None,
+            ssl_verify: None,
+
         };
 
         let (resp_tx, _resp_rx) = oneshot::channel();
