@@ -271,6 +271,10 @@ pub fn handle_ipc_cmd(
             handlers_runner::probe_url(data, eval_js);
             None
         }
+        "site_inspect" => {
+            handlers_runner::site_inspect(state, data, eval_js);
+            None
+        }
 
         "create_job" => {
             handlers_job::create_job(state, data, eval_js);

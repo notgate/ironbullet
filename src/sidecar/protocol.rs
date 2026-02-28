@@ -36,16 +36,55 @@ pub struct SidecarRequest {
     /// e.g. "4865-4866-4867-49195-49199-49196-49200"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_ciphers: Option<String>,
+    /// When true the sidecar captures and returns the actual headers sent on the wire.
+    /// Used by the Site Inspector panel.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub return_request_headers: Option<bool>,
+}
+
+impl SidecarRequest {
+    /// Convenience constructor — fill only the fields you care about; everything else is None / default.
+    pub fn http(id: String, action: String, session: String) -> Self {
+        Self { id, action, session, ..Self::default() }
+    }
+}
+
+impl Default for SidecarRequest {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            action: String::new(),
+            session: String::new(),
+            method: None,
+            url: None,
+            headers: None,
+            body: None,
+            timeout: None,
+            proxy: None,
+            browser: None,
+            ja3: None,
+            http2fp: None,
+            follow_redirects: None,
+            max_redirects: None,
+            ssl_verify: None,
+            custom_ciphers: None,
+            return_request_headers: None,
+        }
+    }
 }
 
 /// Response from Go sidecar back to Rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SidecarResponse {
+    #[serde(default)]
     pub id: String,
     #[serde(default)]
     pub status: i32,
     #[serde(default)]
     pub headers: Option<HashMap<String, String>>,
+    /// Headers actually sent by azuretls (only populated when return_request_headers was true)
+    #[serde(default)]
+    pub request_headers: Option<HashMap<String, String>>,
     #[serde(default)]
     pub body: String,
     #[serde(default)]

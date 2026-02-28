@@ -29,19 +29,25 @@ type SidecarRequest struct {
 	// CustomCiphers: optional dash-separated cipher suite IDs to override the browser profile's default.
 	// e.g. "4865-4866-4867-49195-49199-49196-49200-52393-52392"
 	// Cipher IDs are IANA decimal values. Applied via azuretls JA3 override.
-	CustomCiphers   string     `json:"custom_ciphers,omitempty"`
+	CustomCiphers          string     `json:"custom_ciphers,omitempty"`
+	// ReturnRequestHeaders: when true, the response will include the actual request headers
+	// sent by azuretls. Used by the Site Inspector to display the full request.
+	ReturnRequestHeaders   bool       `json:"return_request_headers,omitempty"`
 }
 
 // SidecarResponse to Rust
 type SidecarResponse struct {
-	ID       string            `json:"id"`
-	Status   int               `json:"status"`
-	Headers  map[string]string `json:"headers,omitempty"`
-	Body     string            `json:"body"`
-	Cookies  map[string]string `json:"cookies,omitempty"`
-	FinalURL string            `json:"final_url"`
-	Error    string            `json:"error,omitempty"`
-	TimingMs int64             `json:"timing_ms"`
+	ID             string            `json:"id"`
+	Status         int               `json:"status"`
+	Headers        map[string]string `json:"headers,omitempty"`
+	// RequestHeaders captures the actual HTTP headers sent by azuretls on the wire.
+	// Only populated when ReturnRequestHeaders is true in the request.
+	RequestHeaders map[string]string `json:"request_headers,omitempty"`
+	Body           string            `json:"body"`
+	Cookies        map[string]string `json:"cookies,omitempty"`
+	FinalURL       string            `json:"final_url"`
+	Error          string            `json:"error,omitempty"`
+	TimingMs       int64             `json:"timing_ms"`
 }
 
 var (

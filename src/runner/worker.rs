@@ -47,6 +47,7 @@ pub(crate) async fn run_worker(
         ssl_verify: None,
                     custom_ciphers: None,
 
+        ..Default::default()
     };
     let (resp_tx, _) = oneshot::channel();
     let _ = sidecar_tx.send((new_session_req, resp_tx)).await;
@@ -229,6 +230,7 @@ pub(crate) async fn run_worker(
         ssl_verify: None,
                     custom_ciphers: None,
 
+        ..Default::default()
     };
     let (resp_tx, _) = oneshot::channel();
     let _ = sidecar_tx.send((close_req, resp_tx)).await;

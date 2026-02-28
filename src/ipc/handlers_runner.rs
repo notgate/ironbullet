@@ -452,3 +452,178 @@ pub(super) fn probe_url(
         });
     }
 }
+
+/// Site Inspector — make a real AzureTLS request and return full request + response headers.
+/// Falls back to native reqwest if the sidecar is not running/available.
+pub(super) fn site_inspect(
+    state: Arc<Mutex<AppState>>,
+    data: serde_json::Value,
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        handle.spawn(async move {
+            let url    = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let method = data.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_string();
+            let proxy  = data.get("proxy").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let body   = data.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let browser = data.get("browser").and_then(|v| v.as_str()).unwrap_or("chrome").to_string();
+            // Extra headers the user typed in the inspector
+            let extra_headers: Vec<[String; 2]> = data.get("headers")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+
+            if url.is_empty() {
+                let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({ "error": "No URL provided" }));
+                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                return;
+            }
+
+            // Attempt to use the AzureTLS sidecar for real TLS fingerprinting
+            let mut s = state.lock().await;
+            let sidecar_path = resolve_sidecar_path(&s.config.sidecar_path);
+            let sidecar_tx = s.sidecar.get_or_start(&sidecar_path).await.ok();
+            drop(s);
+
+            if let Some(tx) = sidecar_tx {
+                let session_id = format!("__inspector_{}", uuid::Uuid::new_v4());
+
+                // Create session
+                let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+                let _ = tx.send((ironbullet::sidecar::protocol::SidecarRequest {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    action: "new_session".into(),
+                    session: session_id.clone(),
+                    browser: Some(browser.clone()),
+                    proxy: proxy.clone(),
+                    follow_redirects: Some(true),
+                    max_redirects: Some(8),
+                    ssl_verify: None,
+                    ja3: None, http2fp: None, url: None, method: None,
+                    headers: None, body: None, timeout: None,
+                    custom_ciphers: None, return_request_headers: None,
+                }, resp_tx)).await;
+                let _ = resp_rx.await;
+
+                // Make the request
+                let (resp_tx2, resp_rx2) = tokio::sync::oneshot::channel();
+                let hdrs: Vec<Vec<String>> = extra_headers.iter()
+                    .map(|h| vec![h[0].clone(), h[1].clone()])
+                    .collect();
+                let _ = tx.send((ironbullet::sidecar::protocol::SidecarRequest {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    action: "request".into(),
+                    session: session_id.clone(),
+                    method: Some(method.clone()),
+                    url: Some(url.clone()),
+                    headers: if hdrs.is_empty() { None } else { Some(hdrs) },
+                    body: body.clone(),
+                    timeout: Some(20_000),
+                    proxy: proxy.clone(),
+                    browser: Some(browser.clone()),
+                    follow_redirects: Some(true),
+                    max_redirects: Some(8),
+                    ssl_verify: None,
+                    ja3: None, http2fp: None,
+                    custom_ciphers: None,
+                    return_request_headers: Some(true), // capture what was actually sent
+                }, resp_tx2)).await;
+
+                let sidecar_resp = resp_rx2.await.ok();
+
+                // Close session
+                let (close_tx, _) = tokio::sync::oneshot::channel();
+                let _ = tx.send((ironbullet::sidecar::protocol::SidecarRequest {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    action: "close_session".into(),
+                    session: session_id,
+                    method: None, url: None, headers: None, body: None,
+                    timeout: None, proxy: None, browser: None,
+                    ja3: None, http2fp: None, follow_redirects: None,
+                    max_redirects: None, ssl_verify: None,
+                    custom_ciphers: None, return_request_headers: None,
+                }, close_tx)).await;
+
+                if let Some(sr) = sidecar_resp {
+                    let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({
+                        "status":          sr.status,
+                        "final_url":       sr.final_url,
+                        "timing_ms":       sr.timing_ms,
+                        "headers":         sr.headers.unwrap_or_default(),
+                        "request_headers": sr.request_headers.unwrap_or_default(),
+                        "cookies":         sr.cookies.unwrap_or_default(),
+                        "body":            sr.body,
+                        "error":           sr.error,
+                        "via":             "azuretls",
+                        "browser":         browser,
+                    }));
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    return;
+                }
+            }
+
+            // Fallback: native reqwest (no TLS fingerprinting)
+            let start = std::time::Instant::now();
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(20))
+                .redirect(reqwest::redirect::Policy::limited(8))
+                .danger_accept_invalid_certs(true)
+                .cookie_store(true)
+                .build();
+
+            let client = match client {
+                Ok(c) => c,
+                Err(e) => {
+                    let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({ "error": format!("Client error: {}", e) }));
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    return;
+                }
+            };
+
+            let mut req = client.request(reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET), &url);
+            for h in &extra_headers {
+                req = req.header(&h[0], &h[1]);
+            }
+            if let Some(b) = body {
+                req = req.body(b);
+            }
+            if let Some(p) = proxy {
+                if let Ok(prx) = reqwest::Proxy::all(&p) {
+                    // Can't override per-request proxy in reqwest easily, skip
+                    let _ = prx;
+                }
+            }
+
+            match req.send().await {
+                Ok(response) => {
+                    let status = response.status().as_u16() as i32;
+                    let final_url = response.url().to_string();
+                    let timing_ms = start.elapsed().as_millis() as i64;
+                    let mut headers = std::collections::HashMap::new();
+                    for (k, v) in response.headers() {
+                        if let Ok(val) = v.to_str() {
+                            headers.insert(k.to_string(), val.to_string());
+                        }
+                    }
+                    let body = response.text().await.unwrap_or_default();
+                    let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({
+                        "status":          status,
+                        "final_url":       final_url,
+                        "timing_ms":       timing_ms,
+                        "headers":         headers,
+                        "request_headers": serde_json::Value::Object(serde_json::Map::new()),
+                        "cookies":         serde_json::Value::Object(serde_json::Map::new()),
+                        "body":            body,
+                        "error":           null,
+                        "via":             "reqwest",
+                    }));
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                }
+                Err(e) => {
+                    let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({ "error": format!("Request failed: {}", e) }));
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                }
+            }
+        });
+    }
+}

@@ -304,6 +304,7 @@ impl ExecutionContext {
                     ssl_verify: None,
                     custom_ciphers: None,
 
+                    ..Default::default()
                 };
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
                 let _ = sidecar_tx.send((req, resp_tx)).await;
