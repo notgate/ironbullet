@@ -127,6 +127,7 @@ pub(super) fn create_job(
                                         source_type: ProxySourceType::File,
                                         value: file.to_string(),
                                         refresh_interval_secs: 0,
+                                        default_proxy_type: None,
                                     }],
                                     ..ProxySettings::default()
                                 },

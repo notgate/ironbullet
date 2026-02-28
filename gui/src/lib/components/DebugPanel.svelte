@@ -8,6 +8,9 @@
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import HelpCircle from '@lucide/svelte/icons/help-circle';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Copy from '@lucide/svelte/icons/copy';
 	import HelpModal from './HelpModal.svelte';
 
 	let testDataLine = $state('user@example.com:pass123');
@@ -164,11 +167,24 @@ Once all validations pass, you can create a job with confidence that the pipelin
 	let results = $derived(app.debugResults);
 	let hasResults = $derived(results.length > 0);
 
-	function openResponseViewer(index: number) {
+	/** Which block rows have their header panel expanded */
+	let expandedRows = $state<Set<number>>(new Set());
+
+	function toggleExpand(i: number) {
+		const next = new Set(expandedRows);
+		if (next.has(i)) next.delete(i); else next.add(i);
+		expandedRows = next;
+	}
+
+	/** Open the response viewer only when the user clicked (not selected text) */
+	function handleRowClick(e: MouseEvent, index: number) {
+		if (window.getSelection()?.toString()) return; // text was selected — don't open viewer
 		const r = results[index];
-		if (r?.response) {
-			app.showResponseViewer = true;
-		}
+		if (r?.response) app.showResponseViewer = true;
+	}
+
+	async function copyText(text: string) {
+		try { await navigator.clipboard.writeText(text); } catch {}
 	}
 
 	function truncate(s: string, max: number): string {
@@ -228,29 +244,35 @@ Once all validations pass, you can create a job with confidence that the pipelin
 				</thead>
 				<tbody>
 					{#each results as r, i}
+						<!-- Main result row -->
+						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 						<tr
-							class="border-b border-border/50 hover:bg-secondary/30 cursor-pointer transition-colors"
+							class="border-b border-border/50 hover:bg-secondary/30 cursor-pointer transition-colors group"
 							class:opacity-60={!r.success}
-							onclick={() => openResponseViewer(i)}
+							onclick={(e) => handleRowClick(e, i)}
 						>
-							<td class="px-2 py-0.5 text-muted-foreground font-mono">{i + 1}</td>
-							<td class="px-2 py-0.5">
+							<td class="px-2 py-0.5 text-muted-foreground font-mono select-none">{i + 1}</td>
+							<td class="px-2 py-0.5 select-none">
 								<div class="flex items-center gap-1.5">
-									<span
-										class="w-2 h-2 rounded-full shrink-0"
-										style="background-color: {getBlockColor(r.block_type)}"
-									></span>
+									<span class="w-2 h-2 rounded-full shrink-0" style="background-color: {getBlockColor(r.block_type)}"></span>
 									<span class="text-foreground truncate">{r.block_label}</span>
 								</div>
 							</td>
-							<td class="px-2 py-0.5 font-mono text-muted-foreground truncate max-w-0">
-								{truncate(r.log_message || '', 80)}
+							<!-- Result: select-text so log messages can be highlighted and copied -->
+							<td class="px-2 py-0.5 font-mono text-muted-foreground max-w-0 select-text">
+								<div class="flex items-center gap-1 min-w-0">
+									<span class="truncate flex-1 min-w-0" title={r.log_message || ''}>{truncate(r.log_message || '', 80)}</span>
+									{#if r.log_message}
+										<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+										<span class="shrink-0 p-0.5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground cursor-pointer"
+											onclick={(e) => { e.stopPropagation(); copyText(r.log_message || ''); }}
+											title="Copy result"><Copy size={9} /></span>
+									{/if}
+								</div>
 							</td>
-							<td class="px-2 py-0.5 text-right font-mono text-muted-foreground tabular-nums">
-								{r.timing_ms}ms
-							</td>
-							<td class="px-2 py-0.5 text-center">
-								<div class="flex items-center justify-center gap-1">
+							<td class="px-2 py-0.5 text-right font-mono text-muted-foreground tabular-nums select-none">{r.timing_ms}ms</td>
+							<td class="px-2 py-0.5 text-center select-none">
+								<div class="flex items-center justify-center gap-0.5">
 									{#if r.success}
 										<CircleCheck size={12} class="text-green" />
 									{:else}
@@ -258,10 +280,41 @@ Once all validations pass, you can create a job with confidence that the pipelin
 									{/if}
 									{#if r.response}
 										<ExternalLink size={10} class="text-primary/50" />
+										<!-- expand/collapse header panel -->
+										<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+										<span class="cursor-pointer text-muted-foreground hover:text-foreground"
+											onclick={(e) => { e.stopPropagation(); toggleExpand(i); }}
+											title={expandedRows.has(i) ? 'Hide headers' : 'Show response headers'}>
+											{#if expandedRows.has(i)}<ChevronDown size={10} />{:else}<ChevronRight size={10} />{/if}
+										</span>
 									{/if}
 								</div>
 							</td>
 						</tr>
+
+						<!-- Inline header capture panel -->
+						{#if r.response && expandedRows.has(i)}
+							<tr class="border-b border-border bg-background">
+								<td colspan="5" class="px-3 py-2">
+									<div class="text-[9px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">
+										Response Headers &mdash; {r.block_label} <span class="{r.response.status_code < 400 ? 'text-green' : 'text-red'}">[{r.response.status_code}]</span>
+									</div>
+									<div class="space-y-0.5">
+										{#each Object.entries(r.response.headers) as [key, value]}
+											<div class="flex items-baseline gap-1 font-mono text-[10px] group/hdr select-text">
+												<span class="text-primary shrink-0 w-[160px] truncate">{key}:</span>
+												<span class="text-foreground break-all flex-1 min-w-0">{value}</span>
+												<button class="shrink-0 p-0.5 opacity-0 group-hover/hdr:opacity-100 text-muted-foreground hover:text-foreground"
+													onclick={() => copyText(`${key}: ${value}`)} title="Copy header"><Copy size={9} /></button>
+											</div>
+										{/each}
+										{#if Object.keys(r.response.headers).length === 0}
+											<div class="text-[10px] text-muted-foreground/50">No response headers captured</div>
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/if}
 					{/each}
 				</tbody>
 			</table>

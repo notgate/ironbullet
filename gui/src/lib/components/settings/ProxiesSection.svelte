@@ -4,7 +4,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import SkeuSelect from '$lib/components/SkeuSelect.svelte';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { ProxyGroup, ProxySource } from '$lib/types';
+	import type { ProxyGroup, ProxySource, ProxySourceType_t } from '$lib/types';
 
 	let { searchQuery, shouldShowSetting }: {
 		searchQuery: string;
@@ -19,6 +19,14 @@
 		{ value: 'Rotate', label: 'Rotate' },
 		{ value: 'Sticky', label: 'Sticky' },
 		{ value: 'CpmLimited', label: 'CPM Limited' },
+	];
+
+	const PROXY_TYPE_OPTIONS = [
+		{ value: '', label: 'Auto' },
+		{ value: 'Http', label: 'HTTP' },
+		{ value: 'Https', label: 'HTTPS' },
+		{ value: 'Socks4', label: 'SOCKS4' },
+		{ value: 'Socks5', label: 'SOCKS5' },
 	];
 
 	function addProxyGroup() {
@@ -39,7 +47,16 @@
 
 	function addGroupSource(gi: number) {
 		const groups = [...app.pipeline.proxy_settings.proxy_groups];
-		groups[gi] = { ...groups[gi], sources: [...groups[gi].sources, { source_type: 'File', value: '', refresh_interval_secs: 0 }] };
+		const newSrc: ProxySource = { source_type: 'File', value: '', refresh_interval_secs: 0 };
+		groups[gi] = { ...groups[gi], sources: [...groups[gi].sources, newSrc] };
+		app.pipeline.proxy_settings.proxy_groups = groups;
+	}
+
+	function updateGroupSourceType(gi: number, si: number, type_val: string) {
+		const groups = [...app.pipeline.proxy_settings.proxy_groups];
+		const srcs = [...groups[gi].sources];
+		srcs[si] = { ...srcs[si], default_proxy_type: type_val as ProxySourceType_t || undefined };
+		groups[gi] = { ...groups[gi], sources: srcs };
 		app.pipeline.proxy_settings.proxy_groups = groups;
 	}
 
@@ -143,13 +160,26 @@
 					</div>
 				</div>
 				<!-- Sources -->
-				<div class="space-y-1 ml-1">
+				<div class="space-y-1.5 ml-1">
 					{#each group.sources as src, si}
-						<div class="flex gap-1 items-center">
-							<input type="text" bind:value={src.value} placeholder="path or URL" class="flex-1 skeu-input text-[9px] font-mono" />
-							<button class="p-0.5 text-muted-foreground hover:text-red shrink-0" onclick={() => removeGroupSource(gi, si)}>
-								<Trash2 size={9} />
-							</button>
+						<div class="space-y-0.5">
+							<div class="flex gap-1 items-center">
+								<!-- Proxy type override -->
+								<SkeuSelect
+									value={src.default_proxy_type ?? ''}
+									onValueChange={(v) => updateGroupSourceType(gi, si, v)}
+									options={PROXY_TYPE_OPTIONS}
+									class="text-[9px] w-[70px] shrink-0"
+									title="Protocol type for plain ip:port lines in this source"
+								/>
+								<input type="text" bind:value={src.value} placeholder="path, URL, or inline proxies" class="flex-1 skeu-input text-[9px] font-mono" />
+								<button class="p-0.5 text-muted-foreground hover:text-red shrink-0" onclick={() => removeGroupSource(gi, si)}>
+									<Trash2 size={9} />
+								</button>
+							</div>
+							<p class="text-[8px] text-muted-foreground/50 ml-1 leading-tight">
+								Formats: <code class="font-mono">ip:port</code> · <code class="font-mono">ip:port:user:pass</code> · <code class="font-mono">socks5://ip:port</code> · <code class="font-mono">socks5://user:pass@ip:port</code>
+							</p>
 						</div>
 					{/each}
 					<button class="text-[9px] text-primary hover:underline" onclick={() => addGroupSource(gi)}>+ Add source</button>
