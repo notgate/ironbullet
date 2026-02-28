@@ -198,6 +198,7 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
             SidecarResponse {
                 id, status: 0, body: String::new(), final_url: url,
                 headers: None, cookies: None, error: Some(detail), timing_ms,
+                ..Default::default()
             }
         }
     }
@@ -211,13 +212,14 @@ fn ok_response(
     cookies: Option<HashMap<String, String>>,
     timing_ms: i64,
 ) -> SidecarResponse {
-    SidecarResponse { id, status, final_url, body, headers, cookies, error: None, timing_ms }
+    SidecarResponse { id, status, final_url, body, headers, cookies, error: None, timing_ms, ..Default::default() }
 }
 
 fn error_response(id: String, status: i32, final_url: String, error: String) -> SidecarResponse {
     SidecarResponse {
         id, status, final_url, body: String::new(),
         headers: None, cookies: None, error: Some(error), timing_ms: 0,
+        ..Default::default()
     }
 }
 

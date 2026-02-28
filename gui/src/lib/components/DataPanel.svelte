@@ -68,7 +68,7 @@
 	function addProxySource(type: 'File' | 'Url' | 'Inline') {
 		app.pipeline.proxy_settings.proxy_sources = [
 			...app.pipeline.proxy_settings.proxy_sources,
-			{ source_type: type, value: '', refresh_interval_secs: 0 },
+			{ source_type: type, value: '', refresh_interval_secs: 0, default_proxy_type: undefined },
 		];
 		// If mode is None, auto-switch to Rotate so the source is actually used.
 		if (app.pipeline.proxy_settings.proxy_mode === 'None') {
@@ -105,7 +105,7 @@
 
 	function addGroupSource(groupIdx: number, type: 'File' | 'Url' | 'Inline') {
 		const groups = [...app.pipeline.proxy_settings.proxy_groups];
-		groups[groupIdx] = { ...groups[groupIdx], sources: [...groups[groupIdx].sources, { source_type: type, value: '', refresh_interval_secs: 0 }] };
+		groups[groupIdx] = { ...groups[groupIdx], sources: [...groups[groupIdx].sources, { source_type: type, value: '', refresh_interval_secs: 0, default_proxy_type: undefined }] };
 		app.pipeline.proxy_settings.proxy_groups = groups;
 	}
 
@@ -250,7 +250,24 @@
 								{:else}
 									<ListIcon size={10} class="text-muted-foreground shrink-0" />
 								{/if}
-								<span class="text-[9px] text-muted-foreground/70 w-6 shrink-0">{source.source_type === 'Url' ? 'URL' : source.source_type}</span>
+								<!-- Proxy type per source — overrides auto-detection for plain ip:port lines -->
+								<SkeuSelect
+									value={source.default_proxy_type ?? ''}
+									onValueChange={(v) => {
+										const srcs = [...app.pipeline.proxy_settings.proxy_sources];
+										srcs[i] = { ...srcs[i], default_proxy_type: v || undefined };
+										app.pipeline.proxy_settings.proxy_sources = srcs;
+									}}
+									options={[
+										{ value: '', label: 'Auto' },
+										{ value: 'Http', label: 'HTTP' },
+										{ value: 'Https', label: 'HTTPS' },
+										{ value: 'Socks4', label: 'SOCKS4' },
+										{ value: 'Socks5', label: 'SOCKS5' },
+									]}
+									class="text-[9px] w-[72px] shrink-0"
+									title="Protocol type for plain ip:port lines"
+								/>
 								<input type="text"
 									bind:value={source.value}
 									placeholder={source.source_type === 'Url' ? 'https://domain.com/proxylist.txt' : source.source_type === 'File' ? '/path/to/proxies.txt' : 'ip:port per line...'}
@@ -263,6 +280,9 @@
 									<Trash2 size={10} />
 								</button>
 							</div>
+							<p class="text-[8px] text-muted-foreground/40 pl-1 leading-tight">
+								<span class="font-mono">ip:port</span> · <span class="font-mono">ip:port:user:pass</span> · <span class="font-mono">socks5://ip:port</span> · <span class="font-mono">socks5://user:pass@ip:port</span>
+							</p>
 							{#if source.source_type === 'Url'}
 								<div class="flex items-center gap-1.5 pl-4">
 									<RefreshCw size={9} class="text-muted-foreground/60" />
@@ -306,7 +326,7 @@
 							if (already) { console.log('[DataPanel] proxy source already added:', app.proxyPath); return; }
 							app.pipeline.proxy_settings.proxy_sources = [
 								...app.pipeline.proxy_settings.proxy_sources,
-								{ source_type: 'File', value: app.proxyPath, refresh_interval_secs: 0 },
+								{ source_type: 'File', value: app.proxyPath, refresh_interval_secs: 0, default_proxy_type: undefined },
 							];
 							// Auto-switch mode from None → Rotate so the pool is actually used.
 							// Proxies added while mode=None are silently ignored by build_proxy_pool().

@@ -51,6 +51,7 @@ impl ExecutionContext {
             max_redirects: Some(settings.max_redirects as i64),
             ssl_verify: if settings.ssl_verify { None } else { Some(false) },
             custom_ciphers: if settings.cipher_suites.is_empty() { None } else { Some(settings.cipher_suites.clone()) },
+            ..Default::default()
         };
 
         // ── Dispatch to the chosen TLS backend ────────────────────────────────

@@ -266,14 +266,26 @@ func handleHTTPRequest(req SidecarRequest) {
 		finalURL = resp.Url
 	}
 
+	// Capture the actual request headers sent by azuretls when requested.
+	// azuretls.Request.HttpRequest is the underlying *http.Request which contains
+	// all headers merged from the browser profile and any custom headers.
+	var requestHeaders map[string]string
+	if req.ReturnRequestHeaders && resp.Request != nil && resp.Request.HttpRequest != nil {
+		requestHeaders = make(map[string]string, len(resp.Request.HttpRequest.Header))
+		for key, values := range resp.Request.HttpRequest.Header {
+			requestHeaders[key] = strings.Join(values, "; ")
+		}
+	}
+
 	sendResponse(SidecarResponse{
-		ID:       req.ID,
-		Status:   resp.StatusCode,
-		Headers:  headers,
-		Body:     string(resp.Body),
-		Cookies:  cookies,
-		FinalURL: finalURL,
-		TimingMs: elapsed,
+		ID:             req.ID,
+		Status:         resp.StatusCode,
+		Headers:        headers,
+		RequestHeaders: requestHeaders,
+		Body:           string(resp.Body),
+		Cookies:        cookies,
+		FinalURL:       finalURL,
+		TimingMs:       elapsed,
 	})
 }
 

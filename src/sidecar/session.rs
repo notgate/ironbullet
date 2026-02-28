@@ -46,6 +46,7 @@ impl SessionPool {
             ssl_verify: None,
                     custom_ciphers: None,
 
+            ..Default::default()
         };
 
         let (resp_tx, resp_rx) = oneshot::channel();
@@ -88,6 +89,7 @@ impl SessionPool {
             ssl_verify: None,
                     custom_ciphers: None,
 
+            ..Default::default()
         };
 
         let (resp_tx, _resp_rx) = oneshot::channel();

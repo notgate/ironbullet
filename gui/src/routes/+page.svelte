@@ -26,6 +26,7 @@
 	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
 	import ChangelogDialog from '$lib/components/ChangelogDialog.svelte';
 	import BlockDocsPanel from '$lib/components/BlockDocsPanel.svelte';
+	import SiteInspector from '$lib/components/SiteInspector.svelte';
 	import PluginBuilder from '$lib/components/PluginBuilder.svelte';
 	import Onboarding from '$lib/components/Onboarding.svelte';
 	import SecurityAlertDialog from '$lib/components/SecurityAlertDialog.svelte';
@@ -179,6 +180,7 @@
 		{:else if nativePanelId === 'network'}<div class="h-full overflow-y-auto"><NetworkViewer /></div>
 		{:else if nativePanelId === 'variables'}<div class="h-full overflow-y-auto"><VariableInspector /></div>
 		{:else if nativePanelId === 'response-viewer'}<ResponseViewer nativeMode={true} />
+		{:else if nativePanelId === 'inspector'}<SiteInspector />
 		{/if}
 	</div>
 
@@ -234,6 +236,7 @@
 									{:else if id === 'jobs'}<div class="overflow-y-auto h-full"><JobMonitor /></div>
 									{:else if id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
 									{:else if id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
+									{:else if id === 'inspector'}<div class="h-full"><SiteInspector /></div>
 									{/if}
 								{/snippet}
 							</DockZoneTabs>
@@ -288,6 +291,7 @@
 										{:else if id === 'jobs'}<div class="overflow-y-auto h-full"><JobMonitor /></div>
 										{:else if id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
 										{:else if id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
+									{:else if id === 'inspector'}<div class="h-full"><SiteInspector /></div>
 										{/if}
 									{/snippet}
 								</DockZoneTabs>
@@ -319,6 +323,7 @@
 								{:else if id === 'jobs'}<div class="overflow-y-auto h-full"><JobMonitor /></div>
 								{:else if id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
 								{:else if id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
+									{:else if id === 'inspector'}<div class="h-full"><SiteInspector /></div>
 								{/if}
 							{/snippet}
 						</DockZoneTabs>

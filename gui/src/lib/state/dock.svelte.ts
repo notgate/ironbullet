@@ -4,7 +4,7 @@
  * Layout is persisted to localStorage.
  */
 
-export type PanelId = 'debugger' | 'code' | 'data' | 'jobs' | 'network' | 'variables';
+export type PanelId = 'debugger' | 'code' | 'data' | 'jobs' | 'network' | 'variables' | 'inspector';
 /** Dock zones:
  * - bottom / right / left: docked tab areas in the main window
  * - float:   CSS overlay (legacy, kept for non-Windows)
@@ -28,6 +28,7 @@ export interface PanelConfig {
 }
 
 export const PANEL_LABELS: Record<PanelId, string> = {
+	inspector: 'Site Inspector',
 	debugger: 'Debugger',
 	code: 'Code View',
 	data: 'Data / Proxy',
@@ -44,7 +45,8 @@ const DEFAULT_PANELS: PanelConfig[] = [
 	{ id: 'data',     zone: 'bottom', order: 2 },
 	{ id: 'jobs',     zone: 'bottom', order: 3 },
 	{ id: 'network',  zone: 'bottom', order: 4 },
-	{ id: 'variables',zone: 'bottom', order: 5 },
+	{ id: 'variables', zone: 'bottom', order: 5 },
+	{ id: 'inspector', zone: 'bottom', order: 6 },
 ];
 
 function loadFromStorage(): PanelConfig[] {
