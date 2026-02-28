@@ -465,24 +465,20 @@ impl JobManager {
                     .timeout(std::time::Duration::from_secs(10))
                     .build();
 
-                // Always increment processed regardless of outcome
                 processed.fetch_add(1, Ordering::Relaxed);
 
                 match client_result {
                     Err(_) => {
-                        // Client build failed (invalid proxy URL / system error)
                         errors.fetch_add(1, Ordering::Relaxed);
                         let mut captures = std::collections::HashMap::new();
                         captures.insert("status".into(), "error".into());
                         let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
                     }
                     Ok(client) => {
-                        // Measure latency across the actual HTTP round-trip
                         let req_start = std::time::Instant::now();
                         match client.get(&url).send().await {
                             Ok(_) => {
                                 let latency_ms = req_start.elapsed().as_millis();
-                                // Proxy is alive — counts as a Hit
                                 hits.fetch_add(1, Ordering::Relaxed);
                                 let mut captures = std::collections::HashMap::new();
                                 captures.insert("status".into(), "alive".into());
@@ -491,7 +487,6 @@ impl JobManager {
                             }
                             Err(_) => {
                                 let latency_ms = req_start.elapsed().as_millis();
-                                // Proxy is dead (timeout, refused, etc.) — counts as a Fail
                                 fails.fetch_add(1, Ordering::Relaxed);
                                 let mut captures = std::collections::HashMap::new();
                                 captures.insert("status".into(), "dead".into());

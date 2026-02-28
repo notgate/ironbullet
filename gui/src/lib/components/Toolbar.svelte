@@ -150,7 +150,7 @@
 		<DropdownMenu.Trigger class="toolbar-trigger">Run</DropdownMenu.Trigger>
 		<DropdownMenu.Portal>
 			<DropdownMenu.Content class="menu-content" sideOffset={2} align="start">
-				<DropdownMenu.Item class="menu-item" onSelect={() => send('debug_pipeline', { pipeline: JSON.parse(JSON.stringify(app.pipeline)) })}>
+				<DropdownMenu.Item class="menu-item" onSelect={() => send('debug_pipeline', { test_data_line: app.debugTestDataLine, test_proxy: app.debugTestProxy || null, pipeline: JSON.parse(JSON.stringify(app.pipeline)) })}>
 					Debug Run <span class="menu-shortcut">F5</span>
 				</DropdownMenu.Item>
 				<DropdownMenu.Separator class="menu-sep" />
@@ -235,7 +235,7 @@
 		{/if}
 		<button
 			class="p-0.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary"
-			onclick={() => send('debug_pipeline', { pipeline: JSON.parse(JSON.stringify(app.pipeline)) })}
+			onclick={() => send('debug_pipeline', { test_data_line: app.debugTestDataLine, test_proxy: app.debugTestProxy || null, pipeline: JSON.parse(JSON.stringify(app.pipeline)) })}
 			title="Debug Run (F5)"
 		>
 			<Bug size={12} />
