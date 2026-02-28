@@ -467,7 +467,6 @@ impl JobManager {
 
                 // Always increment processed regardless of outcome
                 processed.fetch_add(1, Ordering::Relaxed);
-                let latency_ms = start.elapsed().as_millis();
 
                 match client_result {
                     Err(_) => {
@@ -478,8 +477,11 @@ impl JobManager {
                         let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
                     }
                     Ok(client) => {
+                        // Measure latency across the actual HTTP round-trip
+                        let req_start = std::time::Instant::now();
                         match client.get(&url).send().await {
                             Ok(_) => {
+                                let latency_ms = req_start.elapsed().as_millis();
                                 // Proxy is alive — counts as a Hit
                                 hits.fetch_add(1, Ordering::Relaxed);
                                 let mut captures = std::collections::HashMap::new();
@@ -488,6 +490,7 @@ impl JobManager {
                                 let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
                             }
                             Err(_) => {
+                                let latency_ms = req_start.elapsed().as_millis();
                                 // Proxy is dead (timeout, refused, etc.) — counts as a Fail
                                 fails.fetch_add(1, Ordering::Relaxed);
                                 let mut captures = std::collections::HashMap::new();
