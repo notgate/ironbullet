@@ -65,10 +65,14 @@ export interface ProxyGroup {
 	cpm_per_proxy: number;
 }
 
+export type ProxySourceType_t = 'Http' | 'Https' | 'Socks4' | 'Socks5';
+
 export interface ProxySource {
 	source_type: 'File' | 'Url' | 'Inline';
 	value: string;
 	refresh_interval_secs: number;
+	/** Protocol to apply to plain host:port lines that carry no prefix. */
+	default_proxy_type?: ProxySourceType_t;
 }
 
 export interface BrowserSettings {

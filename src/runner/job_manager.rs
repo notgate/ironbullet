@@ -29,37 +29,48 @@ fn build_proxy_pool(settings: &ProxySettings) -> ProxyPool {
         return ProxyPool::empty();
     }
 
-    let mut raw_lines: Vec<String> = Vec::new();
+    let mut entries: Vec<ProxyEntry> = Vec::new();
     for src in sources {
-        match src.source_type {
+        let raw_lines: Vec<String> = match src.source_type {
             ProxySourceType::File => {
-                if let Ok(content) = std::fs::read_to_string(&src.value) {
-                    raw_lines.extend(content.lines()
+                std::fs::read_to_string(&src.value)
+                    .map(|c| c.lines()
                         .filter(|l| !l.trim().is_empty())
-                        .map(|l| l.trim().to_string()));
-                }
+                        .map(|l| l.trim().to_string())
+                        .collect())
+                    .unwrap_or_default()
             }
             ProxySourceType::Inline => {
-                raw_lines.extend(src.value.lines()
+                src.value.lines()
                     .filter(|l| !l.trim().is_empty())
-                    .map(|l| l.trim().to_string()));
+                    .map(|l| l.trim().to_string())
+                    .collect()
             }
             ProxySourceType::Url => {
                 // URL sources need async; skip for now (they're resolved at runtime)
+                Vec::new()
             }
-        }
+        };
+        // Resolve the source-level default type override (e.g. socks5 for a plain ip:port list)
+        let default_type = src.default_proxy_type.as_deref()
+            .and_then(|t| match t.to_lowercase().as_str() {
+                "http"   => Some(ProxyType::Http),
+                "https"  => Some(ProxyType::Https),
+                "socks4" => Some(ProxyType::Socks4),
+                "socks5" => Some(ProxyType::Socks5),
+                _        => None,
+            });
+        entries.extend(raw_lines.into_iter().filter_map(|l| parse_proxy_for_pool(&l, default_type)));
     }
-
-    let entries: Vec<ProxyEntry> = raw_lines.into_iter()
-        .filter_map(|l| parse_proxy_for_pool(&l))
-        .collect();
 
     ProxyPool::new(entries, settings.ban_duration_secs)
 }
 
-fn parse_proxy_for_pool(line: &str) -> Option<ProxyEntry> {
-    // Delegate to the same logic as ProxyPool::from_file's internal parser
-    // by constructing the entry directly
+/// Parse a single proxy line into a ProxyEntry.
+/// `default_type` is used for plain `host:port` or `host:port:user:pass` lines that
+/// carry no protocol prefix — it lets a whole source be declared as SOCKS5, for example.
+fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
+    let fallback = default_type.unwrap_or(ProxyType::Http);
     let (proxy_type, address) = if let Some(rest) = line.strip_prefix("socks5://") {
         (ProxyType::Socks5, rest.to_string())
     } else if let Some(rest) = line.strip_prefix("socks4://") {
@@ -71,8 +82,9 @@ fn parse_proxy_for_pool(line: &str) -> Option<ProxyEntry> {
     } else {
         let parts: Vec<&str> = line.split(':').collect();
         match parts.len() {
-            2 => (ProxyType::Http, format!("{}:{}", parts[0], parts[1])),
-            4 => (ProxyType::Http, format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1])),
+            2 => (fallback, format!("{}:{}", parts[0], parts[1])),
+            // ip:port:user:pass — preserve source-level type, inject credentials
+            4 => (fallback, format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1])),
             5 => {
                 let pt = match parts[0].to_lowercase().as_str() {
                     "https" => ProxyType::Https,

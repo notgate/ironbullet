@@ -138,6 +138,10 @@ pub struct ProxySource {
     /// Refresh interval in seconds (for URL sources)
     #[serde(default)]
     pub refresh_interval_secs: u64,
+    /// If set, applies this protocol to all plain host:port lines in this source that
+    /// don't already carry a protocol prefix. Accepts "Http", "Https", "Socks4", "Socks5".
+    #[serde(default)]
+    pub default_proxy_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
