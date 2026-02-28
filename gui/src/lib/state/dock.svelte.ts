@@ -28,7 +28,7 @@ export interface PanelConfig {
 }
 
 export const PANEL_LABELS: Record<PanelId, string> = {
-	inspector: 'Site Inspector',
+	inspector: 'Inspect',
 	debugger: 'Debugger',
 	code: 'Code View',
 	data: 'Data / Proxy',

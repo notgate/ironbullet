@@ -518,13 +518,15 @@ fn run_gui() {
                     }
 
                     let label = match panel_id.as_str() {
-                        "debugger"  => "Debugger",
-                        "code"      => "Code View",
-                        "data"      => "Data / Proxy",
-                        "jobs"      => "Jobs",
-                        "network"   => "Network",
-                        "variables" => "Variables",
-                        _           => "Panel",
+                        "debugger"        => "Debugger",
+                        "code"            => "Code View",
+                        "data"            => "Data / Proxy",
+                        "jobs"            => "Jobs",
+                        "network"         => "Network",
+                        "variables"       => "Variables",
+                        "response-viewer" => "Response Viewer",
+                        "inspector"       => "Inspect",
+                        _                 => "Panel",
                     };
 
                     let panel_window = match WindowBuilder::new()

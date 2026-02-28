@@ -19,7 +19,13 @@
 
 	let viewTab = $state<'request' | 'body' | 'headers' | 'cookies'>('body');
 	let prettyFormat = $state(true);
-	let fontSize = $state(11);
+	// Load persisted font size from localStorage (fallback to 11)
+	const FONTSIZE_KEY = 'ib_response_viewer_font_size';
+	let fontSize = $state<number>(() => {
+		if (typeof localStorage === 'undefined') return 11;
+		const stored = parseInt(localStorage.getItem(FONTSIZE_KEY) ?? '', 10);
+		return Number.isFinite(stored) ? Math.max(9, Math.min(20, stored)) : 11;
+	});
 	let selectedResultIndex = $state(0);
 	let copied = $state(false);
 
@@ -38,6 +44,40 @@
 	let isResizing = $state(false);
 	let dragOffsetX = 0;
 	let dragOffsetY = 0;
+
+	// Persist font size whenever it changes
+	const RESULTS_KEY = 'ib_last_debug_results';
+	$effect(() => {
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(FONTSIZE_KEY, String(fontSize));
+		}
+	});
+
+	// Main window: persist debug results to sessionStorage so native window can load them
+	$effect(() => {
+		if (!nativeMode) {
+			const r = app.debugResults;
+			if (r.length > 0) {
+				try { sessionStorage.setItem(RESULTS_KEY, JSON.stringify(r)); } catch {}
+			}
+		}
+	});
+
+	// Native window: seed from sessionStorage on first render if results are empty
+	$effect(() => {
+		if (nativeMode && app.debugResults.length === 0) {
+			try {
+				const stored = sessionStorage.getItem(RESULTS_KEY);
+				if (stored) {
+					const parsed = JSON.parse(stored);
+					if (Array.isArray(parsed) && parsed.length > 0) {
+						app.debugResults = parsed;
+						app.showResponseViewer = true;
+					}
+				}
+			} catch {}
+		}
+	});
 
 	let results = $derived(app.debugResults);
 	let hasResults = $derived(results.length > 0);
@@ -529,14 +569,24 @@
 
 			<!-- Font size controls -->
 			<div class="flex items-center gap-0.5 shrink-0">
-				<button class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary" onclick={() => fontSize = Math.max(9, fontSize - 1)} title="Decrease font size"><Minus size={10} /></button>
+				<button
+					class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
+					onmousedown={(e) => e.stopPropagation()}
+					onclick={(e) => { e.stopPropagation(); fontSize = Math.max(9, fontSize - 1); }}
+					title="Decrease font size"
+				><Minus size={10} /></button>
 				<span class="text-[9px] text-muted-foreground w-5 text-center">{fontSize}</span>
-				<button class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary" onclick={() => fontSize = Math.min(20, fontSize + 1)} title="Increase font size"><Plus size={10} /></button>
+				<button
+					class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
+					onmousedown={(e) => e.stopPropagation()}
+					onclick={(e) => { e.stopPropagation(); fontSize = Math.min(20, fontSize + 1); }}
+					title="Increase font size"
+				><Plus size={10} /></button>
 			</div>
 			{#if !nativeMode}
 			<button
 				class="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
-				onclick={() => send('float_panel_native', { panel_id: 'response-viewer' })}
+				onclick={() => send('float_panel_native', { id: 'response-viewer' })}
 				title="Launch as external window"
 			>
 				<Maximize2 size={12} />
