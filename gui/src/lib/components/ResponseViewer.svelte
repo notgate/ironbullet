@@ -21,11 +21,13 @@
 	let prettyFormat = $state(true);
 	// Load persisted font size from localStorage (fallback to 11)
 	const FONTSIZE_KEY = 'ib_response_viewer_font_size';
-	let fontSize = $state<number>(() => {
-		if (typeof localStorage === 'undefined') return 11;
-		const stored = parseInt(localStorage.getItem(FONTSIZE_KEY) ?? '', 10);
-		return Number.isFinite(stored) ? Math.max(9, Math.min(20, stored)) : 11;
-	});
+	const _initFontSize = (() => {
+		try {
+			const stored = parseInt(localStorage.getItem(FONTSIZE_KEY) ?? '', 10);
+			return Number.isFinite(stored) ? Math.max(9, Math.min(20, stored)) : 11;
+		} catch { return 11; }
+	})();
+	let fontSize = $state(_initFontSize);
 	let selectedResultIndex = $state(0);
 	let copied = $state(false);
 
