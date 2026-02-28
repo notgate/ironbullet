@@ -55,21 +55,24 @@
 		}
 	});
 
-	// Main window: persist debug results to sessionStorage so native window can load them
+	// Main window: persist debug results to localStorage (shared across all windows, same origin)
+	// sessionStorage is per-window and NOT visible to native panel webviews — localStorage is.
 	$effect(() => {
 		if (!nativeMode) {
 			const r = app.debugResults;
 			if (r.length > 0) {
-				try { sessionStorage.setItem(RESULTS_KEY, JSON.stringify(r)); } catch {}
+				try { localStorage.setItem(RESULTS_KEY, JSON.stringify(r)); } catch {}
 			}
 		}
 	});
 
-	// Native window: seed from sessionStorage on first render if results are empty
+	// Native window: seed from localStorage on first render if results are empty
 	$effect(() => {
-		if (nativeMode && app.debugResults.length === 0) {
+		if (!nativeMode) return;
+
+		function loadFromStorage() {
 			try {
-				const stored = sessionStorage.getItem(RESULTS_KEY);
+				const stored = localStorage.getItem(RESULTS_KEY);
 				if (stored) {
 					const parsed = JSON.parse(stored);
 					if (Array.isArray(parsed) && parsed.length > 0) {
@@ -79,6 +82,16 @@
 				}
 			} catch {}
 		}
+
+		// Seed immediately (handles case where main window had results before panel opened)
+		loadFromStorage();
+
+		// Also listen for storage events fired when main window updates results after panel is open
+		const onStorage = (e: StorageEvent) => {
+			if (e.key === RESULTS_KEY) loadFromStorage();
+		};
+		window.addEventListener('storage', onStorage);
+		return () => window.removeEventListener('storage', onStorage);
 	});
 
 	let results = $derived(app.debugResults);
