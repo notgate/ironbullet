@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
 	import { send, onResponse } from '$lib/ipc';
+	import SkeuSelect from '$lib/components/SkeuSelect.svelte';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
@@ -43,7 +44,7 @@
 		browser?: string;
 	}
 
-	const METHODS  = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+	const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map(m => ({ value: m, label: m }));
 	const BROWSERS = [
 		{ value: 'chrome',  label: 'Chrome'  },
 		{ value: 'firefox', label: 'Firefox' },
@@ -165,9 +166,12 @@
 	<!-- ══ Address bar ═══════════════════════════════════════════════════════ -->
 	<div class="flex items-center gap-1.5 px-2 py-1.5 panel-raised shrink-0">
 		<!-- Method -->
-		<select bind:value={method} class="skeu-select text-[11px] font-medium w-[80px] shrink-0">
-			{#each METHODS as m}<option value={m}>{m}</option>{/each}
-		</select>
+		<SkeuSelect
+			value={method}
+			onValueChange={(v) => { method = v; }}
+			options={METHODS}
+			class="text-[11px] font-medium w-[80px] shrink-0"
+		/>
 
 		<!-- URL -->
 		<input
@@ -189,9 +193,12 @@
 		{/if}
 
 		<!-- Browser -->
-		<select bind:value={browser} class="skeu-select text-[11px] w-[72px] shrink-0">
-			{#each BROWSERS as b}<option value={b.value}>{b.label}</option>{/each}
-		</select>
+		<SkeuSelect
+			value={browser}
+			onValueChange={(v) => { browser = v; }}
+			options={BROWSERS}
+			class="text-[11px] w-[72px] shrink-0"
+		/>
 
 		<!-- Proxy -->
 		<input
