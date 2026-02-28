@@ -14,65 +14,73 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
 
-	// When true, renders full-screen inside a native OS window (launched via float_panel_native)
 	let { nativeMode = false }: { nativeMode?: boolean } = $props();
+
+	const FONTSIZE_KEY = 'ib_rv_font_size';
+	const GEOMETRY_KEY = 'ib_rv_geometry';
+	const RESULTS_KEY  = 'ib_last_debug_results';
+
+	function lsGet(key: string): string | null {
+		try { return localStorage.getItem(key); } catch { return null; }
+	}
+	function lsSet(key: string, val: string): void {
+		try { localStorage.setItem(key, val); } catch {}
+	}
+
+	const _initFontSize = (() => {
+		const v = parseInt(lsGet(FONTSIZE_KEY) ?? '', 10);
+		return Number.isFinite(v) ? Math.max(9, Math.min(20, v)) : 11;
+	})();
+
+	const _initGeometry = (() => {
+		try {
+			const g = JSON.parse(lsGet(GEOMETRY_KEY) ?? 'null');
+			if (g && typeof g === 'object') return g as { x: number; y: number; w: number; h: number };
+		} catch {}
+		return { x: 100, y: 80, w: 620, h: 440 };
+	})();
 
 	let viewTab = $state<'request' | 'body' | 'headers' | 'cookies'>('body');
 	let prettyFormat = $state(true);
-	// Load persisted font size from localStorage (fallback to 11)
-	const FONTSIZE_KEY = 'ib_response_viewer_font_size';
-	const _initFontSize = (() => {
-		try {
-			const stored = parseInt(localStorage.getItem(FONTSIZE_KEY) ?? '', 10);
-			return Number.isFinite(stored) ? Math.max(9, Math.min(20, stored)) : 11;
-		} catch { return 11; }
-	})();
 	let fontSize = $state(_initFontSize);
 	let selectedResultIndex = $state(0);
 	let copied = $state(false);
 
-	// Search state
 	let showSearch = $state(false);
 	let searchQuery = $state('');
 	let searchMatchIndex = $state(0);
 	let searchInputEl = $state<HTMLInputElement | null>(null);
 
-	// Draggable state
-	let posX = $state(100);
-	let posY = $state(80);
-	let width = $state(620);
-	let height = $state(440);
+	let posX = $state(_initGeometry.x);
+	let posY = $state(_initGeometry.y);
+	let width = $state(_initGeometry.w);
+	let height = $state(_initGeometry.h);
 	let isDragging = $state(false);
 	let isResizing = $state(false);
 	let dragOffsetX = 0;
 	let dragOffsetY = 0;
 
-	// Persist font size whenever it changes
-	const RESULTS_KEY = 'ib_last_debug_results';
+	$effect(() => { lsSet(FONTSIZE_KEY, String(fontSize)); });
+
 	$effect(() => {
-		if (typeof localStorage !== 'undefined') {
-			localStorage.setItem(FONTSIZE_KEY, String(fontSize));
-		}
+		lsSet(GEOMETRY_KEY, JSON.stringify({ x: posX, y: posY, w: width, h: height }));
 	});
 
-	// Main window: persist debug results to localStorage (shared across all windows, same origin)
-	// sessionStorage is per-window and NOT visible to native panel webviews — localStorage is.
 	$effect(() => {
 		if (!nativeMode) {
 			const r = app.debugResults;
 			if (r.length > 0) {
-				try { localStorage.setItem(RESULTS_KEY, JSON.stringify(r)); } catch {}
+				try { lsSet(RESULTS_KEY, JSON.stringify(r)); } catch {}
 			}
 		}
 	});
 
-	// Native window: seed from localStorage on first render if results are empty
 	$effect(() => {
 		if (!nativeMode) return;
 
 		function loadFromStorage() {
 			try {
-				const stored = localStorage.getItem(RESULTS_KEY);
+				const stored = lsGet(RESULTS_KEY);
 				if (stored) {
 					const parsed = JSON.parse(stored);
 					if (Array.isArray(parsed) && parsed.length > 0) {
@@ -83,13 +91,9 @@
 			} catch {}
 		}
 
-		// Seed immediately (handles case where main window had results before panel opened)
 		loadFromStorage();
 
-		// Also listen for storage events fired when main window updates results after panel is open
-		const onStorage = (e: StorageEvent) => {
-			if (e.key === RESULTS_KEY) loadFromStorage();
-		};
+		const onStorage = (e: StorageEvent) => { if (e.key === RESULTS_KEY) loadFromStorage(); };
 		window.addEventListener('storage', onStorage);
 		return () => window.removeEventListener('storage', onStorage);
 	});
@@ -97,7 +101,6 @@
 	let results = $derived(app.debugResults);
 	let hasResults = $derived(results.length > 0);
 
-	// Find the HTTP request result (the one with response data)
 	let httpResults = $derived(results.filter(r => r.response));
 	let currentResult = $derived(httpResults[selectedResultIndex] || null);
 

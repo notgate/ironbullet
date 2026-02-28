@@ -36,7 +36,6 @@ pub(super) fn debug_pipeline(
             let pm = s.plugin_manager.clone();
             drop(s); // Release lock before async execution
 
-            // Use native reqwest backend -- no sidecar needed for debug
             let native_tx = ironbullet::sidecar::native::create_native_backend();
 
             let mut ctx = ExecutionContext::new(uuid::Uuid::new_v4().to_string());
@@ -453,8 +452,6 @@ pub(super) fn probe_url(
     }
 }
 
-/// Site Inspector — make a real AzureTLS request and return full request + response headers.
-/// Falls back to native reqwest if the sidecar is not running/available.
 pub(super) fn site_inspect(
     state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
