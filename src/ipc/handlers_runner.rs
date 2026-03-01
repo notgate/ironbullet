@@ -627,10 +627,8 @@ pub(super) fn site_inspect(
     }
 }
 
-// ── Browser capture (Inspector panel) ─────────────────────────────────────────
+// ── Browser capture (Inspector panel) ──────────────────────────────────────────
 
-/// Launch a headed Chrome browser at `url`, capture all network requests via CDP,
-/// and stream them to the frontend as `inspector_browser_event` IPC events.
 pub(super) fn inspect_browser_open(
     state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
@@ -638,21 +636,20 @@ pub(super) fn inspect_browser_open(
 ) {
     use chromiumoxide::browser::{Browser, BrowserConfig};
     use chromiumoxide::cdp::browser_protocol::network::{
-        EnableParams, EventRequestWillBeSent, GetRequestPostDataParams,
+        EnableParams, EventRequestWillBeSent, EventResponseReceived,
+        EventLoadingFinished, GetRequestPostDataParams, GetResponseBodyParams,
     };
     use futures::StreamExt;
 
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
-        // JS forwarding channel — eval_js must stay on one thread
-        let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(512);
+        let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(1024);
         handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
 
         let js = js_tx.clone();
         let state2 = state.clone();
 
         let capture_task = handle.spawn(async move {
-            // Cancel any previous capture
             {
                 let mut s = state.lock().await;
                 if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
@@ -686,7 +683,6 @@ pub(super) fn inspect_browser_open(
                 }
             };
 
-            // Drive Chrome's CDP event loop in background
             tokio::spawn(async move { while handler.next().await.is_some() {} });
 
             let page = match browser.new_page(&url).await {
@@ -697,56 +693,104 @@ pub(super) fn inspect_browser_open(
                 }
             };
 
-            if page.execute(EnableParams::default()).await.is_err() {
-                emit_sync(&js, serde_json::json!({ "type": "error", "message": "Failed to enable CDP Network domain" }));
+            // Generous buffer so response bodies are available for getResponseBody
+            if page.execute(EnableParams {
+                max_total_buffer_size:    Some(100 * 1024 * 1024),
+                max_resource_buffer_size: Some(5   * 1024 * 1024),
+                max_post_data_size:       Some(5   * 1024 * 1024),
+            }).await.is_err() {
+                emit_sync(&js, serde_json::json!({ "type": "error", "message": "CDP Network.enable failed" }));
                 return;
             }
 
             emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
 
-            let mut events = match page.event_listener::<EventRequestWillBeSent>().await {
+            let mut ev_req  = match page.event_listener::<EventRequestWillBeSent>().await {
                 Ok(e) => e,
-                Err(e) => {
-                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Event listener failed: {}", e) }));
-                    return;
-                }
+                Err(e) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("{e}") })); return; }
+            };
+            let mut ev_resp = match page.event_listener::<EventResponseReceived>().await {
+                Ok(e) => e, Err(_) => return,
+            };
+            let mut ev_done = match page.event_listener::<EventLoadingFinished>().await {
+                Ok(e) => e, Err(_) => return,
             };
 
-            let page2 = page.clone();
-            while let Some(event) = events.next().await {
-                let req = &event.request;
-                let method   = req.method.clone();
-                let url_cap  = req.url.clone();
+            let page_req  = page.clone();
+            let page_body = page.clone();
 
-                let headers: std::collections::HashMap<String, String> = req.headers.inner()
-                    .as_object()
-                    .map(|obj| obj.iter()
-                        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                        .collect())
-                    .unwrap_or_default();
+            loop {
+                tokio::select! {
+                    Some(event) = ev_req.next() => {
+                        let req = &event.request;
+                        let headers: std::collections::HashMap<String, String> =
+                            req.headers.inner().as_object()
+                                .map(|obj| obj.iter()
+                                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                                    .collect())
+                                .unwrap_or_default();
 
-                let post_data: Option<String> = if req.has_post_data.unwrap_or(false) {
-                    page2.execute(GetRequestPostDataParams { request_id: event.request_id.clone() })
-                        .await.ok().map(|r| r.result.post_data)
-                } else {
-                    None
-                };
+                        let post_data: Option<String> = if req.has_post_data.unwrap_or(false) {
+                            page_req.execute(GetRequestPostDataParams { request_id: event.request_id.clone() })
+                                .await.ok().map(|r| r.result.post_data)
+                        } else { None };
 
-                emit_sync(&js, serde_json::json!({
-                    "type":      "request",
-                    "id":        event.request_id.inner().clone(),
-                    "url":       url_cap,
-                    "method":    method,
-                    "headers":   headers,
-                    "post_data": post_data,
-                }));
+                        let resource_type = event.r#type.as_ref()
+                            .map(|t| format!("{t:?}"))
+                            .unwrap_or_else(|| "Other".to_string());
+
+                        emit_sync(&js, serde_json::json!({
+                            "type":          "request",
+                            "id":            event.request_id.inner().clone(),
+                            "url":           req.url,
+                            "method":        req.method,
+                            "headers":       headers,
+                            "post_data":     post_data,
+                            "resource_type": resource_type,
+                        }));
+                    }
+                    Some(event) = ev_resp.next() => {
+                        let resp = &event.response;
+                        let headers: std::collections::HashMap<String, String> =
+                            resp.headers.inner().as_object()
+                                .map(|obj| obj.iter()
+                                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                                    .collect())
+                                .unwrap_or_default();
+
+                        emit_sync(&js, serde_json::json!({
+                            "type":        "response_meta",
+                            "id":          event.request_id.inner().clone(),
+                            "status":      resp.status,
+                            "status_text": resp.status_text,
+                            "mime_type":   resp.mime_type,
+                            "headers":     headers,
+                        }));
+                    }
+                    Some(event) = ev_done.next() => {
+                        // Fetch text response bodies up to 2 MB
+                        if event.encoded_data_length > 0.0 && event.encoded_data_length < 2_097_152.0 {
+                            if let Ok(r) = page_body
+                                .execute(GetResponseBodyParams { request_id: event.request_id.clone() })
+                                .await
+                            {
+                                if !r.result.base64_encoded {
+                                    emit_sync(&js, serde_json::json!({
+                                        "type": "response_body",
+                                        "id":   event.request_id.inner().clone(),
+                                        "body": r.result.body,
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    else => break,
+                }
             }
 
-            // Stream ended — browser window was closed by user
             emit_sync(&js, serde_json::json!({ "type": "closed" }));
         });
 
-        // Store abort handle so close handler / re-open can cancel this task
         let abort = capture_task.abort_handle();
         handle.spawn(async move {
             let mut s = state2.lock().await;
@@ -755,7 +799,6 @@ pub(super) fn inspect_browser_open(
     }
 }
 
-/// Close the active browser-capture session.
 pub(super) fn inspect_browser_close(
     state: Arc<Mutex<AppState>>,
     eval_js: impl Fn(String) + Send + 'static,
