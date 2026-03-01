@@ -15,10 +15,10 @@ pub enum TlsClient {
 }
 
 impl Default for TlsClient {
-    fn default() -> Self { TlsClient::AzureTLS }
+    fn default() -> Self { TlsClient::RustTLS }
 }
 
-fn default_tls_client() -> TlsClient { TlsClient::AzureTLS }
+fn default_tls_client() -> TlsClient { TlsClient::RustTLS }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpRequestSettings {
@@ -90,7 +90,7 @@ impl Default for HttpRequestSettings {
             custom_cookies: String::new(),
             ssl_verify: true,
             cipher_suites: String::new(),
-            tls_client: TlsClient::AzureTLS,
+            tls_client: TlsClient::RustTLS,
         }
     }
 }

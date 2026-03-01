@@ -271,7 +271,7 @@
 		<div>
 			<label class={labelCls}>TLS Client</label>
 			<SkeuSelect
-				value={block.settings.tls_client || 'AzureTLS'}
+				value={block.settings.tls_client || 'RustTLS'}
 				onValueChange={(v) => updateSettings('tls_client', v)}
 				options={[
 					{ value: 'AzureTLS', label: 'AzureTLS (Go sidecar · JA3 + fingerprinting)' },
@@ -279,7 +279,7 @@
 				]}
 				placeholder="Select TLS client..."
 			/>
-			{#if (block.settings.tls_client || 'AzureTLS') === 'RustTLS'}
+			{#if (block.settings.tls_client || 'RustTLS') === 'RustTLS'}
 				<p class="text-[9px] text-muted-foreground mt-0.5">
 					Uses reqwest + rustls — all standard settings apply.
 					JA3 / browser fingerprinting / custom cipher suites are AzureTLS-only.
@@ -303,7 +303,7 @@
 		<p class="text-[9px] text-muted-foreground">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
 
 		<!-- Cipher suites — AzureTLS only -->
-		{#if (block.settings.tls_client || 'AzureTLS') === 'AzureTLS'}
+		{#if (block.settings.tls_client || 'RustTLS') === 'AzureTLS'}
 		<div>
 			<label class={labelCls}>Custom Cipher Suites <span class="text-muted-foreground/60">(AzureTLS · optional)</span></label>
 			<textarea

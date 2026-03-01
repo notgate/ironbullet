@@ -143,27 +143,55 @@ impl ExecutionContext {
         let mut writer = writer;
         let mut transcript = String::new();
 
-        // Read banner
+        // Read the server banner — may be multi-line (e.g. "220-...\r\n220 ...\r\n").
+        // Must consume the full banner before sending USER, otherwise the server's
+        // remaining banner lines land in the USER-response reader causing a false
+        // response code mismatch (race condition, issue #11).
         let mut line = String::new();
-        if let Ok(Ok(n)) = tokio::time::timeout(timeout, reader.read_line(&mut line)).await {
-            if n > 0 { transcript.push_str(&format!("S: {}", line)); }
+        loop {
+            line.clear();
+            match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
+                Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                Ok(Ok(_)) => {
+                    transcript.push_str(&format!("S: {}", line));
+                    // FTP multi-line: continuation lines have "XYZ-" (dash at pos 3).
+                    // A space at pos 3 (or line shorter than 4) ends the response.
+                    if line.len() < 4 || line.as_bytes()[3] != b'-' { break; }
+                }
+            }
         }
 
-        let commands = vec![
-            format!("USER {}", username),
-            format!("PASS {}", password),
-            command.clone(),
-            "QUIT".into(),
-        ];
+        // Validate banner code — must be 2xx to proceed.
+        let banner_code: u16 = transcript
+            .lines()
+            .last()
+            .and_then(|l| l.strip_prefix("S: "))
+            .and_then(|l| l.get(..3))
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(0);
 
-        let mut last_code: u16 = 0;
+        let commands: Vec<String> = if banner_code >= 200 && banner_code < 300 {
+            vec![
+                format!("USER {}", username),
+                format!("PASS {}", password),
+                command.clone(),
+                "QUIT".into(),
+            ]
+        } else {
+            // Server rejected connection — send QUIT and bail.
+            vec!["QUIT".into()]
+        };
+
+        let mut last_code: u16 = banner_code;
         for cmd in &commands {
             if cmd.is_empty() { continue; }
             writer.write_all(format!("{}\r\n", cmd).as_bytes()).await.ok();
             writer.flush().await.ok();
             transcript.push_str(&format!("C: {}\r\n", cmd));
 
-            // Read FTP response (multi-line: "123-...\r\n123 ...\r\n")
+            // Read FTP response (multi-line: "123-...\r\n123 ...\r\n").
+            // Wait for the terminating line (space at position 3) before sending
+            // the next command — fixes the race condition in issue #11.
             loop {
                 line.clear();
                 match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut line)).await {
@@ -173,10 +201,14 @@ impl ExecutionContext {
                         if let Ok(code) = line.get(..3).unwrap_or("").parse::<u16>() {
                             last_code = code;
                         }
-                        if line.len() >= 4 && line.as_bytes()[3] != b'-' { break; }
+                        if line.len() < 4 || line.as_bytes()[3] != b'-' { break; }
                     }
                 }
             }
+
+            // Stop after QUIT or if the server sends a fatal error (5xx).
+            if cmd == "QUIT" { break; }
+            if last_code >= 500 { break; }
         }
 
         self.variables.set_user(&settings.output_var, transcript.clone(), settings.capture);

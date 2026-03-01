@@ -174,6 +174,20 @@ pub(crate) async fn run_worker(
                 } else {
                     stats.errors.fetch_add(1, Ordering::Relaxed);
                     let err_msg = result.as_ref().err().map(|e| e.to_string());
+                    // Write error entries to the output file (issue #10).
+                    // The error message is stored under the "_error" capture key so
+                    // it appears in the output file for offline debugging.
+                    if let Some(ref ow) = output_writer {
+                        let mut err_caps = std::collections::HashMap::new();
+                        if let Some(ref msg) = err_msg {
+                            err_caps.insert("_error".to_string(), msg.clone());
+                        }
+                        ow.write_hit(&HitResult {
+                            data_line: data_line.clone(),
+                            captures: err_caps,
+                            proxy: proxy.clone(),
+                        }, BotStatus::Error);
+                    }
                     if let Ok(mut feed) = result_feed.try_lock() {
                         if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
                         feed.push_back(ResultEntry {
@@ -191,6 +205,17 @@ pub(crate) async fn run_worker(
                 if result.is_err() {
                     stats.errors.fetch_add(1, Ordering::Relaxed);
                     let err_msg = result.err().map(|e| e.to_string());
+                    if let Some(ref ow) = output_writer {
+                        let mut err_caps = std::collections::HashMap::new();
+                        if let Some(ref msg) = err_msg {
+                            err_caps.insert("_error".to_string(), msg.clone());
+                        }
+                        ow.write_hit(&HitResult {
+                            data_line: data_line.clone(),
+                            captures: err_caps,
+                            proxy: proxy.clone(),
+                        }, BotStatus::Error);
+                    }
                     if let Ok(mut feed) = result_feed.try_lock() {
                         if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
                         feed.push_back(ResultEntry {

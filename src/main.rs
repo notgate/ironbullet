@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::{Icon, WindowBuilder};
+#[cfg(target_os = "windows")]
 use raw_window_handle::HasWindowHandle;
 use wry::WebViewBuilder;
 use include_dir::{include_dir, Dir};

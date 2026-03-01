@@ -39,19 +39,22 @@
 	let searchQuery      = $state('');
 	let typeFilter       = $state('all');
 
-	// Persist captures + selection to localStorage whenever they change.
-	// Cap at 300 requests; truncate response bodies to avoid exceeding quota.
-	$effect(() => {
+	$effect(() => { try { localStorage.setItem('ib_inspector_url', browserUrl); } catch {} });
+
+	// Helpers: write to localStorage immediately (not via $effect) so external
+	// panel windows can read the latest data as soon as it changes.
+	function persistCaptures(reqs: CapturedRequest[]) {
 		try {
-			const slim = capturedRequests.slice(-300).map(r => ({
-				...r,
-				resp_body: r.resp_body ? r.resp_body.slice(0, 4096) : r.resp_body,
-			}));
+			const slim = reqs.slice(-300).map(r => ({ ...r, resp_body: r.resp_body?.slice(0, 4096) }));
 			localStorage.setItem('ib_inspector_captures', JSON.stringify(slim));
 		} catch {}
-	});
-	$effect(() => { try { if (selectedReqId) localStorage.setItem('ib_inspector_sel', selectedReqId); else localStorage.removeItem('ib_inspector_sel'); } catch {} });
-	$effect(() => { try { localStorage.setItem('ib_inspector_url', browserUrl); } catch {} });
+	}
+	function persistResult(r: InspectResult | null) {
+		try {
+			if (r) localStorage.setItem('ib_inspector_result', JSON.stringify({ ...r, body: r.body?.slice(0, 65536) }));
+			else localStorage.removeItem('ib_inspector_result');
+		} catch {}
+	}
 
 	// detail UI
 	let detailTab        = $state<'headers' | 'payload' | 'response' | 'params'>('headers');
@@ -97,14 +100,14 @@
 		selectedReqId ? (capturedRequests.find(r => r.id === selectedReqId) ?? null) : null
 	);
 
-	let browserUnsub: (() => void) | null = null;
+	// 25-second safety net — prevents infinite loading if Chrome hangs silently.
+	let loadTimerId: number | null = null;
 
-	function openBrowser() {
-		if (!browserUrl.trim() || browserUrl === 'https://') { browserError = 'Enter a URL first'; return; }
-		browserError = ''; capturedRequests = []; selectedReqId = null; applyPanelOpen = false;
-		browserLoading = true;
-		browserUnsub?.();
-		browserUnsub = onResponse('inspector_browser_event', (data: unknown) => {
+	// Register browser capture listener on mount so external panel windows
+	// (which receive eval_js broadcasts but can't call openBrowser) also get
+	// live capture events without needing to call openBrowser() themselves.
+	$effect(() => {
+		onResponse('inspector_browser_event', (data: unknown) => {
 			const ev = data as {
 				type: string; url?: string; message?: string; id?: string;
 				method?: string; resource_type?: string;
@@ -112,33 +115,75 @@
 				status?: number; status_text?: string; mime_type?: string;
 				body?: string;
 			};
+			// Clear safety timeout on any terminal event.
+			if (ev.type === 'error' || ev.type === 'opened' || ev.type === 'closed') {
+				if (loadTimerId !== null) { clearTimeout(loadTimerId); loadTimerId = null; }
+			}
 			if (ev.type === 'error')  { browserError = ev.message ?? 'Unknown error'; browserOpen = false; browserLoading = false; return; }
 			if (ev.type === 'opened') { browserOpen = true; browserLoading = false; return; }
 			if (ev.type === 'closed') { browserOpen = false; browserLoading = false; return; }
 
 			if (ev.type === 'request') {
 				if (capturedRequests.some(r => r.id === ev.id)) return;
-				capturedRequests = [...capturedRequests, {
+				const next = [...capturedRequests, {
 					id: ev.id!, url: ev.url!, method: ev.method!,
 					resource_type: ev.resource_type ?? 'Other',
 					headers: ev.headers ?? {}, post_data: ev.post_data ?? null,
 				}];
+				capturedRequests = next;
 				if (!selectedReqId) { selectedReqId = ev.id!; applySelReq = new Set(Object.keys(ev.headers ?? {})); }
+				persistCaptures(next);
 			} else if (ev.type === 'response_meta') {
-				capturedRequests = capturedRequests.map(r => r.id !== ev.id ? r : {
+				const next = capturedRequests.map(r => r.id !== ev.id ? r : {
 					...r, resp_status: ev.status, resp_status_text: ev.status_text,
 					resp_mime: ev.mime_type, resp_headers: ev.headers,
 				});
+				capturedRequests = next;
+				persistCaptures(next);
 			} else if (ev.type === 'response_body') {
-				capturedRequests = capturedRequests.map(r => r.id !== ev.id ? r : { ...r, resp_body: ev.body });
+				const next = capturedRequests.map(r => r.id !== ev.id ? r : { ...r, resp_body: ev.body });
+				capturedRequests = next;
+				persistCaptures(next);
 			}
 		});
+	});
+
+	// Register manual-inspect result listener on mount for the same reason —
+	// the external panel window receives the broadcast and updates its display.
+	$effect(() => {
+		onResponse('site_inspect_result', (data: unknown) => {
+			loading = false;
+			const d = data as InspectResult;
+			if (d.error && !d.status) { errorMsg = d.error; return; }
+			result = d;
+			persistResult(d);
+			applySelection = new Set(Object.keys(d.headers));
+			viewTab = 'resp-headers';
+		});
+	});
+
+	function openBrowser() {
+		if (!browserUrl.trim() || browserUrl === 'https://') { browserError = 'Enter a URL first'; return; }
+		browserError = '';
+		capturedRequests = [];
+		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
+		selectedReqId = null; applyPanelOpen = false;
+		browserLoading = true;
+		if (loadTimerId !== null) clearTimeout(loadTimerId);
+		loadTimerId = window.setTimeout(() => {
+			loadTimerId = null;
+			if (browserLoading && !browserOpen) {
+				browserError = 'Chrome did not respond within 25 seconds. Try again.';
+				browserLoading = false;
+			}
+		}, 25000);
 		send('inspect_browser_open', { url: browserUrl.trim() });
 	}
 
 	function closeBrowser() {
 		send('inspect_browser_close', {});
-		browserUnsub?.(); browserUnsub = null; browserOpen = false; browserLoading = false;
+		if (loadTimerId !== null) { clearTimeout(loadTimerId); loadTimerId = null; }
+		browserOpen = false; browserLoading = false;
 	}
 
 	function selectReq(id: string) {
@@ -266,44 +311,10 @@
 	let applySource     = $state<'request' | 'response'>('response');
 	let applySelection  = $state<Set<string>>(new Set((() => { try { const r = localStorage.getItem('ib_inspector_result'); return r ? Object.keys((JSON.parse(r) as InspectResult).headers ?? {}) : []; } catch { return []; } })()));
 
-	// Persist manual mode state so external-window pop-out doesn't lose data.
+	// Persist URL and method on each keystroke so the external window and
+	// remounted panels restore the last-used values.
 	$effect(() => { try { localStorage.setItem('ib_inspector_manual_url', url); } catch {} });
 	$effect(() => { try { localStorage.setItem('ib_inspector_method', method); } catch {} });
-	$effect(() => {
-		try {
-			if (result) {
-				localStorage.setItem('ib_inspector_result', JSON.stringify({
-					...result, body: result.body?.slice(0, 65536) ?? '',
-				}));
-			} else {
-				localStorage.removeItem('ib_inspector_result');
-			}
-		} catch {}
-	});
-
-	// Cross-window sync: the storage event fires in OTHER windows when this window
-	// writes to localStorage — lets the popped-out external window receive live
-	// updates for both browser captures and manual results.
-	$effect(() => {
-		function onStorage(e: StorageEvent) {
-			try {
-				if (e.key === 'ib_inspector_captures') {
-					capturedRequests = e.newValue ? JSON.parse(e.newValue) as CapturedRequest[] : [];
-				} else if (e.key === 'ib_inspector_sel') {
-					selectedReqId = e.newValue || null;
-				} else if (e.key === 'ib_inspector_result') {
-					result = e.newValue ? JSON.parse(e.newValue) as InspectResult : null;
-					if (result) applySelection = new Set(Object.keys(result.headers ?? {}));
-				} else if (e.key === 'ib_inspector_manual_url' && e.newValue) {
-					url = e.newValue;
-				} else if (e.key === 'ib_inspector_method' && e.newValue) {
-					method = e.newValue;
-				}
-			} catch {}
-		}
-		window.addEventListener('storage', onStorage);
-		return () => window.removeEventListener('storage', onStorage);
-	});
 
 	interface InspectResult {
 		status: number;
@@ -345,28 +356,12 @@
 	}
 
 	// ── Capture ────────────────────────────────────────────────────────────────
-	let unsub: (() => void) | null = null;
-
 	function capture() {
 		if (!url.trim() || url === 'https://') return;
 		loading  = true;
 		errorMsg = '';
-
-		// Sync raw headers back to KV before sending
+		// Result is handled by the mount-time $effect onResponse('site_inspect_result') above.
 		const hdrs: [string, string][] = headerMode === 'raw' ? rawToKv(rawHeaderText) : extraHeaders;
-
-		unsub?.();
-		unsub = onResponse('site_inspect_result', (data: unknown) => {
-			loading = false;
-			unsub?.(); unsub = null;
-			const d = data as InspectResult;
-			if (d.error && !d.status) { errorMsg = d.error; return; }
-			result = d;
-			const keys = new Set(Object.keys(d.headers));
-			applySelection = keys;
-			viewTab = 'resp-headers';
-		});
-
 		send('site_inspect', {
 			url:     url.trim(),
 			method,
@@ -379,7 +374,6 @@
 
 	function stop() {
 		loading = false;
-		unsub?.(); unsub = null;
 	}
 
 	// ── Apply to Block ─────────────────────────────────────────────────────────
