@@ -222,7 +222,7 @@ impl Default for RunnerSettings {
             custom_status_name: "CUSTOM".into(),
             max_retries: 3,
             concurrent_per_proxy: 0,
-            start_threads_gradually: true,
+            start_threads_gradually: false,
             gradual_delay_ms: 100,
             automatic_thread_count: false,
             lower_threads_on_retry: false,
