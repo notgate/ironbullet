@@ -19,73 +19,121 @@
 
 	// ── Browser Capture State ──────────────────────────────────────────────────
 	interface CapturedRequest {
-		id: string;
-		url: string;
-		method: string;
-		headers: Record<string, string>;
-		post_data: string | null;
+		id: string; url: string; method: string; resource_type: string;
+		headers: Record<string, string>; post_data: string | null;
+		// populated by response_meta / response_body events
+		resp_status?: number; resp_status_text?: string; resp_mime?: string;
+		resp_headers?: Record<string, string>; resp_body?: string;
 	}
 
-	let browserUrl        = $state('https://');
-	let browserOpen       = $state(false);
-	let browserError      = $state('');
-	let capturedRequests  = $state<CapturedRequest[]>([]);
-	let selectedReqId     = $state<string | null>(null);
-	let browserApplyOpen  = $state(false);
-	let browserApplySel   = $state<Set<string>>(new Set());
+	// filter / search
+	let browserUrl       = $state('https://');
+	let browserOpen      = $state(false);
+	let browserError     = $state('');
+	let capturedRequests = $state<CapturedRequest[]>([]);
+	let selectedReqId    = $state<string | null>(null);
+	let searchQuery      = $state('');
+	let typeFilter       = $state('all');
 
-	const selectedReq = $derived(capturedRequests.find(r => r.id === selectedReqId) ?? null);
+	// detail UI
+	let detailTab        = $state<'headers' | 'payload' | 'response' | 'params'>('headers');
+	let prettyMode       = $state(true);
+	let applySelReq      = $state<Set<string>>(new Set());
+	let applySelResp     = $state<Set<string>>(new Set());
+	let applyFrom        = $state<'request' | 'response'>('request');
+	let applyPanelOpen   = $state(false);
+
+	// splitter
+	let splitWidth       = $state(272); // left list px
+
+	const TYPE_MAP: Record<string, string[]> = {
+		doc:  ['Document'],
+		xhr:  ['Xhr', 'Fetch'],
+		js:   ['Script'],
+		css:  ['Stylesheet'],
+		img:  ['Image', 'Media'],
+		font: ['Font'],
+		ws:   ['WebSocket'],
+	};
+	function typeGroup(t: string): string {
+		for (const [g, types] of Object.entries(TYPE_MAP)) {
+			if (types.includes(t)) return g;
+		}
+		return 'other';
+	}
+
+	const filteredRequests = $derived(capturedRequests.filter(r => {
+		if (typeFilter !== 'all') {
+			const g = typeGroup(r.resource_type);
+			if (typeFilter === 'other') { if (g !== 'other') return false; }
+			else if (g !== typeFilter) return false;
+		}
+		if (searchQuery) {
+			const q = searchQuery.toLowerCase();
+			if (!r.url.toLowerCase().includes(q) && !r.method.toLowerCase().includes(q)) return false;
+		}
+		return true;
+	}));
+
+	const selectedReq = $derived(
+		selectedReqId ? (capturedRequests.find(r => r.id === selectedReqId) ?? null) : null
+	);
 
 	let browserUnsub: (() => void) | null = null;
 
 	function openBrowser() {
 		if (!browserUrl.trim() || browserUrl === 'https://') return;
-		browserError = '';
-		capturedRequests = [];
-		selectedReqId = null;
-		browserApplyOpen = false;
-
+		browserError = ''; capturedRequests = []; selectedReqId = null; applyPanelOpen = false;
 		browserUnsub?.();
 		browserUnsub = onResponse('inspector_browser_event', (data: unknown) => {
-			const ev = data as { type: string; url?: string; message?: string; id?: string; method?: string; headers?: Record<string, string>; post_data?: string | null };
-			if (ev.type === 'error')   { browserError = ev.message ?? 'Unknown error'; browserOpen = false; }
-			if (ev.type === 'opened')  { browserOpen = true; }
-			if (ev.type === 'closed')  { browserOpen = false; }
+			const ev = data as {
+				type: string; url?: string; message?: string; id?: string;
+				method?: string; resource_type?: string;
+				headers?: Record<string, string>; post_data?: string | null;
+				status?: number; status_text?: string; mime_type?: string;
+				body?: string;
+			};
+			if (ev.type === 'error')  { browserError = ev.message ?? 'Unknown error'; browserOpen = false; return; }
+			if (ev.type === 'opened') { browserOpen = true; return; }
+			if (ev.type === 'closed') { browserOpen = false; return; }
+
 			if (ev.type === 'request') {
-				// deduplicate by id — Chrome sometimes fires the same request twice
-				if (!capturedRequests.some(r => r.id === ev.id)) {
-					capturedRequests = [...capturedRequests, {
-						id:        ev.id!,
-						url:       ev.url!,
-						method:    ev.method!,
-						headers:   ev.headers ?? {},
-						post_data: ev.post_data ?? null,
-					}];
-					if (!selectedReqId) selectedReqId = ev.id!;
-				}
+				if (capturedRequests.some(r => r.id === ev.id)) return;
+				capturedRequests = [...capturedRequests, {
+					id: ev.id!, url: ev.url!, method: ev.method!,
+					resource_type: ev.resource_type ?? 'Other',
+					headers: ev.headers ?? {}, post_data: ev.post_data ?? null,
+				}];
+				if (!selectedReqId) { selectedReqId = ev.id!; applySelReq = new Set(Object.keys(ev.headers ?? {})); }
+			} else if (ev.type === 'response_meta') {
+				capturedRequests = capturedRequests.map(r => r.id !== ev.id ? r : {
+					...r, resp_status: ev.status, resp_status_text: ev.status_text,
+					resp_mime: ev.mime_type, resp_headers: ev.headers,
+				});
+			} else if (ev.type === 'response_body') {
+				capturedRequests = capturedRequests.map(r => r.id !== ev.id ? r : { ...r, resp_body: ev.body });
 			}
 		});
-
 		send('inspect_browser_open', { url: browserUrl.trim() });
 	}
 
 	function closeBrowser() {
 		send('inspect_browser_close', {});
-		browserUnsub?.(); browserUnsub = null;
-		browserOpen = false;
+		browserUnsub?.(); browserUnsub = null; browserOpen = false;
 	}
 
-	function selectBrowserReq(id: string) {
-		selectedReqId = id;
-		browserApplyOpen = false;
-		const req = capturedRequests.find(r => r.id === id);
-		if (req) browserApplySel = new Set(Object.keys(req.headers));
+	function selectReq(id: string) {
+		if (selectedReqId === id) return;
+		selectedReqId = id; applyPanelOpen = false; detailTab = 'headers';
+		const r = capturedRequests.find(x => x.id === id);
+		if (r) { applySelReq = new Set(Object.keys(r.headers)); applySelResp = new Set(Object.keys(r.resp_headers ?? {})); }
 	}
 
 	function browserApplyToBlock() {
 		if (!selectedReq) return;
-		const selected = Object.entries(selectedReq.headers).filter(([k]) => browserApplySel.has(k));
-		if (!selected.length) return;
+		const src = applyFrom === 'request' ? selectedReq.headers : (selectedReq.resp_headers ?? {});
+		const sel = applyFrom === 'request' ? applySelReq : applySelResp;
+		const selected = Object.entries(src).filter(([k]) => sel.has(k));
 
 		const targetBlock = app.pipeline.blocks.find(
 			b => b.id === app.selectedBlockId && b.settings.type === 'HttpRequest'
@@ -94,34 +142,53 @@
 		if (!targetBlock || targetBlock.settings.type !== 'HttpRequest') {
 			browserError = 'Select an HTTP Request block first'; return;
 		}
-
 		const existing: [string, string][] = [...(targetBlock.settings.headers ?? [])];
 		for (const [key, value] of selected) {
 			const idx = existing.findIndex(([k]) => k.toLowerCase() === key.toLowerCase());
 			if (idx >= 0) existing[idx] = [existing[idx][0], value];
 			else existing.push([key, value]);
 		}
+		const needsUrl = !targetBlock.settings.url?.trim();
+		app.pipeline.blocks = app.pipeline.blocks.map(b => b.id !== targetBlock.id ? b : {
+			...b, settings: {
+				...b.settings, headers: existing,
+				...(needsUrl ? { url: selectedReq!.url } : {}),
+				...(selectedReq!.post_data && applyFrom === 'request' ? { body: selectedReq!.post_data } : {}),
+			}
+		});
+		applyPanelOpen = false; browserError = '';
+	}
 
-		// Also fill URL and body if they're present and block fields are empty
-		if (targetBlock.settings.url?.trim() === '' || !targetBlock.settings.url) {
-			const url = selectedReq.url;
-			app.pipeline.blocks = app.pipeline.blocks.map(b =>
-				b.id !== targetBlock.id ? b : { ...b, settings: { ...b.settings, url, headers: existing } }
-			);
-		} else {
-			app.pipeline.blocks = app.pipeline.blocks.map(b =>
-				b.id !== targetBlock.id ? b : { ...b, settings: { ...b.settings, headers: existing } }
-			);
+	// splitter drag
+	let splitterDragging = $state(false);
+	function startSplitDrag(e: MouseEvent) {
+		e.preventDefault();
+		const startX = e.clientX, startW = splitWidth;
+		splitterDragging = true;
+		function onMove(ev: MouseEvent) { splitWidth = Math.max(180, Math.min(480, startW + ev.clientX - startX)); }
+		function onUp() { splitterDragging = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); }
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+	}
+
+	// pretty print
+	function formatBody(body: string | null | undefined, mime?: string): string {
+		if (!body) return '';
+		if (!prettyMode) return body;
+		if (mime?.includes('json') || /^\s*[{\[]/.test(body)) {
+			try { return JSON.stringify(JSON.parse(body), null, 2); } catch {}
 		}
-
-		if (selectedReq.post_data && targetBlock.settings.type === 'HttpRequest') {
-			app.pipeline.blocks = app.pipeline.blocks.map(b =>
-				b.id !== targetBlock.id ? b : { ...b, settings: { ...b.settings, body: selectedReq!.post_data! } }
-			);
+		if (mime?.includes('x-www-form-urlencoded') || (body.includes('=') && body.includes('&') && !body.includes('\n'))) {
+			try {
+				const p = new URLSearchParams(body);
+				return Array.from(p.entries()).map(([k, v]) => `${decodeURIComponent(k)}: ${decodeURIComponent(v)}`).join('\n');
+			} catch {}
 		}
+		return body;
+	}
 
-		browserApplyOpen = false;
-		browserError = '';
+	function parseParams(url: string): [string, string][] {
+		try { return Array.from(new URL(url).searchParams.entries()); } catch { return []; }
 	}
 
 	function methodColor(m: string): string {
@@ -132,11 +199,32 @@
 		return 'text-muted-foreground';
 	}
 
+	function statusColor(s?: number): string {
+		if (!s) return 'text-muted-foreground/40';
+		if (s < 300) return 'text-green'; if (s < 400) return 'text-blue';
+		if (s < 500) return 'text-orange'; return 'text-red';
+	}
+
+	function typeBadgeClass(t: string): string {
+		const g = typeGroup(t);
+		if (g === 'doc') return 'bg-primary/20 text-primary';
+		if (g === 'xhr') return 'bg-orange/20 text-orange';
+		if (g === 'js')  return 'bg-yellow-500/20 text-yellow-400';
+		if (g === 'css') return 'bg-blue/20 text-blue';
+		if (g === 'img') return 'bg-purple/20 text-purple';
+		if (g === 'font') return 'bg-pink-500/20 text-pink-400';
+		return 'bg-muted/30 text-muted-foreground';
+	}
+
 	function shortUrl(u: string): string {
-		try {
-			const parsed = new URL(u);
-			return (parsed.pathname + parsed.search).slice(0, 60) || '/';
-		} catch { return u.slice(0, 60); }
+		try { const p = new URL(u); return (p.pathname + p.search) || '/'; } catch { return u; }
+	}
+
+	// custom checkbox (matches app theme)
+	function toggleCheck(set: Set<string>, key: string): Set<string> {
+		const n = new Set(set);
+		if (n.has(key)) n.delete(key); else n.add(key);
+		return n;
 	}
 
 	// ── Manual State ────────────────────────────────────────────────────────────
@@ -269,12 +357,6 @@
 		try { await navigator.clipboard.writeText(text); copied = key; setTimeout(() => { copied = null; }, 1500); } catch {}
 	}
 
-	function statusColor(c: number): string {
-		if (c >= 200 && c < 300) return 'text-green';
-		if (c >= 300 && c < 400) return 'text-blue';
-		if (c >= 400 && c < 500) return 'text-orange';
-		return 'text-red';
-	}
 
 	function prettyBody(b: string): string {
 		try { return JSON.stringify(JSON.parse(b), null, 2); } catch { return b; }
@@ -309,24 +391,37 @@
 	{#if mode === 'browser'}
 	<!-- ══ BROWSER CAPTURE MODE ═════════════════════════════════════════════ -->
 
-	<!-- Address bar -->
+	<!-- Address + controls bar -->
 	<div class="flex items-center gap-1.5 px-2 py-1.5 panel-raised shrink-0">
-		<input
-			type="text" bind:value={browserUrl}
-			placeholder="https://target.com/login"
+		<input type="text" bind:value={browserUrl} placeholder="https://target.com/login"
 			class="skeu-input text-[11px] font-mono flex-1 min-w-0"
 			onkeydown={(e) => { if (e.key === 'Enter' && !browserOpen) openBrowser(); }}
 		/>
 		{#if browserOpen}
 			<button class="skeu-btn flex items-center gap-1 text-[11px] text-red shrink-0" onclick={closeBrowser}>
-				<MonitorOff size={11} />Close Browser
+				<MonitorOff size={11} />Close
 			</button>
 		{:else}
 			<button class="skeu-btn flex items-center gap-1 text-[11px] shrink-0" onclick={openBrowser}>
 				<MonitorPlay size={11} />Open Browser
 			</button>
 		{/if}
-		<span class="text-[9px] text-muted-foreground/50 shrink-0">{capturedRequests.length} requests</span>
+		<button class="skeu-btn text-[10px] text-muted-foreground shrink-0"
+			onclick={() => { capturedRequests = []; selectedReqId = null; }}>Clear</button>
+		<span class="text-[9px] text-muted-foreground/50 shrink-0 tabular-nums">{filteredRequests.length}/{capturedRequests.length}</span>
+	</div>
+
+	<!-- Filter bar: search + type buttons -->
+	<div class="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0 bg-background/30 flex-wrap">
+		<input type="text" bind:value={searchQuery} placeholder="Filter by URL or method…"
+			class="skeu-input text-[10px] font-mono flex-1 min-w-[120px]"
+		/>
+		{#each [['all','All'],['doc','Doc'],['xhr','XHR'],['js','JS'],['css','CSS'],['img','Img'],['font','Font'],['ws','WS'],['other','Other']] as [g, lbl]}
+			<button
+				class="px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors {typeFilter === g ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'}"
+				onclick={() => typeFilter = g as string}
+			>{lbl}</button>
+		{/each}
 	</div>
 
 	{#if browserError}
@@ -334,7 +429,6 @@
 	{/if}
 
 	{#if !browserOpen && capturedRequests.length === 0}
-		<!-- Empty state -->
 		<div class="flex flex-col items-center justify-center flex-1 gap-3 text-muted-foreground panel-inset">
 			<MonitorPlay size={32} class="text-muted-foreground/20" />
 			<div class="text-[11px] text-center leading-relaxed max-w-[280px]">
@@ -343,108 +437,213 @@
 				Every HTTP request is captured here in real time.
 			</div>
 			<div class="text-[9px] text-muted-foreground/40 text-center max-w-[260px]">
-				Select a captured request and click <strong>Apply to Block</strong> to fill your HTTP Request block automatically.
+				Select any request to inspect headers, body, and response.<br/>
+				Use <strong>Apply to Block</strong> to fill your HTTP block instantly.
 			</div>
 		</div>
 	{:else}
+	<!-- ── Main split: resizable list | detail ─────────────────────── -->
+	<div class="flex flex-1 min-h-0 overflow-hidden" class:select-none={splitterDragging}>
 
-	<!-- Split: request list | request detail -->
-	<div class="flex flex-1 min-h-0 overflow-hidden">
-
-		<!-- ── LEFT: Request list ──────────────────────────────────────────── -->
-		<div class="w-[260px] shrink-0 flex flex-col border-r border-border bg-background/40">
-			<div class="px-2 py-1 text-[9px] uppercase tracking-widest text-muted-foreground font-semibold border-b border-border/50 flex items-center gap-1">
-				<List size={9} />Captured Requests
+		<!-- LEFT: request list -->
+		<div class="shrink-0 flex flex-col border-r border-border bg-background/40 overflow-hidden" style="width:{splitWidth}px">
+			<!-- Column header -->
+			<div class="grid text-[8px] uppercase tracking-wider text-muted-foreground/60 font-semibold border-b border-border/50 px-1 py-0.5 shrink-0"
+				style="grid-template-columns: 36px 28px 1fr 32px">
+				<span>Meth</span><span>Type</span><span>Path</span><span class="text-right">St</span>
 			</div>
 			<div class="flex-1 overflow-y-auto">
-				{#if capturedRequests.length === 0}
+				{#if filteredRequests.length === 0}
 					<div class="p-3 text-[9px] text-muted-foreground/40 italic text-center">
-						{browserOpen ? 'Waiting for requests… log in to the site' : 'No requests captured'}
+						{browserOpen ? 'Waiting for requests…' : capturedRequests.length ? 'No matches' : 'No requests captured'}
 					</div>
 				{:else}
-					{#each capturedRequests as req}
+					{#each filteredRequests as req}
+						{@const isSelected = selectedReqId === req.id}
 						<button
-							class="w-full text-left px-2 py-1 border-b border-border/30 hover:bg-accent/20 transition-colors flex flex-col gap-0 {selectedReqId === req.id ? 'bg-primary/10 border-l-2 border-l-primary' : ''}"
-							onclick={() => selectBrowserReq(req.id)}
+							class="w-full text-left px-1 py-[3px] border-b border-border/20 hover:bg-accent/20 transition-colors grid items-center gap-1 {isSelected ? 'bg-primary/10 border-l-2 border-l-primary' : ''}"
+							style="grid-template-columns: 36px 28px 1fr 32px"
+							onclick={() => selectReq(req.id)}
 						>
-							<div class="flex items-center gap-1.5">
-								<span class="font-mono font-bold text-[9px] shrink-0 {methodColor(req.method)} w-[34px]">{req.method}</span>
-								{#if req.post_data}
-									<span class="text-[8px] bg-orange/20 text-orange px-0.5 rounded shrink-0">BODY</span>
-								{/if}
-							</div>
-							<span class="font-mono text-[9px] text-foreground/70 truncate block max-w-full leading-tight">{shortUrl(req.url)}</span>
+							<span class="font-mono font-bold text-[9px] {methodColor(req.method)} truncate">{req.method}</span>
+							<span class="text-[7px] px-0.5 py-px rounded truncate {typeBadgeClass(req.resource_type)}">{req.resource_type.slice(0,4)}</span>
+							<span class="font-mono text-[9px] text-foreground/75 truncate leading-tight">{shortUrl(req.url)}</span>
+							<span class="text-right font-mono text-[9px] tabular-nums {statusColor(req.resp_status)}">{req.resp_status ?? '—'}</span>
 						</button>
 					{/each}
 				{/if}
 			</div>
 		</div>
 
-		<!-- ── RIGHT: Request detail ──────────────────────────────────────── -->
-		<div class="flex-1 flex flex-col min-w-0">
+		<!-- Drag splitter -->
+		<div
+			class="w-[4px] shrink-0 cursor-col-resize hover:bg-primary/40 bg-border/50 transition-colors flex items-center justify-center"
+			onmousedown={startSplitDrag}
+		></div>
+
+		<!-- RIGHT: detail pane -->
+		<div class="flex-1 flex flex-col min-w-0 overflow-hidden">
 			{#if selectedReq}
-				<!-- URL + Apply bar -->
-				<div class="flex items-center gap-2 px-2 py-0.5 border-b border-border bg-background/60 shrink-0 flex-wrap">
+				<!-- Request summary bar -->
+				<div class="flex items-center gap-2 px-2 py-0.5 border-b border-border bg-background/60 shrink-0 min-w-0">
 					<span class="font-mono font-bold text-[10px] {methodColor(selectedReq.method)} shrink-0">{selectedReq.method}</span>
-					<span class="font-mono text-primary truncate flex-1 min-w-0 text-[10px]" title={selectedReq.url}>{selectedReq.url}</span>
+					{#if selectedReq.resp_status}
+						<span class="font-mono font-bold text-[10px] {statusColor(selectedReq.resp_status)} shrink-0">{selectedReq.resp_status}</span>
+					{/if}
+					<span class="font-mono text-primary truncate flex-1 min-w-0 text-[9px]" title={selectedReq.url}>{selectedReq.url}</span>
+					<span class="text-[8px] text-muted-foreground/50 shrink-0">{selectedReq.resp_mime ?? ''}</span>
 					<button
-						class="skeu-btn flex items-center gap-1 text-[11px] text-primary shrink-0"
-						onclick={() => { browserApplyOpen = !browserApplyOpen; browserApplySel = new Set(Object.keys(selectedReq!.headers)); }}
-					><ArrowRight size={11} />Apply to Block</button>
+						class="skeu-btn flex items-center gap-1 text-[10px] text-primary shrink-0"
+						onclick={() => { applyPanelOpen = !applyPanelOpen; }}
+					><ArrowRight size={10} />Apply to Block</button>
 				</div>
 
-				<!-- Apply panel -->
-				{#if browserApplyOpen}
-					<div class="px-2 py-2 border-b border-border bg-background shrink-0">
-						<div class="flex items-center gap-2 mb-1.5">
-							<span class="text-[10px] font-medium">Apply to HTTP Request Block</span>
-							<div class="flex-1"></div>
-							<button class="text-[9px] text-primary hover:underline" onclick={() => browserApplySel = new Set(Object.keys(selectedReq!.headers))}>All</button>
-							<button class="text-[9px] text-muted-foreground hover:underline" onclick={() => browserApplySel = new Set()}>None</button>
+				<!-- Apply to Block panel -->
+				{#if applyPanelOpen}
+					<div class="px-2 py-1.5 border-b border-border bg-background shrink-0">
+						<div class="flex items-center gap-1.5 mb-1">
+							<span class="text-[10px] font-medium flex-1">Apply to HTTP Block</span>
+							<!-- Source toggle -->
+							<div class="flex rounded border border-border overflow-hidden">
+								{#each [['request','Request Hdrs'],['response','Response Hdrs']] as [v, l]}
+									<button
+										class="px-1.5 py-0.5 text-[9px] transition-colors {applyFrom === v ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent/20'}"
+										onclick={() => { applyFrom = v as typeof applyFrom; }}
+									>{l}</button>
+								{/each}
+							</div>
+							<button class="text-[9px] text-primary hover:underline"
+								onclick={() => {
+									const src = applyFrom === 'request' ? selectedReq!.headers : (selectedReq!.resp_headers ?? {});
+									if (applyFrom === 'request') applySelReq = new Set(Object.keys(src));
+									else applySelResp = new Set(Object.keys(src));
+								}}>All</button>
+							<button class="text-[9px] text-muted-foreground hover:underline"
+								onclick={() => { if (applyFrom === 'request') applySelReq = new Set(); else applySelResp = new Set(); }}>None</button>
 						</div>
-						<div class="max-h-[90px] overflow-y-auto space-y-0.5 mb-2 select-text">
-							{#each Object.entries(selectedReq.headers) as [key, value]}
-								<label class="flex items-center gap-1.5 cursor-pointer">
-									<input type="checkbox"
-										checked={browserApplySel.has(key)}
-										onchange={(e) => {
-											const n = new Set(browserApplySel);
-											if ((e.target as HTMLInputElement).checked) n.add(key); else n.delete(key);
-											browserApplySel = n;
-										}}
-										class="w-3 h-3 shrink-0"
-									/>
-									<span class="text-orange font-mono shrink-0 w-[140px] truncate text-[10px]">{key}:</span>
-									<span class="text-foreground font-mono truncate flex-1 min-w-0 text-[10px]">{value}</span>
-								</label>
+						<div class="max-h-[100px] overflow-y-auto space-y-px mb-1.5 select-text">
+							{#each Object.entries(applyFrom === 'request' ? selectedReq.headers : (selectedReq.resp_headers ?? {})) as [key, value]}
+								{@const applySel = applyFrom === 'request' ? applySelReq : applySelResp}
+								<button class="w-full flex items-center gap-1.5 hover:bg-accent/20 rounded px-0.5"
+									onclick={() => {
+										if (applyFrom === 'request') applySelReq = toggleCheck(applySelReq, key);
+										else applySelResp = toggleCheck(applySelResp, key);
+									}}>
+									<!-- Custom themed checkbox -->
+									<span class="w-3 h-3 rounded border border-border flex items-center justify-center shrink-0 transition-colors {applySel.has(key) ? 'bg-primary border-primary' : 'bg-background'}">
+										{#if applySel.has(key)}<Check size={8} class="text-primary-foreground" />{/if}
+									</span>
+									<span class="text-orange font-mono text-[9px] shrink-0 w-[130px] truncate text-left">{key}:</span>
+									<span class="text-foreground font-mono text-[9px] truncate flex-1 min-w-0 text-left">{value}</span>
+								</button>
 							{/each}
 						</div>
-						{#if selectedReq.post_data}
-							<label class="flex items-center gap-1.5 cursor-pointer mb-2">
-								<input type="checkbox" bind:checked={browserApplyOpen} class="w-3 h-3 shrink-0 opacity-0 pointer-events-none" />
-								<span class="text-[9px] text-muted-foreground">Body will also be applied ({selectedReq.post_data.length} chars)</span>
-							</label>
-						{/if}
-						<button class="skeu-btn text-[11px] text-primary" onclick={browserApplyToBlock}>
-							Apply {browserApplySel.size} header{browserApplySel.size !== 1 ? 's' : ''}{selectedReq.post_data ? ' + body' : ''} to block
+						<button class="skeu-btn text-[10px] text-primary" onclick={browserApplyToBlock}>
+							Apply {(applyFrom === 'request' ? applySelReq : applySelResp).size} headers{selectedReq.post_data && applyFrom === 'request' ? ' + body' : ''} to block
 						</button>
 					</div>
 				{/if}
 
-				<!-- Headers + body -->
-				<div class="flex-1 overflow-auto panel-inset min-h-0 p-2 space-y-1 select-text">
-					<div class="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Request Headers</div>
-					{#each Object.entries(selectedReq.headers) as [key, value]}
-						<div class="flex items-baseline gap-1 font-mono text-[10px] group">
-							<span class="text-orange shrink-0 w-[200px] truncate">{key}:</span>
-							<span class="text-foreground break-all flex-1 min-w-0">{value}</span>
-						</div>
+				<!-- Detail tabs -->
+				<div class="flex items-center border-b border-border shrink-0">
+					{#each [
+						['headers', 'Headers'],
+						['payload', 'Payload'],
+						['response','Response'],
+						['params',  'Params'],
+					] as [tid, tlbl]}
+						<button
+							class="px-2.5 py-0.5 text-[10px] {detailTab === tid ? 'text-foreground font-medium border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}"
+							onclick={() => detailTab = tid as typeof detailTab}
+						>{tlbl}</button>
 					{/each}
-					{#if selectedReq.post_data}
-						<div class="mt-2 pt-2 border-t border-border/50">
-							<div class="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Request Body</div>
-							<pre class="font-mono text-[10px] text-foreground whitespace-pre-wrap break-words bg-background/40 rounded p-1">{selectedReq.post_data}</pre>
+					<div class="flex-1"></div>
+					<!-- Pretty toggle -->
+					{#if detailTab === 'payload' || detailTab === 'response'}
+						<div class="flex rounded border border-border overflow-hidden mr-1.5">
+							{#each [['pretty','Pretty'],['raw','Raw']] as [m,l]}
+								<button
+									class="px-1.5 py-0.5 text-[9px] transition-colors {prettyMode === (m==='pretty') ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent/20'}"
+									onclick={() => prettyMode = (m === 'pretty')}
+								>{l}</button>
+							{/each}
 						</div>
+					{/if}
+				</div>
+
+				<!-- Tab content -->
+				<div class="flex-1 overflow-auto panel-inset min-h-0 select-text">
+					{#if detailTab === 'headers'}
+						<div class="p-2 space-y-3">
+							<!-- Request headers -->
+							<div>
+								<div class="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1 flex items-center gap-1">
+									Request Headers
+									<span class="text-[8px] normal-case text-muted-foreground/40">({Object.keys(selectedReq.headers).length})</span>
+								</div>
+								{#each Object.entries(selectedReq.headers) as [key, value]}
+									<div class="flex items-baseline gap-1 font-mono text-[10px] group py-px">
+										<span class="text-orange shrink-0 w-[190px] truncate">{key}:</span>
+										<span class="text-foreground break-all flex-1 min-w-0">{value}</span>
+										<button class="shrink-0 opacity-0 group-hover:opacity-100 ml-1" onclick={() => copyText(key, `${key}: ${value}`)}>
+											{#if copied === key}<Check size={8} class="text-green" />{:else}<Copy size={8} class="text-muted-foreground" />{/if}
+										</button>
+									</div>
+								{/each}
+							</div>
+							<!-- Response headers -->
+							{#if selectedReq.resp_headers}
+								<div class="border-t border-border/50 pt-2">
+									<div class="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1 flex items-center gap-1">
+										Response Headers
+										<span class="text-[8px] normal-case text-muted-foreground/40 font-normal {statusColor(selectedReq.resp_status)}">{selectedReq.resp_status} {selectedReq.resp_status_text}</span>
+									</div>
+									{#each Object.entries(selectedReq.resp_headers) as [key, value]}
+										<div class="flex items-baseline gap-1 font-mono text-[10px] group py-px">
+											<span class="text-blue shrink-0 w-[190px] truncate">{key}:</span>
+											<span class="text-foreground break-all flex-1 min-w-0">{value}</span>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</div>
+
+					{:else if detailTab === 'payload'}
+						<div class="p-2">
+							{#if selectedReq.post_data}
+								<pre class="font-mono text-[10px] text-foreground whitespace-pre-wrap break-all">{formatBody(selectedReq.post_data, 'application/x-www-form-urlencoded')}</pre>
+							{:else}
+								<div class="text-muted-foreground/40 text-[10px] italic">No request body</div>
+							{/if}
+						</div>
+
+					{:else if detailTab === 'response'}
+						<div class="p-2">
+							{#if selectedReq.resp_body !== undefined}
+								<pre class="font-mono text-[10px] text-foreground whitespace-pre-wrap break-all">{formatBody(selectedReq.resp_body, selectedReq.resp_mime)}</pre>
+							{:else if selectedReq.resp_status}
+								<div class="text-muted-foreground/40 text-[10px] italic">
+									{selectedReq.resp_status >= 300 ? 'Redirect — no body' : 'Loading response body…'}
+								</div>
+							{:else}
+								<div class="text-muted-foreground/40 text-[10px] italic">Waiting for response…</div>
+							{/if}
+						</div>
+
+					{:else if detailTab === 'params'}
+						{#if parseParams(selectedReq.url).length}
+							<div class="p-2">
+								<div class="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1">Query Parameters</div>
+								{#each parseParams(selectedReq.url) as [k, v]}
+									<div class="flex items-baseline gap-1 font-mono text-[10px] py-px">
+										<span class="text-primary shrink-0 w-[160px] truncate">{decodeURIComponent(k)}:</span>
+										<span class="text-foreground break-all flex-1 min-w-0">{decodeURIComponent(v)}</span>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<div class="p-2 text-muted-foreground/40 text-[10px] italic">No query parameters</div>
+						{/if}
 					{/if}
 				</div>
 			{:else}
