@@ -69,6 +69,8 @@ pub struct AppState {
     pub hits: Vec<HitResult>,
     pub job_manager: JobManager,
     pub plugin_manager: Arc<PluginManager>,
+    /// Abort handle for the active browser-capture task (Inspector panel).
+    pub browser_capture_abort: Option<tokio::task::AbortHandle>,
 }
 
 impl AppState {
@@ -92,6 +94,7 @@ impl AppState {
             hits: Vec::new(),
             job_manager: JobManager::new(),
             plugin_manager: Arc::new(pm),
+            browser_capture_abort: None,
         }
     }
 }
@@ -273,6 +276,14 @@ pub fn handle_ipc_cmd(
         }
         "site_inspect" => {
             handlers_runner::site_inspect(state, data, eval_js);
+            None
+        }
+        "inspect_browser_open" => {
+            handlers_runner::inspect_browser_open(state, data, eval_js);
+            None
+        }
+        "inspect_browser_close" => {
+            handlers_runner::inspect_browser_close(state, eval_js);
             None
         }
 
