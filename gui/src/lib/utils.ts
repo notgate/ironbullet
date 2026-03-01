@@ -27,6 +27,4 @@ export function formatDuration(secs: number): string {
 	return `${s}s`;
 }
 
-export function escHtml(s: string): string {
-	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+

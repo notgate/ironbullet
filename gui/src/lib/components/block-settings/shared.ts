@@ -396,9 +396,6 @@ export function getConversionMeta(op: string) {
 	return CONVERSION_OPS.find(o => o.value === op) || CONVERSION_OPS[0];
 }
 
-/** @deprecated use getConversionMeta */
-export function getDataConversionMeta(op: string) { return getConversionMeta(op); }
-
 export const FILE_SYSTEM_OPS = [
 	{ value: 'CreatePath',       label: 'Create Path',           hasContent: false, hasDest: false, hasOutput: false },
 	{ value: 'FileAppend',       label: 'File Append',           hasContent: true,  hasDest: false, hasOutput: false },

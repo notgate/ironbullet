@@ -47,13 +47,11 @@ fn gen_lambda_rust(input_var: &str, lambda_expr: &str, pad: &str) -> String {
 fn translate_lambda_chain(expr: &str) -> String {
     let chars: Vec<char> = expr.chars().collect();
     let len = chars.len();
-    let mut pos = 0usize;
-
     // Consume the base variable name (__v or anything up to '.' / '[')
     let base_end = chars.iter().position(|&c| c == '.' || c == '[').unwrap_or(len);
     let base = expr[..base_end].trim();
     let mut rust = base.to_string();
-    pos = base_end;
+    let mut pos = base_end;
 
     while pos < len {
         match chars[pos] {
