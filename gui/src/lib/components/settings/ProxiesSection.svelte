@@ -34,6 +34,7 @@
 		const group: ProxyGroup = { name: newGroupName.trim(), mode: 'Rotate', sources: [], cpm_per_proxy: 0 };
 		app.pipeline.proxy_settings.proxy_groups = [...app.pipeline.proxy_settings.proxy_groups, group];
 		newGroupName = '';
+		send('save_pipeline', {});
 	}
 
 	function removeProxyGroup(idx: number) {
@@ -43,6 +44,7 @@
 		if (app.pipeline.proxy_settings.active_group === removed.name) {
 			app.pipeline.proxy_settings.active_group = '';
 		}
+		send('save_pipeline', {});
 	}
 
 	function addGroupSource(gi: number) {
@@ -50,6 +52,7 @@
 		const newSrc: ProxySource = { source_type: 'File', value: '', refresh_interval_secs: 0 };
 		groups[gi] = { ...groups[gi], sources: [...groups[gi].sources, newSrc] };
 		app.pipeline.proxy_settings.proxy_groups = groups;
+		send('save_pipeline', {});
 	}
 
 	function updateGroupSourceType(gi: number, si: number, type_val: string) {
@@ -58,12 +61,14 @@
 		srcs[si] = { ...srcs[si], default_proxy_type: type_val as ProxySourceType_t || undefined };
 		groups[gi] = { ...groups[gi], sources: srcs };
 		app.pipeline.proxy_settings.proxy_groups = groups;
+		send('save_pipeline', {});
 	}
 
 	function removeGroupSource(gi: number, si: number) {
 		const groups = [...app.pipeline.proxy_settings.proxy_groups];
 		groups[gi] = { ...groups[gi], sources: groups[gi].sources.filter((_: ProxySource, i: number) => i !== si) };
 		app.pipeline.proxy_settings.proxy_groups = groups;
+		send('save_pipeline', {});
 	}
 
 	function checkProxies() {

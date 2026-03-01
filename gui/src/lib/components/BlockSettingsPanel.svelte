@@ -3,7 +3,6 @@
 	import { send } from '$lib/ipc';
 	import type { Block } from '$lib/types';
 	import X from '@lucide/svelte/icons/x';
-	import Save from '@lucide/svelte/icons/save';
 	import { BLOCK_DOCS, hasVars } from './block-settings/shared';
 	import HttpRequestSettings from './block-settings/HttpRequestSettings.svelte';
 	import ParseSettings from './block-settings/ParseSettings.svelte';
@@ -74,14 +73,6 @@
 				>
 					<span class="text-[10px] font-semibold">?</span>
 					<span class="text-[9px]">Docs</span>
-				</button>
-				<button
-					class="flex items-center gap-0.5 px-1.5 py-0.5 rounded hover:bg-green/20 text-green hover:text-green transition-colors"
-					onclick={() => send('save_pipeline', {})}
-					title="Save pipeline (Ctrl+S)"
-				>
-					<Save size={12} />
-					<span class="text-[9px]">Save</span>
 				</button>
 				<button
 					class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"

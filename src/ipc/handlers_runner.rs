@@ -159,9 +159,11 @@ pub(super) fn start_runner(
             let pipeline = data.get("pipeline")
                 .and_then(|v| serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok())
                 .unwrap_or_else(|| s.pipeline.clone());
+            let proxy_mode = pipeline.proxy_settings.proxy_mode.clone();
             let pm = s.plugin_manager.clone();
             let runner = Arc::new(RunnerOrchestrator::new(
                 pipeline,
+                proxy_mode,
                 data_pool,
                 proxy_pool,
                 sidecar_tx,

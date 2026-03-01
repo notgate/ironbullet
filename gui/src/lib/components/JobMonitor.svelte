@@ -257,6 +257,7 @@ Error handling
 	let newJobDelaySecs = $state(0);
 	let proxyCheckUrl = $state('http://www.google.com');
 	let proxyCheckList = $state('');
+	let proxyCheckType = $state('http');
 	// Per-job proxy override for Config jobs
 	let newJobProxyMode = $state<'pipeline' | 'file' | 'group'>('pipeline');
 	let newJobProxyFile = $state('');
@@ -357,6 +358,7 @@ Error handling
 			job_type: newJobType,
 			proxy_check_url: newJobType === 'ProxyCheck' ? proxyCheckUrl : undefined,
 			proxy_check_list: newJobType === 'ProxyCheck' ? proxyCheckList : undefined,
+			proxy_check_type: newJobType === 'ProxyCheck' ? proxyCheckType : undefined,
 			data_source: newJobType === 'Config' ? {
 				source_type: newJobDataType,
 				value: newJobDataSource,
@@ -420,7 +422,8 @@ Error handling
 
 	function jobProgress(job: Job): number {
 		if (!job.stats || job.stats.total === 0) return 0;
-		return job.stats.processed / job.stats.total * 100;
+		const numerator = (job.stats as any).consumed ?? job.stats.processed;
+		return Math.min(100, numerator / job.stats.total * 100);
 	}
 </script>
 
@@ -632,10 +635,23 @@ Error handling
 						</div>
 						<p class="text-[9px] text-muted-foreground mt-0.5">One proxy per line: <code class="font-mono">host:port</code> or <code class="font-mono">http://host:port</code></p>
 					</div>
-					<div class="col-span-2">
+					<div>
+						<label class="text-muted-foreground text-[10px]">Proxy Type</label>
+						<SkeuSelect
+							value={proxyCheckType}
+							onValueChange={(v) => { proxyCheckType = v; }}
+							options={[
+								{ value: 'http',   label: 'HTTP'   },
+								{ value: 'https',  label: 'HTTPS'  },
+								{ value: 'socks4', label: 'SOCKS4' },
+								{ value: 'socks5', label: 'SOCKS5' },
+							]}
+						/>
+						<p class="text-[9px] text-muted-foreground mt-0.5">Applied to bare <code class="font-mono">host:port</code> lines without a scheme prefix.</p>
+					</div>
+					<div>
 						<label class="text-muted-foreground text-[10px]">Ping URL</label>
 						<input type="text" bind:value={proxyCheckUrl} placeholder="http://www.google.com" class="skeu-input w-full text-xs font-mono" />
-						<p class="text-[9px] text-muted-foreground mt-0.5">Alive → Hits · Dead (timeout/refused) → Fails · Unreachable → Errors.</p>
 					</div>
 				{/if}
 			</div>

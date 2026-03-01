@@ -37,10 +37,14 @@ impl ProxyPool {
     }
 
     pub fn from_file(path: &str, ban_duration_secs: u64) -> std::io::Result<Self> {
+        Self::from_file_with_type(path, ban_duration_secs, None)
+    }
+
+    pub fn from_file_with_type(path: &str, ban_duration_secs: u64, default_type: Option<ProxyType>) -> std::io::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let proxies: Vec<ProxyEntry> = content.lines()
             .filter(|l| !l.trim().is_empty())
-            .filter_map(|l| parse_proxy_line(l.trim()))
+            .filter_map(|l| parse_proxy_line(l.trim(), default_type))
             .collect();
         Ok(Self::new(proxies, ban_duration_secs))
     }
@@ -116,8 +120,9 @@ impl std::fmt::Display for ProxyEntry {
     }
 }
 
-fn parse_proxy_line(line: &str) -> Option<ProxyEntry> {
-    // Formats: TYPE:HOST:PORT:USER:PASS, HOST:PORT, protocol://HOST:PORT
+fn parse_proxy_line(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
+    let fallback = default_type.unwrap_or(ProxyType::Http);
+
     if line.starts_with("http://") || line.starts_with("https://") ||
        line.starts_with("socks4://") || line.starts_with("socks5://") {
         let (proxy_type, rest) = if let Some(rest) = line.strip_prefix("socks5://") {
@@ -135,20 +140,20 @@ fn parse_proxy_line(line: &str) -> Option<ProxyEntry> {
     let parts: Vec<&str> = line.split(':').collect();
     match parts.len() {
         2 => Some(ProxyEntry {
-            proxy_type: ProxyType::Http,
+            proxy_type: fallback,
             address: format!("{}:{}", parts[0], parts[1]),
         }),
         4 => Some(ProxyEntry {
-            proxy_type: ProxyType::Http,
+            proxy_type: fallback,
             address: format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1]),
         }),
         5 => {
             let proxy_type = match parts[0].to_lowercase().as_str() {
-                "http" => ProxyType::Http,
-                "https" => ProxyType::Https,
+                "http"   => ProxyType::Http,
+                "https"  => ProxyType::Https,
                 "socks4" => ProxyType::Socks4,
                 "socks5" => ProxyType::Socks5,
-                _ => ProxyType::Http,
+                _        => fallback,
             };
             Some(ProxyEntry {
                 proxy_type,

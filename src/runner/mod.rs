@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
-use crate::pipeline::Pipeline;
+use crate::pipeline::{Pipeline, ProxyMode};
 use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 use data_pool::DataPool;
 use proxy_pool::ProxyPool;
@@ -39,6 +39,7 @@ pub struct ResultEntry {
 pub struct RunnerStats {
     pub total: usize,
     pub processed: usize,
+    pub consumed: usize,
     pub hits: usize,
     pub fails: usize,
     pub bans: usize,
@@ -47,7 +48,6 @@ pub struct RunnerStats {
     pub cpm: f64,
     pub active_threads: usize,
     pub elapsed_secs: f64,
-    /// Last ≤100 results from the ring buffer — powers the live result log in the UI.
     #[serde(default)]
     pub recent_results: Vec<ResultEntry>,
 }
@@ -58,6 +58,7 @@ const RESULT_FEED_CAP: usize = 100;
 
 pub struct RunnerOrchestrator {
     pipeline: Pipeline,
+    proxy_mode: ProxyMode,
     data_pool: Arc<DataPool>,
     proxy_pool: Arc<ProxyPool>,
     sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
@@ -68,12 +69,12 @@ pub struct RunnerOrchestrator {
     hits_tx: mpsc::Sender<HitResult>,
     output_writer: Option<Arc<output::OutputWriter>>,
     plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
-    /// Ring buffer of recent per-check results for the live UI log.
     result_feed: Arc<Mutex<VecDeque<ResultEntry>>>,
 }
 
 pub(crate) struct RunnerStatsInner {
     processed: AtomicUsize,
+    consumed: AtomicUsize,
     hits: AtomicUsize,
     fails: AtomicUsize,
     bans: AtomicUsize,
@@ -93,6 +94,7 @@ pub struct HitResult {
 impl RunnerOrchestrator {
     pub fn new(
         pipeline: Pipeline,
+        proxy_mode: ProxyMode,
         data_pool: DataPool,
         proxy_pool: ProxyPool,
         sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
@@ -110,6 +112,7 @@ impl RunnerOrchestrator {
         };
         Self {
             pipeline,
+            proxy_mode,
             data_pool: Arc::new(data_pool),
             proxy_pool: Arc::new(proxy_pool),
             sidecar_tx,
@@ -118,6 +121,7 @@ impl RunnerOrchestrator {
             paused: Arc::new(AtomicBool::new(false)),
             stats: Arc::new(RunnerStatsInner {
                 processed: AtomicUsize::new(0),
+                consumed: AtomicUsize::new(0),
                 hits: AtomicUsize::new(0),
                 fails: AtomicUsize::new(0),
                 bans: AtomicUsize::new(0),
@@ -143,10 +147,20 @@ impl RunnerOrchestrator {
             .as_millis() as u64;
         self.stats.start_time_ms.store(now, Ordering::SeqCst);
 
+        let gradual = self.pipeline.runner_settings.start_threads_gradually;
+        let delay_ms = self.pipeline.runner_settings.gradual_delay_ms as u64;
+        let max_retries = self.pipeline.runner_settings.max_retries;
+        let proxy_mode = self.proxy_mode.clone();
+
         let mut handles = Vec::new();
 
-        for _ in 0..self.thread_count {
+        for i in 0..self.thread_count {
+            if gradual && i > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
+
             let pipeline = self.pipeline.clone();
+            let proxy_mode_w = proxy_mode.clone();
             let data_pool = self.data_pool.clone();
             let proxy_pool = self.proxy_pool.clone();
             let sidecar_tx = self.sidecar_tx.clone();
@@ -161,6 +175,8 @@ impl RunnerOrchestrator {
             let handle = tokio::spawn(async move {
                 worker::run_worker(
                     pipeline,
+                    proxy_mode_w,
+                    max_retries,
                     data_pool,
                     proxy_pool,
                     sidecar_tx,
@@ -179,6 +195,8 @@ impl RunnerOrchestrator {
         for handle in handles {
             let _ = handle.await;
         }
+
+        self.running.store(false, Ordering::SeqCst);
     }
 
     pub fn pause(&self) {
@@ -211,6 +229,7 @@ impl RunnerOrchestrator {
         RunnerStats {
             total: self.data_pool.total(),
             processed,
+            consumed: self.data_pool.consumed(),
             hits: self.stats.hits.load(Ordering::Relaxed),
             fails: self.stats.fails.load(Ordering::Relaxed),
             bans: self.stats.bans.load(Ordering::Relaxed),
