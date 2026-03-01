@@ -700,51 +700,67 @@ pub(super) fn inspect_browser_open(
                 }
             };
 
-            tokio::spawn(async move { while handler.next().await.is_some() {} });
+            // Spawn CDP handler; send a signal when Chrome's connection closes so
+            // the event loop below can break immediately instead of hanging.
+            let (died_tx, mut died_rx) = tokio::sync::oneshot::channel::<()>();
+            tokio::spawn(async move {
+                while handler.next().await.is_some() {}
+                let _ = died_tx.send(());
+            });
 
-            // new_page(url) opens Chrome and waits for initial load — reliable.
-            // "about:blank" hangs chromiumoxide because it waits for DomContentEventFired
-            // which doesn't reliably fire for about:blank in all Chrome builds.
-            let page = match browser.new_page(&url).await {
-                Ok(p) => p,
-                Err(e) => {
+            // new_page navigates to the URL; 30s timeout avoids hanging on slow sites.
+            let page = match tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                browser.new_page(&url),
+            ).await {
+                Ok(Ok(p)) => p,
+                Ok(Err(e)) => {
                     emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Page open failed: {}", e) }));
+                    return;
+                }
+                Err(_) => {
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": "Page navigation timed out (30s)" }));
                     return;
                 }
             };
 
-            // Generous buffer so response bodies are available for getResponseBody
-            if page.execute(EnableParams {
+            // Enable CDP Network domain with generous buffers.
+            match tokio::time::timeout(std::time::Duration::from_secs(10), page.execute(EnableParams {
                 max_total_buffer_size:    Some(100 * 1024 * 1024),
                 max_resource_buffer_size: Some(5   * 1024 * 1024),
                 max_post_data_size:       Some(5   * 1024 * 1024),
-            }).await.is_err() {
-                emit_sync(&js, serde_json::json!({ "type": "error", "message": "CDP Network.enable failed" }));
-                return;
+            })).await {
+                Ok(Ok(_)) => {}
+                _ => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "CDP Network.enable failed or timed out" })); return; }
             }
 
             // Register all listeners before the reload so no requests are missed.
-            let mut ev_req  = match page.event_listener::<EventRequestWillBeSent>().await {
-                Ok(e) => e,
-                Err(e) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("{e}") })); return; }
+            let mut ev_req = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                page.event_listener::<EventRequestWillBeSent>(),
+            ).await {
+                Ok(Ok(e)) => e,
+                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("{e}") })); return; }
+                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "Listener setup timed out" })); return; }
             };
-            let mut ev_resp = match page.event_listener::<EventResponseReceived>().await {
-                Ok(e) => e, Err(_) => return,
-            };
-            let mut ev_done = match page.event_listener::<EventLoadingFinished>().await {
-                Ok(e) => e, Err(_) => return,
-            };
+            let mut ev_resp = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                page.event_listener::<EventResponseReceived>(),
+            ).await { Ok(Ok(e)) => e, _ => return };
+            let mut ev_done = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                page.event_listener::<EventLoadingFinished>(),
+            ).await { Ok(Ok(e)) => e, _ => return };
 
-            // Signal frontend that capture is live, then reload the page.
-            // Page.reload always fires a full network event sequence even when
-            // the URL hasn't changed, so the event loop captures everything.
+            // Signal frontend that capture is live, then reload to capture from start.
             emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
 
-            let _ = page.execute(ReloadParams {
-                ignore_cache:                  Some(true),
-                script_to_evaluate_on_load:    None,
-                loader_id:                     None,
-            }).await;
+            // Fire reload; don't block the event loop if it hangs.
+            tokio::time::timeout(std::time::Duration::from_secs(15), page.execute(ReloadParams {
+                ignore_cache:               Some(true),
+                script_to_evaluate_on_load: None,
+                loader_id:                  None,
+            })).await.ok();
 
             let page_req  = page.clone();
             let page_body = page.clone();
@@ -814,6 +830,10 @@ pub(super) fn inspect_browser_open(
                             }
                         }
                     }
+                    // Chrome process closed — CDP handler task exited and fired
+                    // this signal. Break immediately so we don't hang forever
+                    // waiting for stream events that will never arrive.
+                    _ = &mut died_rx => break,
                     else => break,
                 }
             }
