@@ -651,9 +651,15 @@ pub(super) fn inspect_browser_open(
         let state2 = state.clone();
 
         let capture_task = handle.spawn(async move {
-            {
+            // Abort any prior capture session and wait for Chrome to fully exit
+            // before launching a new instance — avoids CDP port conflicts that
+            // cause Browser::launch() to hang indefinitely on relaunch.
+            let had_prior = {
                 let mut s = state.lock().await;
-                if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
+                if let Some(h) = s.browser_capture_abort.take() { h.abort(); true } else { false }
+            }; // MutexGuard dropped here, lock released
+            if had_prior {
+                tokio::time::sleep(std::time::Duration::from_millis(700)).await;
             }
 
             let url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -673,12 +679,22 @@ pub(super) fn inspect_browser_open(
                 }
             };
 
-            let (browser, mut handler) = match Browser::launch(config).await {
-                Ok(pair) => pair,
-                Err(e) => {
+            let (browser, mut handler) = match tokio::time::timeout(
+                std::time::Duration::from_secs(20),
+                Browser::launch(config),
+            ).await {
+                Ok(Ok(pair)) => pair,
+                Ok(Err(e)) => {
                     emit_sync(&js, serde_json::json!({
                         "type": "error",
                         "message": format!("Failed to launch Chrome. Is Google Chrome installed?\n{}", e)
+                    }));
+                    return;
+                }
+                Err(_) => {
+                    emit_sync(&js, serde_json::json!({
+                        "type": "error",
+                        "message": "Chrome launch timed out (20s). A previous instance may still be running."
                     }));
                     return;
                 }
@@ -815,15 +831,17 @@ pub(super) fn inspect_browser_open(
 
 pub(super) fn inspect_browser_close(
     state: Arc<Mutex<AppState>>,
-    eval_js: impl Fn(String) + Send + 'static,
+    _eval_js: impl Fn(String) + Send + 'static,
 ) {
+    // The frontend already updates browserOpen/browserLoading synchronously in
+    // closeBrowser() before this IPC even arrives. Emitting a "closed" event here
+    // would hit the *next* session's listener (registered moments later) and
+    // incorrectly reset its loading state. Just abort the task silently.
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
-            let resp = IpcResponse::ok("inspector_browser_event", serde_json::json!({ "type": "closed" }));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
     }
 }

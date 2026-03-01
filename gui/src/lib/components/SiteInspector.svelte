@@ -26,15 +26,32 @@
 		resp_headers?: Record<string, string>; resp_body?: string;
 	}
 
-	// filter / search
-	let browserUrl       = $state('https://');
+	// filter / search — capturedRequests persisted in localStorage so popping
+	// the panel out to an external window (which remounts the component) doesn't
+	// wipe the captured session. browserOpen/browserLoading are never persisted
+	// since we can't know if Chrome is still alive after a remount.
+	let browserUrl       = $state((() => { try { return localStorage.getItem('ib_inspector_url') || 'https://'; } catch { return 'https://'; } })());
 	let browserOpen      = $state(false);
 	let browserLoading   = $state(false);
 	let browserError     = $state('');
-	let capturedRequests = $state<CapturedRequest[]>([]);
-	let selectedReqId    = $state<string | null>(null);
+	let capturedRequests = $state<CapturedRequest[]>((() => { try { const r = localStorage.getItem('ib_inspector_captures'); return r ? JSON.parse(r) as CapturedRequest[] : []; } catch { return []; } })());
+	let selectedReqId    = $state<string | null>((() => { try { return localStorage.getItem('ib_inspector_sel') || null; } catch { return null; } })());
 	let searchQuery      = $state('');
 	let typeFilter       = $state('all');
+
+	// Persist captures + selection to localStorage whenever they change.
+	// Cap at 300 requests; truncate response bodies to avoid exceeding quota.
+	$effect(() => {
+		try {
+			const slim = capturedRequests.slice(-300).map(r => ({
+				...r,
+				resp_body: r.resp_body ? r.resp_body.slice(0, 4096) : r.resp_body,
+			}));
+			localStorage.setItem('ib_inspector_captures', JSON.stringify(slim));
+		} catch {}
+	});
+	$effect(() => { try { if (selectedReqId) localStorage.setItem('ib_inspector_sel', selectedReqId); else localStorage.removeItem('ib_inspector_sel'); } catch {} });
+	$effect(() => { try { localStorage.setItem('ib_inspector_url', browserUrl); } catch {} });
 
 	// detail UI
 	let detailTab        = $state<'headers' | 'payload' | 'response' | 'params'>('headers');
