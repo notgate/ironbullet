@@ -101,12 +101,14 @@ pub(super) fn create_job(
                 }
             }
 
-            // ── proxy check fields ────────────────────────────────────────────
             if let Some(url) = data.get("proxy_check_url").and_then(|v| v.as_str()) {
                 if !url.is_empty() { job.proxy_check_url = url.to_string(); }
             }
             if let Some(list) = data.get("proxy_check_list").and_then(|v| v.as_str()) {
                 if !list.is_empty() { job.proxy_check_list = list.to_string(); }
+            }
+            if let Some(pt) = data.get("proxy_check_type").and_then(|v| v.as_str()) {
+                job.proxy_check_type = pt.to_string();
             }
 
             // ── per-job proxy override (config jobs only) ─────────────────────
@@ -241,34 +243,24 @@ pub(super) fn start_job(
                     let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(256);
                     inner_handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
 
-                    // ── Hit receiver: runner_hit events + store hit ──────────────
                     let js_tx2 = js_tx.clone();
                     inner_handle.spawn(async move {
                         while let Some(hit) = hits_rx.recv().await {
                             let mut s = state2.lock().await;
-                            // Only store alive proxies in the hits DB — dead/error go to the
-                            // live feed only so the Hits Database stays clean.
                             let status = hit.captures.get("status").map(|s| s.as_str()).unwrap_or("alive");
                             if status == "alive" {
                                 s.job_manager.add_hit(uuid, hit.clone());
                             }
-                            s.job_manager.update_job_stats(uuid);
-                            // Push runner_hit for live feed — includes job_id so frontend
-                            // can route it to the correct per-job hits view.
                             let hit_payload = serde_json::json!({
                                 "job_id": uuid.to_string(),
                                 "data_line": hit.data_line,
                                 "captures": hit.captures,
                                 "proxy": hit.proxy,
                             });
+                            drop(s);
                             let hit_resp = IpcResponse::ok("runner_hit", hit_payload);
                             let _ = js_tx2.send(format!("window.__ipc_callback({})",
                                 serde_json::to_string(&hit_resp).unwrap_or_default())).await;
-                            // Also update jobs_list for stat columns
-                            let jobs = s.job_manager.list_jobs();
-                            let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
-                            let _ = js_tx2.send(format!("window.__ipc_callback({})",
-                                serde_json::to_string(&resp).unwrap_or_default())).await;
                         }
 
                         // All tasks done — mark Completed
@@ -366,17 +358,11 @@ pub(super) fn start_job(
                     }
                 });
 
-                // Spawn runner
                 let state4 = state.clone();
                 inner_handle.spawn(async move {
                     runner.start().await;
-                    // Mark completed
                     let mut s = state4.lock().await;
-                    if let Some(job) = s.job_manager.get_job_mut(job_id) {
-                        job.state = ironbullet::runner::job::JobState::Completed;
-                        job.completed = Some(chrono::Utc::now());
-                    }
-                    s.job_manager.update_job_stats(job_id);
+                    s.job_manager.complete_job(job_id);
                     let jobs = s.job_manager.list_jobs();
                     let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
                     let _ = js_tx.send(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())).await;
@@ -530,6 +516,9 @@ pub(super) fn update_job(
                     }
                     if let Some(list) = data.get("proxy_check_list").and_then(|v| v.as_str()) {
                         job.proxy_check_list = list.to_string();
+                    }
+                    if let Some(pt) = data.get("proxy_check_type").and_then(|v| v.as_str()) {
+                        job.proxy_check_type = pt.to_string();
                     }
                 }
             }

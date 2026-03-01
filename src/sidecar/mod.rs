@@ -21,8 +21,8 @@ pub struct SidecarManager {
     process: Option<Child>,
     pending: PendingMap,
     writer_tx: Option<mpsc::Sender<String>>,
-    /// Stored so jobs can get a sender without restarting the sidecar
     req_tx: Option<ReqTx>,
+    alive: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl SidecarManager {
@@ -32,6 +32,7 @@ impl SidecarManager {
             pending: Arc::new(DashMap::new()),
             writer_tx: None,
             req_tx: None,
+            alive: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -62,13 +63,20 @@ impl SidecarManager {
         // relative paths the sidecar uses resolve correctly.
         let sidecar_dir = path.parent().unwrap_or(std::path::Path::new("."));
 
-        let mut child = Command::new(sidecar_path)
-            .current_dir(sidecar_dir)
+        let mut cmd = Command::new(sidecar_path);
+        cmd.current_dir(sidecar_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
+            .kill_on_drop(true);
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+
+        let mut child = cmd.spawn()
             .map_err(|e| crate::error::AppError::Sidecar(format!(
                 "Failed to spawn sidecar '{}': {}\n\
                  (file exists={}, is_executable={})",
@@ -109,8 +117,10 @@ impl SidecarManager {
             }
         });
 
-        // Reader task — routes responses back to waiting callers via DashMap (lock-free)
+        self.alive.store(true, std::sync::atomic::Ordering::SeqCst);
+
         let pending = self.pending.clone();
+        let alive_flag = self.alive.clone();
         tokio::spawn(async move {
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
@@ -121,6 +131,7 @@ impl SidecarManager {
                     }
                 }
             }
+            alive_flag.store(false, std::sync::atomic::Ordering::SeqCst);
         });
 
         // Request multiplexer channel — register correlation then enqueue write.
@@ -167,9 +178,10 @@ impl SidecarManager {
         }
         self.writer_tx = None;
         self.req_tx = None;
+        self.alive.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn is_running(&self) -> bool {
-        self.process.is_some()
+        self.process.is_some() && self.alive.load(std::sync::atomic::Ordering::Relaxed)
     }
 }

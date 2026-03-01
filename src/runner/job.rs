@@ -39,6 +39,8 @@ pub struct Job {
     pub proxy_check_url: String,
     #[serde(default)]
     pub proxy_check_list: String,
+    #[serde(default)]
+    pub proxy_check_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +130,7 @@ impl Default for Job {
             stats: super::RunnerStats {
                 total: 0,
                 processed: 0,
+                consumed: 0,
                 hits: 0,
                 fails: 0,
                 bans: 0,
@@ -141,6 +144,7 @@ impl Default for Job {
             job_type: JobType::Config,
             proxy_check_url: default_proxy_check_url(),
             proxy_check_list: String::new(),
+            proxy_check_type: String::new(),
         }
     }
 }

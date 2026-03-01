@@ -177,7 +177,7 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
     if skip > 0 || take > 0 {
         let lines: Vec<String> = {
             let mut all = Vec::with_capacity(total);
-            while let Some(line) = data_pool.next_line() {
+            while let Some((line, _)) = data_pool.next_line() {
                 all.push(line);
             }
             let skipped = all.into_iter().skip(skip);
@@ -209,16 +209,17 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
     let (hits_tx, mut hits_rx) = mpsc::channel::<HitResult>(1024);
 
     let debug = cli.debug;
+    let proxy_mode = pipeline.proxy_settings.proxy_mode.clone();
 
-    // Build orchestrator
     let orchestrator = Arc::new(RunnerOrchestrator::new(
         pipeline,
+        proxy_mode,
         data_pool,
         proxy_pool,
         sidecar_tx,
         threads,
         hits_tx,
-        None, // no plugin manager in CLI mode
+        None,
     ));
 
     eprintln!("[*] starting with {} threads", threads);

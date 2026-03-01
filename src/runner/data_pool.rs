@@ -4,7 +4,7 @@ use std::sync::Mutex;
 pub struct DataPool {
     lines: Vec<String>,
     index: AtomicUsize,
-    retry_queue: Mutex<Vec<String>>,
+    retry_queue: Mutex<Vec<(String, u32)>>,
 }
 
 impl DataPool {
@@ -25,26 +25,28 @@ impl DataPool {
         Ok(Self::new(lines))
     }
 
-    pub fn next_line(&self) -> Option<String> {
-        // Check retry queue first
+    pub fn next_line(&self) -> Option<(String, u32)> {
         if let Ok(mut queue) = self.retry_queue.lock() {
-            if let Some(line) = queue.pop() {
-                return Some(line);
+            if let Some(entry) = queue.pop() {
+                return Some(entry);
             }
         }
-
         let idx = self.index.fetch_add(1, Ordering::Relaxed);
-        self.lines.get(idx).cloned()
+        self.lines.get(idx).map(|l| (l.clone(), 0))
     }
 
-    pub fn return_line(&self, line: String) {
+    pub fn return_line(&self, line: String, retry_count: u32) {
         if let Ok(mut queue) = self.retry_queue.lock() {
-            queue.push(line);
+            queue.push((line, retry_count));
         }
     }
 
     pub fn total(&self) -> usize {
         self.lines.len()
+    }
+
+    pub fn consumed(&self) -> usize {
+        self.index.load(Ordering::Relaxed).min(self.lines.len())
     }
 
     pub fn remaining(&self) -> usize {

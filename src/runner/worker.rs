@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use uuid::Uuid;
 
 use crate::pipeline::engine::ExecutionContext;
-use crate::pipeline::{BotStatus, Pipeline};
+use crate::pipeline::{BotStatus, Pipeline, ProxyMode};
 use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 use super::data_pool::DataPool;
 use super::proxy_pool::ProxyPool;
@@ -14,6 +14,8 @@ use super::{HitResult, ResultEntry, RunnerStatsInner, RESULT_FEED_CAP};
 
 pub(crate) async fn run_worker(
     pipeline: Pipeline,
+    proxy_mode: ProxyMode,
+    max_retries: u32,
     data_pool: Arc<DataPool>,
     proxy_pool: Arc<ProxyPool>,
     sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
@@ -27,7 +29,6 @@ pub(crate) async fn run_worker(
 ) {
     stats.active_threads.fetch_add(1, Ordering::Relaxed);
 
-    // Create a session for this worker
     let session_id = Uuid::new_v4().to_string();
     let new_session_req = SidecarRequest {
         id: Uuid::new_v4().to_string(),
@@ -45,15 +46,19 @@ pub(crate) async fn run_worker(
         follow_redirects: Some(true),
         max_redirects: Some(8),
         ssl_verify: None,
-                    custom_ciphers: None,
-
+        custom_ciphers: None,
         ..Default::default()
     };
     let (resp_tx, _) = oneshot::channel();
     let _ = sidecar_tx.send((new_session_req, resp_tx)).await;
 
+    let sticky_proxy: Option<String> = if matches!(proxy_mode, ProxyMode::Sticky) {
+        proxy_pool.next_proxy()
+    } else {
+        None
+    };
+
     while running.load(Ordering::Relaxed) {
-        // Check pause
         while paused.load(Ordering::Relaxed) && running.load(Ordering::Relaxed) {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
@@ -61,21 +66,20 @@ pub(crate) async fn run_worker(
             break;
         }
 
-        // Get next data line
-        let data_line = match data_pool.next_line() {
-            Some(line) => line,
-            None => break, // All data consumed
+        let (data_line, retry_count) = match data_pool.next_line() {
+            Some(entry) => entry,
+            None => break,
         };
 
-        // Get proxy if needed
-        let proxy = proxy_pool.next_proxy();
+        let proxy = match &sticky_proxy {
+            Some(p) => Some(p.clone()),
+            None => proxy_pool.next_proxy(),
+        };
 
-        // Set up execution context
         let mut ctx = ExecutionContext::new(session_id.clone());
         ctx.proxy = proxy.clone();
         ctx.plugin_manager = plugin_manager.clone();
 
-        // Parse data line into input variables
         let parts: Vec<&str> = data_line.split(pipeline.data_settings.separator).collect();
         for (i, slice_name) in pipeline.data_settings.slices.iter().enumerate() {
             if let Some(part) = parts.get(i) {
@@ -83,13 +87,13 @@ pub(crate) async fn run_worker(
             }
         }
 
-        // Execute pipeline
         let result = ctx.execute_blocks(&pipeline.blocks, &sidecar_tx).await;
 
-        // Record stats
         stats.processed.fetch_add(1, Ordering::Relaxed);
+        if retry_count == 0 {
+            stats.consumed.fetch_add(1, Ordering::Relaxed);
+        }
 
-        // Timestamp for the live feed entry
         let ts_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -108,8 +112,6 @@ pub(crate) async fn run_worker(
                     ow.write_hit(&hit, BotStatus::Success);
                 }
                 let _ = hits_tx.send(hit).await;
-
-                // Push to live feed
                 if let Ok(mut feed) = result_feed.try_lock() {
                     if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
                     feed.push_back(ResultEntry {
@@ -153,40 +155,39 @@ pub(crate) async fn run_worker(
                     });
                 }
             }
-            BotStatus::Retry => {
-                stats.retries.fetch_add(1, Ordering::Relaxed);
-                data_pool.return_line(data_line.clone());
-                if let Ok(mut feed) = result_feed.try_lock() {
-                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
-                    feed.push_back(ResultEntry {
-                        data_line: data_line.clone(),
-                        status: "RETRY".into(),
-                        proxy: proxy.clone(),
-                        captures: Default::default(),
-                        error: None,
-                        ts_ms,
-                    });
-                }
-            }
-            BotStatus::Error => {
-                stats.errors.fetch_add(1, Ordering::Relaxed);
-                let err_msg = result.as_ref().err().map(|e| e.to_string());
-                if let Ok(mut feed) = result_feed.try_lock() {
-                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
-                    feed.push_back(ResultEntry {
-                        data_line: data_line.clone(),
-                        status: "ERROR".into(),
-                        proxy: proxy.clone(),
-                        captures: Default::default(),
-                        error: err_msg,
-                        ts_ms,
-                    });
+            BotStatus::Retry | BotStatus::Error => {
+                let is_retry_status = matches!(ctx.status, BotStatus::Retry);
+                if is_retry_status && retry_count < max_retries {
+                    stats.retries.fetch_add(1, Ordering::Relaxed);
+                    data_pool.return_line(data_line.clone(), retry_count + 1);
+                    if let Ok(mut feed) = result_feed.try_lock() {
+                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        feed.push_back(ResultEntry {
+                            data_line: data_line.clone(),
+                            status: "RETRY".into(),
+                            proxy: proxy.clone(),
+                            captures: Default::default(),
+                            error: None,
+                            ts_ms,
+                        });
+                    }
+                } else {
+                    stats.errors.fetch_add(1, Ordering::Relaxed);
+                    let err_msg = result.as_ref().err().map(|e| e.to_string());
+                    if let Ok(mut feed) = result_feed.try_lock() {
+                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        feed.push_back(ResultEntry {
+                            data_line: data_line.clone(),
+                            status: "ERROR".into(),
+                            proxy: proxy.clone(),
+                            captures: Default::default(),
+                            error: err_msg,
+                            ts_ms,
+                        });
+                    }
                 }
             }
             _ => {
-                // BotStatus::None — no KeyCheck classified this entry.
-                // Could mean: no KeyCheck block, conditions didn't match, or pipeline was empty.
-                // Push to live feed so users can diagnose; do NOT count against any stat bucket.
                 if result.is_err() {
                     stats.errors.fetch_add(1, Ordering::Relaxed);
                     let err_msg = result.err().map(|e| e.to_string());
@@ -202,7 +203,6 @@ pub(crate) async fn run_worker(
                         });
                     }
                 } else {
-                    // Pipeline ran OK but no status was set — show as NONE in live feed
                     if let Ok(mut feed) = result_feed.try_lock() {
                         if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
                         feed.push_back(ResultEntry {
@@ -219,7 +219,6 @@ pub(crate) async fn run_worker(
         }
     }
 
-    // Close session
     let close_req = SidecarRequest {
         id: Uuid::new_v4().to_string(),
         action: "close_session".into(),
@@ -227,9 +226,7 @@ pub(crate) async fn run_worker(
         method: None, url: None, headers: None, body: None, timeout: None,
         proxy: None, browser: None, ja3: None, http2fp: None,
         follow_redirects: None, max_redirects: None,
-        ssl_verify: None,
-                    custom_ciphers: None,
-
+        ssl_verify: None, custom_ciphers: None,
         ..Default::default()
     };
     let (resp_tx, _) = oneshot::channel();

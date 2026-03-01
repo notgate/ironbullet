@@ -100,14 +100,10 @@ fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<P
     Some(ProxyEntry { proxy_type, address })
 }
 
-/// Lightweight stats handle for proxy-check jobs.
-/// Proxy check tasks don't use a RunnerOrchestrator, so we track stats here with atomics.
 pub struct ProxyCheckHandle {
     pub processed: Arc<std::sync::atomic::AtomicUsize>,
     pub hits:      Arc<std::sync::atomic::AtomicUsize>,
-    /// Dead proxies (connected but no HTTP response / timeout)
     pub fails:     Arc<std::sync::atomic::AtomicUsize>,
-    /// Error proxies (couldn't even build HTTP client for this proxy)
     pub errors:    Arc<std::sync::atomic::AtomicUsize>,
     pub total:     usize,
     pub running:   Arc<std::sync::atomic::AtomicBool>,
@@ -127,9 +123,10 @@ impl ProxyCheckHandle {
         RunnerStats {
             total:    self.total,
             processed,
+            consumed: processed,
             hits:     self.hits.load(Ordering::Relaxed),
             fails:    self.fails.load(Ordering::Relaxed),
-            bans:     0, // proxy checks don't have a ban concept
+            bans:     0,
             retries:  0,
             errors:   self.errors.load(Ordering::Relaxed),
             cpm,
@@ -309,18 +306,18 @@ impl JobManager {
         };
 
         let data_pool = DataPool::new(data_lines);
-        // Per-job proxy override: if proxy_source.settings has a non-None mode, use it.
-        // Otherwise fall back to the pipeline's own proxy_settings.
-        let proxy_pool = if !matches!(job.proxy_source.settings.proxy_mode, ProxyMode::None) {
-            eprintln!("[start_job] using per-job proxy override (mode={:?})", job.proxy_source.settings.proxy_mode);
-            build_proxy_pool(&job.proxy_source.settings)
+        let proxy_settings_ref = if !matches!(job.proxy_source.settings.proxy_mode, ProxyMode::None) {
+            &job.proxy_source.settings
         } else {
-            build_proxy_pool(&job.pipeline.proxy_settings)
+            &job.pipeline.proxy_settings
         };
+        let proxy_mode = proxy_settings_ref.proxy_mode.clone();
+        let proxy_pool = build_proxy_pool(proxy_settings_ref);
         let (hits_tx, hits_rx) = mpsc::channel::<HitResult>(1024);
 
         let runner = Arc::new(RunnerOrchestrator::new(
             job.pipeline.clone(),
+            proxy_mode,
             data_pool,
             proxy_pool,
             sidecar_tx,
@@ -364,12 +361,19 @@ impl JobManager {
 
     pub fn update_job_stats(&mut self, id: Uuid) {
         if let Some(mut stats) = self.get_job_stats(id) {
-            // Strip recent_results before storing into job.stats — jobs_list broadcasts
-            // should be lightweight.  recent_results is only sent via job_stats_update.
             stats.recent_results = Vec::new();
             if let Some(job) = self.get_job_mut(id) {
                 job.stats = stats;
             }
+        }
+    }
+
+    pub fn complete_job(&mut self, id: Uuid) {
+        self.update_job_stats(id);
+        self.runners.remove(&id);
+        if let Some(job) = self.get_job_mut(id) {
+            job.state = super::job::JobState::Completed;
+            job.completed = Some(chrono::Utc::now());
         }
     }
 }
@@ -386,9 +390,10 @@ impl JobManager {
         let job = self.jobs.iter_mut().find(|j| j.id == id)?;
         if job.job_type != JobType::ProxyCheck { return None; }
 
-        let proxy_list_path = job.proxy_check_list.clone();
-        let check_url       = job.proxy_check_url.clone();
-        let thread_count    = job.thread_count.max(1);
+        let proxy_list_path  = job.proxy_check_list.clone();
+        let check_url        = job.proxy_check_url.clone();
+        let thread_count     = job.thread_count.max(1);
+        let proxy_check_type = job.proxy_check_type.clone();
         job.state   = JobState::Running;
         job.started = Some(Utc::now());
 
@@ -432,30 +437,36 @@ impl JobManager {
         let semaphore = Arc::new(tokio::sync::Semaphore::new(thread_count));
 
         for proxy in proxies {
-            let tx        = hits_tx.clone();
-            let url       = check_url.clone();
-            let sem       = semaphore.clone();
-            let running   = running_flag.clone();
-            let processed = processed_ctr.clone();
-            let hits      = hits_ctr.clone();
-            let fails     = fails_ctr.clone();
-            let errors    = errors_ctr.clone();
+            let tx            = hits_tx.clone();
+            let url           = check_url.clone();
+            let sem           = semaphore.clone();
+            let running       = running_flag.clone();
+            let processed     = processed_ctr.clone();
+            let hits          = hits_ctr.clone();
+            let fails         = fails_ctr.clone();
+            let errors        = errors_ctr.clone();
+            let check_type    = proxy_check_type.clone();
 
             handle.spawn(async move {
                 let _permit = sem.acquire().await.ok();
 
-                // Honour cancellation: bail immediately if job was stopped
                 if !running.load(Ordering::Relaxed) { return; }
 
-                let start = std::time::Instant::now();
-                let proxy_url = if proxy.starts_with("http://")
+                let has_scheme = proxy.starts_with("http://")
                     || proxy.starts_with("https://")
                     || proxy.starts_with("socks5://")
-                    || proxy.starts_with("socks4://")
-                {
+                    || proxy.starts_with("socks4://");
+
+                let proxy_url = if has_scheme {
                     proxy.clone()
                 } else {
-                    format!("http://{}", proxy)
+                    let scheme = match check_type.to_lowercase().as_str() {
+                        "socks5" => "socks5",
+                        "socks4" => "socks4",
+                        "https"  => "https",
+                        _        => "http",
+                    };
+                    format!("{}://{}", scheme, proxy)
                 };
 
                 // Build client first — a bad proxy URL can fail at this stage
