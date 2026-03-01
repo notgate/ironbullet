@@ -626,3 +626,147 @@ pub(super) fn site_inspect(
         });
     }
 }
+
+// ── Browser capture (Inspector panel) ─────────────────────────────────────────
+
+/// Launch a headed Chrome browser at `url`, capture all network requests via CDP,
+/// and stream them to the frontend as `inspector_browser_event` IPC events.
+pub(super) fn inspect_browser_open(
+    state: Arc<Mutex<AppState>>,
+    data: serde_json::Value,
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    use chromiumoxide::browser::{Browser, BrowserConfig};
+    use chromiumoxide::cdp::browser_protocol::network::{
+        EnableParams, EventRequestWillBeSent, GetRequestPostDataParams,
+    };
+    use futures::StreamExt;
+
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        // JS forwarding channel — eval_js must stay on one thread
+        let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(512);
+        handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
+
+        let js = js_tx.clone();
+        let state2 = state.clone();
+
+        let capture_task = handle.spawn(async move {
+            // Cancel any previous capture
+            {
+                let mut s = state.lock().await;
+                if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
+            }
+
+            let url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if url.is_empty() { return; }
+
+            fn emit_sync(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
+                let resp = IpcResponse::ok("inspector_browser_event", payload);
+                let _ = tx.try_send(format!("window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()));
+            }
+
+            let config = match BrowserConfig::builder().with_head().build() {
+                Ok(c) => c,
+                Err(e) => {
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Browser config: {}", e) }));
+                    return;
+                }
+            };
+
+            let (browser, mut handler) = match Browser::launch(config).await {
+                Ok(pair) => pair,
+                Err(e) => {
+                    emit_sync(&js, serde_json::json!({
+                        "type": "error",
+                        "message": format!("Failed to launch Chrome. Is Google Chrome installed?\n{}", e)
+                    }));
+                    return;
+                }
+            };
+
+            // Drive Chrome's CDP event loop in background
+            tokio::spawn(async move { while handler.next().await.is_some() {} });
+
+            let page = match browser.new_page(&url).await {
+                Ok(p) => p,
+                Err(e) => {
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Page open failed: {}", e) }));
+                    return;
+                }
+            };
+
+            if page.execute(EnableParams::default()).await.is_err() {
+                emit_sync(&js, serde_json::json!({ "type": "error", "message": "Failed to enable CDP Network domain" }));
+                return;
+            }
+
+            emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
+
+            let mut events = match page.event_listener::<EventRequestWillBeSent>().await {
+                Ok(e) => e,
+                Err(e) => {
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Event listener failed: {}", e) }));
+                    return;
+                }
+            };
+
+            let page2 = page.clone();
+            while let Some(event) = events.next().await {
+                let req = &event.request;
+                let method   = req.method.clone();
+                let url_cap  = req.url.clone();
+
+                let headers: std::collections::HashMap<String, String> = req.headers.inner()
+                    .as_object()
+                    .map(|obj| obj.iter()
+                        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                        .collect())
+                    .unwrap_or_default();
+
+                let post_data: Option<String> = if req.has_post_data.unwrap_or(false) {
+                    page2.execute(GetRequestPostDataParams { request_id: event.request_id.clone() })
+                        .await.ok().map(|r| r.result.post_data)
+                } else {
+                    None
+                };
+
+                emit_sync(&js, serde_json::json!({
+                    "type":      "request",
+                    "id":        event.request_id.inner().clone(),
+                    "url":       url_cap,
+                    "method":    method,
+                    "headers":   headers,
+                    "post_data": post_data,
+                }));
+            }
+
+            // Stream ended — browser window was closed by user
+            emit_sync(&js, serde_json::json!({ "type": "closed" }));
+        });
+
+        // Store abort handle so close handler / re-open can cancel this task
+        let abort = capture_task.abort_handle();
+        handle.spawn(async move {
+            let mut s = state2.lock().await;
+            s.browser_capture_abort = Some(abort);
+        });
+    }
+}
+
+/// Close the active browser-capture session.
+pub(super) fn inspect_browser_close(
+    state: Arc<Mutex<AppState>>,
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        handle.spawn(async move {
+            let mut s = state.lock().await;
+            if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
+            let resp = IpcResponse::ok("inspector_browser_event", serde_json::json!({ "type": "closed" }));
+            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+        });
+    }
+}
