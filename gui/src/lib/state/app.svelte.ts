@@ -146,7 +146,7 @@ function createAppState(): AppState {
 		data_settings: { wordlist_type: 'Credentials', separator: ':', slices: ['USER', 'PASS'] },
 		proxy_settings: { proxy_mode: 'None', proxy_sources: [], ban_duration_secs: 300, max_retries_before_ban: 3, cpm_per_proxy: 0, proxy_groups: [], active_group: '' },
 		browser_settings: { browser: 'chrome', ja3: null, http2_fingerprint: null, user_agent: null },
-		runner_settings: { threads: 100, skip: 0, take: 0, continue_statuses: ['Retry'], custom_status_name: 'CUSTOM', max_retries: 3, concurrent_per_proxy: 0, start_threads_gradually: true, gradual_delay_ms: 100, automatic_thread_count: false, lower_threads_on_retry: false, retry_thread_reduction_pct: 25, pause_on_ratelimit: false, only_proxyless: false },
+		runner_settings: { threads: 100, skip: 0, take: 0, continue_statuses: ['Retry'], custom_status_name: 'CUSTOM', max_retries: 3, concurrent_per_proxy: 0, start_threads_gradually: false, gradual_delay_ms: 100, automatic_thread_count: false, lower_threads_on_retry: false, retry_thread_reduction_pct: 25, pause_on_ratelimit: false, only_proxyless: false },
 		output_settings: { save_to_file: true, save_to_database: false, include_response: false, output_directory: 'results', output_format: '{data} | {captures}', database_path: '', output_format_type: 'Txt', capture_filters: [] },
 	});
 

@@ -152,11 +152,23 @@ impl RunnerOrchestrator {
         let max_retries = self.pipeline.runner_settings.max_retries;
         let proxy_mode = self.proxy_mode.clone();
 
+        // Cap total ramp-up time to 3 s so high thread counts don't stall.
+        // e.g. 1000 threads with delay_ms=100 would otherwise take 100 s to start.
+        let effective_delay_ms = if gradual && self.thread_count > 1 {
+            let cap = (3000u64 / self.thread_count as u64).max(1);
+            delay_ms.min(cap)
+        } else {
+            delay_ms
+        };
+
+        eprintln!("[runner] starting {} threads (gradual={}, delay={}ms)",
+            self.thread_count, gradual, if gradual { effective_delay_ms } else { 0 });
+
         let mut handles = Vec::new();
 
         for i in 0..self.thread_count {
             if gradual && i > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(effective_delay_ms)).await;
             }
 
             let pipeline = self.pipeline.clone();
