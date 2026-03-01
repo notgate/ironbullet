@@ -639,7 +639,7 @@ pub(super) fn inspect_browser_open(
         EnableParams, EventRequestWillBeSent, EventResponseReceived,
         EventLoadingFinished, GetRequestPostDataParams, GetResponseBodyParams,
     };
-    use chromiumoxide::cdp::browser_protocol::page::NavigateParams;
+    use chromiumoxide::cdp::browser_protocol::page::ReloadParams;
     use futures::StreamExt;
 
     let rt = tokio::runtime::Handle::try_current();
@@ -686,10 +686,10 @@ pub(super) fn inspect_browser_open(
 
             tokio::spawn(async move { while handler.next().await.is_some() {} });
 
-            // Open a blank page first so we can enable network and register
-            // listeners before any navigation occurs — this ensures the initial
-            // page load requests are captured, not just subsequent interactions.
-            let page = match browser.new_page("about:blank").await {
+            // new_page(url) opens Chrome and waits for initial load — reliable.
+            // "about:blank" hangs chromiumoxide because it waits for DomContentEventFired
+            // which doesn't reliably fire for about:blank in all Chrome builds.
+            let page = match browser.new_page(&url).await {
                 Ok(p) => p,
                 Err(e) => {
                     emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Page open failed: {}", e) }));
@@ -707,7 +707,7 @@ pub(super) fn inspect_browser_open(
                 return;
             }
 
-            // Register all listeners before navigating so no requests are missed.
+            // Register all listeners before the reload so no requests are missed.
             let mut ev_req  = match page.event_listener::<EventRequestWillBeSent>().await {
                 Ok(e) => e,
                 Err(e) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("{e}") })); return; }
@@ -719,18 +719,15 @@ pub(super) fn inspect_browser_open(
                 Ok(e) => e, Err(_) => return,
             };
 
-            // Signal frontend that capture is ready, then kick off navigation.
-            // Using execute(NavigateParams) fires the CDP command and returns
-            // immediately without waiting for load — the event loop below
-            // captures everything from the first byte.
+            // Signal frontend that capture is live, then reload the page.
+            // Page.reload always fires a full network event sequence even when
+            // the URL hasn't changed, so the event loop captures everything.
             emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
 
-            let _ = page.execute(NavigateParams {
-                url:             url.clone(),
-                referrer:        None,
-                transition_type: None,
-                frame_id:        None,
-                referrer_policy: None,
+            let _ = page.execute(ReloadParams {
+                ignore_cache:                  Some(true),
+                script_to_evaluate_on_load:    None,
+                loader_id:                     None,
             }).await;
 
             let page_req  = page.clone();
