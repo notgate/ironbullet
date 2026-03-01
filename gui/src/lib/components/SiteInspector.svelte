@@ -247,8 +247,8 @@
 	}
 
 	// ── Manual State ────────────────────────────────────────────────────────────
-	let url      = $state('https://');
-	let method   = $state('GET');
+	let url      = $state((() => { try { return localStorage.getItem('ib_inspector_manual_url') || 'https://'; } catch { return 'https://'; } })());
+	let method   = $state((() => { try { return localStorage.getItem('ib_inspector_method') || 'GET'; } catch { return 'GET'; } })());
 	let proxy    = $state('');
 	let browser  = $state('chrome');
 	let bodyText = $state('');
@@ -258,13 +258,52 @@
 
 	let loading  = $state(false);
 	let errorMsg = $state('');
-	let result   = $state<InspectResult | null>(null);
+	let result   = $state<InspectResult | null>((() => { try { const r = localStorage.getItem('ib_inspector_result'); return r ? JSON.parse(r) as InspectResult : null; } catch { return null; } })());
 	let viewTab  = $state<'resp-headers' | 'req-headers' | 'body' | 'cookies'>('resp-headers');
 	let copied   = $state<string | null>(null);
 
 	let showApplyPanel  = $state(false);
 	let applySource     = $state<'request' | 'response'>('response');
-	let applySelection  = $state<Set<string>>(new Set());
+	let applySelection  = $state<Set<string>>(new Set((() => { try { const r = localStorage.getItem('ib_inspector_result'); return r ? Object.keys((JSON.parse(r) as InspectResult).headers ?? {}) : []; } catch { return []; } })()));
+
+	// Persist manual mode state so external-window pop-out doesn't lose data.
+	$effect(() => { try { localStorage.setItem('ib_inspector_manual_url', url); } catch {} });
+	$effect(() => { try { localStorage.setItem('ib_inspector_method', method); } catch {} });
+	$effect(() => {
+		try {
+			if (result) {
+				localStorage.setItem('ib_inspector_result', JSON.stringify({
+					...result, body: result.body?.slice(0, 65536) ?? '',
+				}));
+			} else {
+				localStorage.removeItem('ib_inspector_result');
+			}
+		} catch {}
+	});
+
+	// Cross-window sync: the storage event fires in OTHER windows when this window
+	// writes to localStorage — lets the popped-out external window receive live
+	// updates for both browser captures and manual results.
+	$effect(() => {
+		function onStorage(e: StorageEvent) {
+			try {
+				if (e.key === 'ib_inspector_captures') {
+					capturedRequests = e.newValue ? JSON.parse(e.newValue) as CapturedRequest[] : [];
+				} else if (e.key === 'ib_inspector_sel') {
+					selectedReqId = e.newValue || null;
+				} else if (e.key === 'ib_inspector_result') {
+					result = e.newValue ? JSON.parse(e.newValue) as InspectResult : null;
+					if (result) applySelection = new Set(Object.keys(result.headers ?? {}));
+				} else if (e.key === 'ib_inspector_manual_url' && e.newValue) {
+					url = e.newValue;
+				} else if (e.key === 'ib_inspector_method' && e.newValue) {
+					method = e.newValue;
+				}
+			} catch {}
+		}
+		window.addEventListener('storage', onStorage);
+		return () => window.removeEventListener('storage', onStorage);
+	});
 
 	interface InspectResult {
 		status: number;
