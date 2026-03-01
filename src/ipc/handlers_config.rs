@@ -97,14 +97,29 @@ pub(super) fn save_pipeline(
         handle.spawn(async move {
             let path = data.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let force_dialog = data.get("force_dialog").and_then(|v| v.as_bool()).unwrap_or(false);
-            let save_path = if path.is_empty() || force_dialog {
+
+            // Resolve save path: explicit path > existing pipeline_path > file dialog.
+            // This prevents proxy-group and settings auto-saves from opening a dialog
+            // when the pipeline has already been saved at least once (issue #7, #8).
+            let save_path = if force_dialog {
                 rfd::FileDialog::new()
                     .set_title("Save Config")
                     .add_filter("ironbullet config", &["rfx"])
                     .save_file()
                     .map(|p| p.display().to_string())
-            } else {
+            } else if !path.is_empty() {
                 Some(path)
+            } else {
+                let existing = { state.lock().await.pipeline_path.clone() };
+                if let Some(ep) = existing {
+                    Some(ep)
+                } else {
+                    rfd::FileDialog::new()
+                        .set_title("Save Config")
+                        .add_filter("ironbullet config", &["rfx"])
+                        .save_file()
+                        .map(|p| p.display().to_string())
+                }
             };
             if let Some(save_path) = save_path {
                 let mut s = state.lock().await;

@@ -456,15 +456,6 @@
 		searchQuery = '';
 	}
 
-	async function copyBody() {
-		if (!currentResult?.response?.body) return;
-		try {
-			await navigator.clipboard.writeText(currentResult.response.body);
-			copied = true;
-			setTimeout(() => { copied = false; }, 1500);
-		} catch {}
-	}
-
 	async function copyCurrentTab() {
 		let text = '';
 		if (viewTab === 'body') text = currentResult?.response?.body ?? '';
