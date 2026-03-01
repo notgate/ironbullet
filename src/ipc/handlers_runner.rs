@@ -639,6 +639,7 @@ pub(super) fn inspect_browser_open(
         EnableParams, EventRequestWillBeSent, EventResponseReceived,
         EventLoadingFinished, GetRequestPostDataParams, GetResponseBodyParams,
     };
+    use chromiumoxide::cdp::browser_protocol::page::NavigateParams;
     use futures::StreamExt;
 
     let rt = tokio::runtime::Handle::try_current();
@@ -685,7 +686,10 @@ pub(super) fn inspect_browser_open(
 
             tokio::spawn(async move { while handler.next().await.is_some() {} });
 
-            let page = match browser.new_page(&url).await {
+            // Open a blank page first so we can enable network and register
+            // listeners before any navigation occurs — this ensures the initial
+            // page load requests are captured, not just subsequent interactions.
+            let page = match browser.new_page("about:blank").await {
                 Ok(p) => p,
                 Err(e) => {
                     emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Page open failed: {}", e) }));
@@ -703,8 +707,7 @@ pub(super) fn inspect_browser_open(
                 return;
             }
 
-            emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
-
+            // Register all listeners before navigating so no requests are missed.
             let mut ev_req  = match page.event_listener::<EventRequestWillBeSent>().await {
                 Ok(e) => e,
                 Err(e) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("{e}") })); return; }
@@ -715,6 +718,20 @@ pub(super) fn inspect_browser_open(
             let mut ev_done = match page.event_listener::<EventLoadingFinished>().await {
                 Ok(e) => e, Err(_) => return,
             };
+
+            // Signal frontend that capture is ready, then kick off navigation.
+            // Using execute(NavigateParams) fires the CDP command and returns
+            // immediately without waiting for load — the event loop below
+            // captures everything from the first byte.
+            emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
+
+            let _ = page.execute(NavigateParams {
+                url:             url.clone(),
+                referrer:        None,
+                transition_type: None,
+                frame_id:        None,
+                referrer_policy: None,
+            }).await;
 
             let page_req  = page.clone();
             let page_body = page.clone();
