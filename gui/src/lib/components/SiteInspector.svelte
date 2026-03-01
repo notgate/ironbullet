@@ -29,6 +29,7 @@
 	// filter / search
 	let browserUrl       = $state('https://');
 	let browserOpen      = $state(false);
+	let browserLoading   = $state(false);
 	let browserError     = $state('');
 	let capturedRequests = $state<CapturedRequest[]>([]);
 	let selectedReqId    = $state<string | null>(null);
@@ -82,8 +83,9 @@
 	let browserUnsub: (() => void) | null = null;
 
 	function openBrowser() {
-		if (!browserUrl.trim() || browserUrl === 'https://') return;
+		if (!browserUrl.trim() || browserUrl === 'https://') { browserError = 'Enter a URL first'; return; }
 		browserError = ''; capturedRequests = []; selectedReqId = null; applyPanelOpen = false;
+		browserLoading = true;
 		browserUnsub?.();
 		browserUnsub = onResponse('inspector_browser_event', (data: unknown) => {
 			const ev = data as {
@@ -93,9 +95,9 @@
 				status?: number; status_text?: string; mime_type?: string;
 				body?: string;
 			};
-			if (ev.type === 'error')  { browserError = ev.message ?? 'Unknown error'; browserOpen = false; return; }
-			if (ev.type === 'opened') { browserOpen = true; return; }
-			if (ev.type === 'closed') { browserOpen = false; return; }
+			if (ev.type === 'error')  { browserError = ev.message ?? 'Unknown error'; browserOpen = false; browserLoading = false; return; }
+			if (ev.type === 'opened') { browserOpen = true; browserLoading = false; return; }
+			if (ev.type === 'closed') { browserOpen = false; browserLoading = false; return; }
 
 			if (ev.type === 'request') {
 				if (capturedRequests.some(r => r.id === ev.id)) return;
@@ -119,7 +121,7 @@
 
 	function closeBrowser() {
 		send('inspect_browser_close', {});
-		browserUnsub?.(); browserUnsub = null; browserOpen = false;
+		browserUnsub?.(); browserUnsub = null; browserOpen = false; browserLoading = false;
 	}
 
 	function selectReq(id: string) {
@@ -385,6 +387,8 @@
 		><MonitorPlay size={10} />Browser Capture</button>
 		{#if mode === 'browser' && browserOpen}
 			<span class="ml-2 flex items-center gap-1 text-[9px] text-green animate-pulse"><span class="w-1.5 h-1.5 rounded-full bg-green inline-block"></span>Capturing</span>
+		{:else if mode === 'browser' && browserLoading}
+			<span class="ml-2 flex items-center gap-1 text-[9px] text-muted-foreground"><Loader2 size={9} class="animate-spin" />Launching Chrome…</span>
 		{/if}
 	</div>
 
@@ -400,6 +404,10 @@
 		{#if browserOpen}
 			<button class="skeu-btn flex items-center gap-1 text-[11px] text-red shrink-0" onclick={closeBrowser}>
 				<MonitorOff size={11} />Close
+			</button>
+		{:else if browserLoading}
+			<button class="skeu-btn flex items-center gap-1 text-[11px] text-muted-foreground shrink-0" disabled>
+				<Loader2 size={11} class="animate-spin" />Launching…
 			</button>
 		{:else}
 			<button class="skeu-btn flex items-center gap-1 text-[11px] shrink-0" onclick={openBrowser}>
@@ -466,7 +474,7 @@
 							onclick={() => selectReq(req.id)}
 						>
 							<span class="font-mono font-bold text-[9px] {methodColor(req.method)} truncate">{req.method}</span>
-							<span class="text-[7px] px-0.5 py-px rounded truncate {typeBadgeClass(req.resource_type)}">{req.resource_type.slice(0,4)}</span>
+							<span class="inline-flex items-center justify-center text-[7px] leading-none h-[13px] px-1 rounded font-medium shrink-0 {typeBadgeClass(req.resource_type)}">{req.resource_type.slice(0,4)}</span>
 							<span class="font-mono text-[9px] text-foreground/75 truncate leading-tight">{shortUrl(req.url)}</span>
 							<span class="text-right font-mono text-[9px] tabular-nums {statusColor(req.resp_status)}">{req.resp_status ?? '—'}</span>
 						</button>
