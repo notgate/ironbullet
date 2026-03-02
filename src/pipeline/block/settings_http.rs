@@ -55,6 +55,20 @@ pub struct HttpRequestSettings {
     /// AzureTLS = Go sidecar (supports fingerprinting), RustTLS = native reqwest+rustls.
     #[serde(default = "default_tls_client")]
     pub tls_client: TlsClient,
+    /// AzureTLS browser TLS profile: "chrome" | "firefox" | "safari" | "edge".
+    /// Sets the browser persona for TLS + HTTP/2 fingerprinting.
+    /// Empty = inherit from pipeline-level browser settings.
+    #[serde(default)]
+    pub browser_profile: String,
+    /// Per-block JA3 fingerprint override (AzureTLS only).
+    /// Overrides the pipeline-level JA3 for this specific request block.
+    /// Format: "TLSVersion,Ciphers,Extensions,EllipticCurves,EllipticCurvePointFormats"
+    #[serde(default)]
+    pub ja3_override: String,
+    /// Per-block HTTP/2 fingerprint override (AzureTLS only).
+    /// Overrides the pipeline-level HTTP/2 fingerprint for this specific request.
+    #[serde(default)]
+    pub http2fp_override: String,
 }
 
 fn default_ssl_verify() -> bool { true }
@@ -91,6 +105,9 @@ impl Default for HttpRequestSettings {
             ssl_verify: true,
             cipher_suites: String::new(),
             tls_client: TlsClient::RustTLS,
+            browser_profile: String::new(),
+            ja3_override: String::new(),
+            http2fp_override: String::new(),
         }
     }
 }

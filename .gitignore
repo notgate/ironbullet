@@ -5,3 +5,4 @@ gui/.svelte-kit/
 *.exe
 sidecar/go.sum
 
+sidecar/reqflow-sidecar

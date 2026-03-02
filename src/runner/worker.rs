@@ -29,28 +29,9 @@ pub(crate) async fn run_worker(
 ) {
     stats.active_threads.fetch_add(1, Ordering::Relaxed);
 
-    let session_id = Uuid::new_v4().to_string();
-    let new_session_req = SidecarRequest {
-        id: Uuid::new_v4().to_string(),
-        action: "new_session".into(),
-        session: session_id.clone(),
-        method: None,
-        url: None,
-        headers: None,
-        body: None,
-        timeout: None,
-        proxy: None,
-        browser: Some(pipeline.browser_settings.browser.clone()),
-        ja3: pipeline.browser_settings.ja3.clone(),
-        http2fp: pipeline.browser_settings.http2_fingerprint.clone(),
-        follow_redirects: Some(true),
-        max_redirects: Some(8),
-        ssl_verify: None,
-        custom_ciphers: None,
-        ..Default::default()
-    };
-    let (resp_tx, _) = oneshot::channel();
-    let _ = sidecar_tx.send((new_session_req, resp_tx)).await;
+    // Session IDs are generated PER CREDENTIAL so the azuretls cookie jar resets
+    // between checks. A shared worker session accumulated cookies across credentials,
+    // which caused false errors when one blocked/captcha'd session tainted all others.
 
     let sticky_proxy: Option<String> = if matches!(proxy_mode, ProxyMode::Sticky) {
         proxy_pool.next_proxy()
@@ -76,6 +57,26 @@ pub(crate) async fn run_worker(
             None => proxy_pool.next_proxy(),
         };
 
+        // Fresh session per credential — cookie jars are isolated so one blocked
+        // account cannot taint the azuretls state seen by subsequent credentials.
+        let session_id = Uuid::new_v4().to_string();
+        {
+            let new_sess = SidecarRequest {
+                id: Uuid::new_v4().to_string(),
+                action: "new_session".into(),
+                session: session_id.clone(),
+                browser: Some(pipeline.browser_settings.browser.clone()),
+                ja3: pipeline.browser_settings.ja3.clone(),
+                http2fp: pipeline.browser_settings.http2_fingerprint.clone(),
+                proxy: proxy.clone(),
+                follow_redirects: Some(true),
+                max_redirects: Some(8),
+                ..Default::default()
+            };
+            let (tx, _) = oneshot::channel();
+            let _ = sidecar_tx.send((new_sess, tx)).await;
+        }
+
         let mut ctx = ExecutionContext::new(session_id.clone());
         ctx.proxy = proxy.clone();
         ctx.plugin_manager = plugin_manager.clone();
@@ -88,6 +89,19 @@ pub(crate) async fn run_worker(
         }
 
         let result = ctx.execute_blocks(&pipeline.blocks, &sidecar_tx).await;
+
+        // Release the azuretls session so its cookie jar and transport state
+        // don't persist to the next credential checked by this worker.
+        {
+            let close_sess = SidecarRequest {
+                id: Uuid::new_v4().to_string(),
+                action: "close_session".into(),
+                session: session_id.clone(),
+                ..Default::default()
+            };
+            let (tx, _) = oneshot::channel();
+            let _ = sidecar_tx.send((close_sess, tx)).await;
+        }
 
         stats.processed.fetch_add(1, Ordering::Relaxed);
         if retry_count == 0 {
@@ -244,18 +258,6 @@ pub(crate) async fn run_worker(
         }
     }
 
-    let close_req = SidecarRequest {
-        id: Uuid::new_v4().to_string(),
-        action: "close_session".into(),
-        session: session_id,
-        method: None, url: None, headers: None, body: None, timeout: None,
-        proxy: None, browser: None, ja3: None, http2fp: None,
-        follow_redirects: None, max_redirects: None,
-        ssl_verify: None, custom_ciphers: None,
-        ..Default::default()
-    };
-    let (resp_tx, _) = oneshot::channel();
-    let _ = sidecar_tx.send((close_req, resp_tx)).await;
-
+    // Each credential's session was already closed inside the loop above.
     stats.active_threads.fetch_sub(1, Ordering::Relaxed);
 }

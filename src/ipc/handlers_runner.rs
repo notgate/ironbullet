@@ -682,7 +682,27 @@ pub(super) fn inspect_browser_open(
                 return;
             }
 
-            let mut config_builder = BrowserConfig::builder().with_head();
+            // Use an isolated temp profile so Chrome never shows first-run UI,
+            // account login prompts, or extension nags — all common causes of
+            // a frozen launch that never fires the CDP ready signal.
+            let tmp_profile = std::env::temp_dir()
+                .join(format!("ib-chrome-{}", &url.replace("://", "-").replace('/', "-").chars().take(20).collect::<String>()));
+
+            let mut config_builder = BrowserConfig::builder()
+                .with_head()
+                // Speed up startup by disabling heavy Chrome features
+                .arg("--no-first-run")
+                .arg("--no-default-browser-check")
+                .arg("--disable-sync")
+                .arg("--disable-translate")
+                .arg("--disable-extensions")
+                .arg("--disable-component-extensions-with-background-pages")
+                .arg("--disable-background-networking")
+                .arg("--disable-device-discovery-notifications")
+                .arg("--disable-client-side-phishing-detection")
+                .arg("--no-sandbox")
+                .arg(format!("--user-data-dir={}", tmp_profile.display()));
+
             if let Some(exe) = chrome_exe {
                 config_builder = config_builder.chrome_executable(exe);
             }
