@@ -393,3 +393,40 @@ pub fn handle_ipc_cmd(
         }
     }
 }
+
+/// Locate a usable Chrome / Chromium executable.
+/// Returns `None` if no supported browser is found.
+fn find_chrome_executable() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    let fixed: &[&str] = &[
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files\Chromium\Application\chrome.exe",
+        r"C:\Program Files (x86)\Chromium\Application\chrome.exe",
+    ];
+    #[cfg(target_os = "macos")]
+    let fixed: &[&str] = &[
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ];
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let fixed: &[&str] = &[];
+
+    for path in fixed {
+        let p = std::path::Path::new(path);
+        if p.exists() { return Some(p.to_path_buf()); }
+    }
+
+    let names: &[&str] = &[
+        "google-chrome", "google-chrome-stable", "chromium-browser", "chromium", "chrome",
+    ];
+    for name in names {
+        if let Ok(out) = std::process::Command::new("which").arg(name).output() {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !s.is_empty() { return Some(std::path::PathBuf::from(s)); }
+            }
+        }
+    }
+    None
+}

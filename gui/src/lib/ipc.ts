@@ -70,8 +70,15 @@ export function registerCallbacks() {
 		switch (resp.cmd) {
 			case 'config_loaded':
 				if (resp.data) {
-					app.config = resp.data as any;
 					const cfg = resp.data as any;
+
+					// Startup integrity check — show missing-dependency warnings.
+					const startupIssues = cfg._security_issues as Array<{ severity: string; title: string; description: string; code_snippet: string }> | undefined;
+					if (startupIssues && startupIssues.length > 0) {
+						app.securityIssues = startupIssues;
+					}
+
+					app.config = cfg;
 					if (cfg.zoom) app.zoom = cfg.zoom / 100;
 					if (cfg.font_size) app.fontSize = cfg.font_size;
 					if (cfg.font_family) app.fontFamily = cfg.font_family;

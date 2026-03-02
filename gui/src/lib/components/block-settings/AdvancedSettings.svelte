@@ -28,6 +28,8 @@
 					{value:'UnixToDate',label:'Unix to Date — Convert timestamp to string'},
 					{value:'FormatDate',label:'Format Date — Reformat a date string'},
 					{value:'ParseDate',label:'Parse Date — Date string to timestamp'},
+					{value:'DateToUnix',label:'Date to Unix — Date string to Unix seconds'},
+					{value:'DateToUnixMs',label:'Date to Unix (ms) — Date string to Unix milliseconds'},
 					{value:'AddTime',label:'Add Time — Add duration to timestamp'},
 					{value:'SubtractTime',label:'Subtract Time — Subtract duration from timestamp'},
 					{value:'Compute',label:'Compute — Evaluate arithmetic expression'},

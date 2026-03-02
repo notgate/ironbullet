@@ -282,6 +282,27 @@ impl ExecutionContext {
                 let rounded = (val * factor).round() / factor;
                 if places == 0 { (rounded as i64).to_string() } else { format!("{:.prec$}", rounded, prec = places as usize) }
             }
+            DateFnType::DateToUnix | DateFnType::DateToUnixMs => {
+                let input = self.variables.resolve_input(&settings.input_var);
+                let fmt   = self.variables.interpolate(&settings.format);
+                // Try parsing as NaiveDateTime first, then NaiveDate for date-only strings.
+                let utc = chrono::NaiveDateTime::parse_from_str(&input, &fmt)
+                    .map(|dt| dt.and_utc())
+                    .or_else(|_| chrono::NaiveDate::parse_from_str(&input, &fmt)
+                        .map(|d| d.and_hms_opt(0, 0, 0)
+                            .unwrap_or_default()
+                            .and_utc()));
+                match utc {
+                    Ok(dt) => {
+                        if matches!(settings.function_type, DateFnType::DateToUnixMs) {
+                            dt.timestamp_millis().to_string()
+                        } else {
+                            dt.timestamp().to_string()
+                        }
+                    }
+                    Err(_) => String::new(),
+                }
+            }
             DateFnType::AddTime | DateFnType::SubtractTime => {
                 let input = self.variables.resolve_input(&settings.input_var);
                 let ts: i64 = input.parse().unwrap_or_else(|_| chrono::Utc::now().timestamp());
