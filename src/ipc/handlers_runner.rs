@@ -671,10 +671,25 @@ pub(super) fn inspect_browser_open(
                     serde_json::to_string(&resp).unwrap_or_default()));
             }
 
-            let config = match BrowserConfig::builder().with_head().build() {
+            // Pre-flight: resolve the Chrome executable before building config so
+            // we can give an actionable error immediately instead of hanging 20s.
+            let chrome_exe = super::find_chrome_executable();
+            if chrome_exe.is_none() {
+                emit_sync(&js, serde_json::json!({
+                    "type": "error",
+                    "message": "Google Chrome or Chromium is not installed.\n\nPlease install Chrome from https://www.google.com/chrome/ and relaunch IronBullet."
+                }));
+                return;
+            }
+
+            let mut config_builder = BrowserConfig::builder().with_head();
+            if let Some(exe) = chrome_exe {
+                config_builder = config_builder.chrome_executable(exe);
+            }
+            let config = match config_builder.build() {
                 Ok(c) => c,
                 Err(e) => {
-                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Browser config: {}", e) }));
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Browser config error: {}", e) }));
                     return;
                 }
             };
@@ -687,18 +702,23 @@ pub(super) fn inspect_browser_open(
                 Ok(Err(e)) => {
                     emit_sync(&js, serde_json::json!({
                         "type": "error",
-                        "message": format!("Failed to launch Chrome. Is Google Chrome installed?\n{}", e)
+                        "message": format!("Chrome failed to start: {}", e)
                     }));
                     return;
                 }
                 Err(_) => {
                     emit_sync(&js, serde_json::json!({
                         "type": "error",
-                        "message": "Chrome launch timed out (20s). A previous instance may still be running."
+                        "message": "Chrome did not start within 20 seconds. It may be blocked by antivirus or another instance is already running."
                     }));
                     return;
                 }
             };
+
+            // Chrome process is up — clear the loading state in the frontend
+            // immediately so the 25s safety timer never fires. CDP network capture
+            // setup continues below; any failure after this emits an "error" event.
+            emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
 
             // Spawn CDP handler; send a signal when Chrome's connection closes so
             // the event loop below can break immediately instead of hanging.
@@ -708,9 +728,9 @@ pub(super) fn inspect_browser_open(
                 let _ = died_tx.send(());
             });
 
-            // new_page navigates to the URL; 30s timeout avoids hanging on slow sites.
+            // Navigate to the target URL. 15s is plenty for the initial load.
             let page = match tokio::time::timeout(
-                std::time::Duration::from_secs(30),
+                std::time::Duration::from_secs(15),
                 browser.new_page(&url),
             ).await {
                 Ok(Ok(p)) => p,
@@ -719,7 +739,7 @@ pub(super) fn inspect_browser_open(
                     return;
                 }
                 Err(_) => {
-                    emit_sync(&js, serde_json::json!({ "type": "error", "message": "Page navigation timed out (30s)" }));
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": "Page navigation timed out (15s)" }));
                     return;
                 }
             };
@@ -752,9 +772,7 @@ pub(super) fn inspect_browser_open(
                 page.event_listener::<EventLoadingFinished>(),
             ).await { Ok(Ok(e)) => e, _ => return };
 
-            // Signal frontend that capture is live, then reload to capture from start.
-            emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
-
+            // All listeners registered — reload so capture starts from the first request.
             // Fire reload; don't block the event loop if it hangs.
             tokio::time::timeout(std::time::Duration::from_secs(15), page.execute(ReloadParams {
                 ignore_cache:               Some(true),

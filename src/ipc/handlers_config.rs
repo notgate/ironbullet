@@ -15,7 +15,43 @@ pub(super) fn get_config(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let s = state.lock().await;
-            let resp = IpcResponse::ok("config_loaded", serde_json::to_value(&s.config).unwrap_or_default());
+            let mut data = serde_json::to_value(&s.config).unwrap_or_default();
+
+            // Startup integrity check — attach dependency warnings that the
+            // frontend displays via SecurityAlertDialog on first load.
+            let mut issues: Vec<serde_json::Value> = Vec::new();
+
+            if super::find_chrome_executable().is_none() {
+                issues.push(serde_json::json!({
+                    "severity": "Warning",
+                    "title": "Chrome / Chromium not found",
+                    "description": "The Site Inspector Browser Capture feature requires Google Chrome or Chromium. Install Chrome from https://www.google.com/chrome/ to use this feature.",
+                    "code_snippet": ""
+                }));
+            }
+
+            // Check sidecar binary exists next to the executable.
+            let sidecar_name = if cfg!(target_os = "windows") { "reqflow-sidecar.exe" } else { "reqflow-sidecar" };
+            let sidecar_ok = std::env::current_exe().ok()
+                .and_then(|e| e.parent().map(|d| d.join(sidecar_name)))
+                .map(|p| p.exists())
+                .unwrap_or(false);
+            if !sidecar_ok {
+                issues.push(serde_json::json!({
+                    "severity": "Warning",
+                    "title": "reqflow-sidecar not found",
+                    "description": "The AzureTLS sidecar binary (reqflow-sidecar) was not found next to the IronBullet executable. HTTP requests using AzureTLS and Site Inspector manual capture will fall back to native TLS. Re-download the release ZIP to restore it.",
+                    "code_snippet": ""
+                }));
+            }
+
+            if !issues.is_empty() {
+                if let Some(obj) = data.as_object_mut() {
+                    obj.insert("_security_issues".to_string(), serde_json::Value::Array(issues));
+                }
+            }
+
+            let resp = IpcResponse::ok("config_loaded", data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
     }

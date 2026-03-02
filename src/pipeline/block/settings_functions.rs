@@ -245,6 +245,10 @@ pub enum DateFnType {
     Compute,
     /// Round a number to N decimal places (param = decimal places, default 2)
     Round,
+    /// Parse a date/datetime string to Unix timestamp in seconds
+    DateToUnix,
+    /// Parse a date/datetime string to Unix timestamp in milliseconds
+    DateToUnixMs,
 }
 
 // ── Case / Switch ──
