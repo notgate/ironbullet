@@ -12,11 +12,13 @@ export const CHANGELOG: ChangelogEntry[] = [
 	{
 		version: '0.2.3',
 		date: '2026-03-02',
-		highlights: 'TLS fingerprinting controls, AzureTLS session isolation fix, RustTLS cookie persistence, Chrome Browser Capture reliability improvements, Date-to-Unix function, startup dependency check.',
+		highlights: 'Critical sidecar regression fix, TLS fingerprinting controls, AzureTLS session isolation, RustTLS cookie persistence, Chrome Browser Capture reliability, Date-to-Unix function, startup dependency check.',
 		sections: [
 			{
 				title: 'Bug Fixes',
 				items: [
+					'Critical regression fix — reqflow-sidecar was calling ApplyJa3/ApplyHTTP2 on every HTTP request when a pipeline-level JA3 or HTTP2 fingerprint was configured. These functions rebuild internal TLS state and reset HTTP/2 connection pooling; re-applying unchanged values caused massive latency and up to 52% timeout errors. Fingerprints are now tracked per-session and only re-applied when the value actually changes.',
+					'Startup alert dialog title — "Malicious Script Detected" was shown when Chrome or reqflow-sidecar was missing on first launch. The dialog now shows "Missing Dependencies" with an amber accent when all issues are dependency warnings, and reserves the red security alert for actual malicious script detections.',
 					'AzureTLS session isolation — cookie jars now reset between credentials. Previously one blocked/captcha\'d account shared its session state with all subsequent checks on the same worker thread, causing false Error results to cascade. Each credential now gets a fresh azuretls session.',
 					'RustTLS cookie persistence — reqwest client is now reused across all HTTP blocks within a single pipeline execution so multi-step login flows (GET page → POST credentials → check response) correctly share cookies, matching azuretls session behavior.',
 					'Chrome Browser Capture freeze — Chrome is now launched with --no-first-run, --no-default-browser-check, --no-sandbox, --disable-sync and an isolated temporary user-data-dir so it never shows login prompts or first-run setup that blocked the CDP handshake.',
@@ -24,7 +26,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 					'Proxy groups not persisting (#8) — proxy group CRUD auto-saves to the existing file path correctly.',
 					'FTP race condition (#11) — full multi-line banner consumed before USER command; stops on 5xx responses.',
 					'Chrome not-found error now fires immediately with an install link instead of hanging 20 seconds.',
-					'Startup integrity check — missing Chrome and missing reqflow-sidecar are reported in the Security Alert dialog on first load.',
+					'Startup integrity check — missing Chrome and missing reqflow-sidecar are reported in the dependency dialog on first load.',
 				],
 			},
 			{
