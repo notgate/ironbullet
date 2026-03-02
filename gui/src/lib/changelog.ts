@@ -10,6 +10,46 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.2.3',
+		date: '2026-03-02',
+		highlights: 'TLS fingerprinting controls, AzureTLS session isolation fix, RustTLS cookie persistence, Chrome Browser Capture reliability improvements, Date-to-Unix function, startup dependency check.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'AzureTLS session isolation — cookie jars now reset between credentials. Previously one blocked/captcha\'d account shared its session state with all subsequent checks on the same worker thread, causing false Error results to cascade. Each credential now gets a fresh azuretls session.',
+					'RustTLS cookie persistence — reqwest client is now reused across all HTTP blocks within a single pipeline execution so multi-step login flows (GET page → POST credentials → check response) correctly share cookies, matching azuretls session behavior.',
+					'Chrome Browser Capture freeze — Chrome is now launched with --no-first-run, --no-default-browser-check, --no-sandbox, --disable-sync and an isolated temporary user-data-dir so it never shows login prompts or first-run setup that blocked the CDP handshake.',
+					'Proxy group save dialog (#7) — save_pipeline now uses the existing pipeline_path before opening a file chooser; proxy group changes no longer trigger the save dialog on unsaved configs.',
+					'Proxy groups not persisting (#8) — proxy group CRUD auto-saves to the existing file path correctly.',
+					'FTP race condition (#11) — full multi-line banner consumed before USER command; stops on 5xx responses.',
+					'Chrome not-found error now fires immediately with an install link instead of hanging 20 seconds.',
+					'Startup integrity check — missing Chrome and missing reqflow-sidecar are reported in the Security Alert dialog on first load.',
+				],
+			},
+			{
+				title: 'New Features',
+				items: [
+					'Per-block Browser Profile selector (AzureTLS) — override the TLS + HTTP/2 fingerprint per HTTP Request block: Chrome, Firefox, Safari, Edge. Overrides pipeline-level browser setting for that block only.',
+					'Per-block JA3 Override (AzureTLS) — set a custom JA3 fingerprint string on a per-block basis. Verify your fingerprint at tls.peet.ws.',
+					'Per-block HTTP/2 Fingerprint Override (AzureTLS) — custom HTTP/2 SETTINGS frame fingerprint per block, independent of pipeline-level setting.',
+					'Date to Unix (seconds) — new Date Function variant that parses a date or datetime string using a configurable strftime format and outputs a Unix timestamp in seconds.',
+					'Date to Unix (ms) — same as above but outputs Unix milliseconds.',
+					'Error logging (#10) — when output saving is enabled, errored accounts are written to ConfigName_Error.txt with the error message under the _error capture key.',
+					'RustTLS default (#9) — new HTTP Request blocks default to RustTLS instead of AzureTLS.',
+				],
+			},
+			{
+				title: 'TLS & Fingerprinting Notes',
+				items: [
+					'RustTLS (reqwest + rustls) does NOT support JA3 fingerprinting — cipher suite ordering is fixed by the rustls library and cannot be customized per-request. Use AzureTLS for sites that check TLS fingerprints.',
+					'AzureTLS (azuretls via Go sidecar) supports full JA3, HTTP/2 SETTINGS frame, and browser profile TLS imitation. Browser profile sets cipher order, extensions, and elliptic curves to match real browser ClientHello.',
+					'Per-block overrides let you mix profiles: use Chrome fingerprint for fingerprint-checked endpoints and RustTLS for everything else in the same config.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.2.0',
 		date: '2026-02-18',
 		highlights: 'Major feature update: 9 new function blocks, enhanced variable input system, improved help documentation, and bug fixes.',

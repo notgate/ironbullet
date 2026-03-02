@@ -302,8 +302,48 @@
 		</label>
 		<p class="text-[9px] text-muted-foreground">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
 
-		<!-- Cipher suites — AzureTLS only -->
+		<!-- AzureTLS fingerprinting settings -->
 		{#if (block.settings.tls_client || 'RustTLS') === 'AzureTLS'}
+		<!-- Browser TLS profile -->
+		<div>
+			<label class={labelCls}>Browser Profile <span class="text-muted-foreground/60">(AzureTLS · TLS + HTTP/2 fingerprint)</span></label>
+			<SkeuSelect
+				value={block.settings.browser_profile || ''}
+				options={[
+					{ value: '',        label: 'Inherit from pipeline settings' },
+					{ value: 'chrome',  label: 'Chrome — most common, bypasses most WAFs' },
+					{ value: 'firefox', label: 'Firefox — good alternative fingerprint' },
+					{ value: 'safari',  label: 'Safari — iOS/macOS fingerprint' },
+					{ value: 'edge',    label: 'Edge — Chromium-based Microsoft Edge' },
+				]}
+				onValueChange={(v) => updateSettings('browser_profile', v)}
+			/>
+			<p class="text-[9px] text-muted-foreground mt-0.5">Sets the TLS cipher order, extensions, and HTTP/2 SETTINGS frame to match the selected browser. Overrides pipeline-level Browser setting for this block only.</p>
+		</div>
+		<!-- Per-block JA3 override -->
+		<div>
+			<label class={labelCls}>JA3 Override <span class="text-muted-foreground/60">(AzureTLS · optional)</span></label>
+			<input
+				type="text"
+				value={block.settings.ja3_override || ''}
+				placeholder="Leave empty to use pipeline JA3 or browser profile default"
+				class="w-full skeu-input text-[10px] font-mono mt-0.5"
+				oninput={(e) => updateSettings('ja3_override', (e.target as HTMLInputElement).value.trim())}
+			/>
+			<p class="text-[9px] text-muted-foreground mt-0.5">Format: TLSVersion,Ciphers,Extensions,EllipticCurves,PointFormats — e.g. verify at <span class="text-primary">tls.peet.ws</span></p>
+		</div>
+		<!-- Per-block HTTP/2 fingerprint override -->
+		<div>
+			<label class={labelCls}>HTTP/2 Fingerprint Override <span class="text-muted-foreground/60">(AzureTLS · optional)</span></label>
+			<input
+				type="text"
+				value={block.settings.http2fp_override || ''}
+				placeholder="Leave empty to use pipeline HTTP/2 fingerprint"
+				class="w-full skeu-input text-[10px] font-mono mt-0.5"
+				oninput={(e) => updateSettings('http2fp_override', (e.target as HTMLInputElement).value.trim())}
+			/>
+		</div>
+		<!-- Custom Cipher Suites -->
 		<div>
 			<label class={labelCls}>Custom Cipher Suites <span class="text-muted-foreground/60">(AzureTLS · optional)</span></label>
 			<textarea
