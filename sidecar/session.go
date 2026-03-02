@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -18,6 +17,12 @@ type SessionWrapper struct {
 	// SetProxy is expensive (rebuilds transport state in azuretls), so we
 	// skip the call when the proxy hasn't changed since the last request.
 	CurrentProxy string
+	// LastJA3 / LastHTTP2FP track the last applied fingerprint strings.
+	// ApplyJa3 and ApplyHTTP2 rebuild internal TLS state and reset HTTP/2
+	// connection pooling — calling them on every request when the value
+	// hasn't changed destroys throughput. Skip re-application when unchanged.
+	LastJA3     string
+	LastHTTP2FP string
 }
 
 func handleNewSession(req SidecarRequest) {
@@ -76,8 +81,10 @@ func handleNewSession(req SidecarRequest) {
 
 	sessionsMu.Lock()
 	sessions[req.Session] = &SessionWrapper{
-		Session: session,
-		Browser: browser,
+		Session:     session,
+		Browser:     browser,
+		LastJA3:     req.JA3,
+		LastHTTP2FP: req.HTTP2FP,
 	}
 	sessionsMu.Unlock()
 
@@ -172,27 +179,32 @@ func handleHTTPRequest(req SidecarRequest) {
 		}
 	}
 
-	// Apply a per-block browser_profile change when requested.
-	// This lets individual HTTP Request blocks use a different TLS fingerprint
-	// without requiring a fresh session for every request in the pipeline.
+	// Apply a per-block browser_profile change only when it actually differs.
+	// Changing browser profile requires rebuilding TLS state so we guard it.
 	if req.Browser != "" && req.Browser != sw.Browser {
 		sw.Session.Browser = req.Browser
-		if req.JA3 != "" {
+		if req.JA3 != "" && req.JA3 != sw.LastJA3 {
 			sw.Session.ApplyJa3(req.JA3, req.Browser)
+			sw.LastJA3 = req.JA3
 		}
-		if req.HTTP2FP != "" {
+		if req.HTTP2FP != "" && req.HTTP2FP != sw.LastHTTP2FP {
 			sw.Session.ApplyHTTP2(req.HTTP2FP)
+			sw.LastHTTP2FP = req.HTTP2FP
 		}
 		sw.Browser = req.Browser
 	}
 
-	// Apply per-request JA3/HTTP2FP overrides even when the browser profile
-	// is unchanged — lets individual blocks customize just the fingerprint.
-	if req.JA3 != "" && req.Browser == "" {
+	// Apply per-request JA3/HTTP2FP overrides only when the value has changed.
+	// ApplyJa3/ApplyHTTP2 rebuild TLS connection state — calling them on every
+	// request with the same value destroys keep-alive throughput and causes
+	// timeouts under load. Guard with last-applied tracking.
+	if req.JA3 != "" && req.Browser == "" && req.JA3 != sw.LastJA3 {
 		sw.Session.ApplyJa3(req.JA3, sw.Browser)
+		sw.LastJA3 = req.JA3
 	}
-	if req.HTTP2FP != "" && req.Browser == "" {
+	if req.HTTP2FP != "" && req.Browser == "" && req.HTTP2FP != sw.LastHTTP2FP {
 		sw.Session.ApplyHTTP2(req.HTTP2FP)
+		sw.LastHTTP2FP = req.HTTP2FP
 	}
 
 	// Only call SetProxy when the proxy actually changes.
@@ -364,15 +376,4 @@ func enrichError(msg string) string {
 	}
 }
 
-func getCookies(header http.Header) map[string]string {
-	cookies := make(map[string]string)
-	for _, c := range header["Set-Cookie"] {
-		parts := strings.SplitN(c, "=", 2)
-		if len(parts) == 2 {
-			name := strings.TrimSpace(parts[0])
-			value := strings.SplitN(parts[1], ";", 2)[0]
-			cookies[name] = strings.TrimSpace(value)
-		}
-	}
-	return cookies
-}
+
