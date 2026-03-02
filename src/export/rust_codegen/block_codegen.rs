@@ -747,6 +747,18 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
                     let places: u32 = s.param.parse().unwrap_or(2);
                     code.push_str(&format!("{}{}{}= {{ let v: f64 = {}.parse().unwrap_or(0.0); let f = 10f64.powi({}); format!(\"{{:.{}}}\" , (v * f).round() / f) }};\n", pad, letkw, vn, input, places, places));
                 }
+                DateFnType::DateToUnix | DateFnType::DateToUnixMs => {
+                    let input = if vars.is_defined(&s.input_var) { var_name(&s.input_var) } else { "source".into() };
+                    let ms = matches!(s.function_type, DateFnType::DateToUnixMs);
+                    let ts_method = if ms { "timestamp_millis()" } else { "timestamp()" };
+                    code.push_str(&format!("{}{}{}= {{\n", pad, letkw, vn));
+                    code.push_str(&format!("{}    NaiveDateTime::parse_from_str(&{}, \"{}\")\n", pad, input, escape_str(&s.format)));
+                    code.push_str(&format!("{}        .map(|dt| dt.and_utc().{})\n", pad, ts_method));
+                    code.push_str(&format!("{}        .or_else(|_| NaiveDate::parse_from_str(&{}, \"{}\").map(|d| d.and_hms_opt(0,0,0).unwrap_or_default().and_utc().{}))\n", pad, input, escape_str(&s.format), ts_method));
+                    code.push_str(&format!("{}        .map(|n| n.to_string())\n", pad));
+                    code.push_str(&format!("{}        .unwrap_or_default()\n", pad));
+                    code.push_str(&format!("{}}};\n", pad));
+                }
             }
         }
         BlockSettings::CaseSwitch(s) => {
