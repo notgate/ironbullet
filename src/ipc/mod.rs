@@ -71,6 +71,10 @@ pub struct AppState {
     pub plugin_manager: Arc<PluginManager>,
     /// Abort handle for the active browser-capture task (Inspector panel).
     pub browser_capture_abort: Option<tokio::task::AbortHandle>,
+    /// Temp user-data-dir used by the current Chrome capture session.
+    /// Cleaned up when the session ends or a new one starts, preventing
+    /// Chrome from finding a locked profile from a zombie prior instance.
+    pub browser_capture_profile: Option<std::path::PathBuf>,
 }
 
 impl AppState {
@@ -95,6 +99,7 @@ impl AppState {
             job_manager: JobManager::new(),
             plugin_manager: Arc::new(pm),
             browser_capture_abort: None,
+            browser_capture_profile: None,
         }
     }
 }
@@ -395,38 +400,98 @@ pub fn handle_ipc_cmd(
 }
 
 /// Locate a usable Chrome / Chromium executable.
-/// Returns `None` if no supported browser is found.
+///
+/// Checks fixed known install paths first (handles cases where the binary
+/// is not on PATH — e.g. Windows user-level installs, Linux snap/flatpak),
+/// then falls back to PATH-based search via `which`/`where`.
 fn find_chrome_executable() -> Option<std::path::PathBuf> {
+    // ── Windows: admin-level and user-level install paths ────────────────
     #[cfg(target_os = "windows")]
-    let fixed: &[&str] = &[
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files\Chromium\Application\chrome.exe",
-        r"C:\Program Files (x86)\Chromium\Application\chrome.exe",
-    ];
-    #[cfg(target_os = "macos")]
-    let fixed: &[&str] = &[
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    ];
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    let fixed: &[&str] = &[];
-
-    for path in fixed {
-        let p = std::path::Path::new(path);
-        if p.exists() { return Some(p.to_path_buf()); }
-    }
-
-    let names: &[&str] = &[
-        "google-chrome", "google-chrome-stable", "chromium-browser", "chromium", "chrome",
-    ];
-    for name in names {
-        if let Ok(out) = std::process::Command::new("which").arg(name).output() {
-            if out.status.success() {
-                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !s.is_empty() { return Some(std::path::PathBuf::from(s)); }
+    {
+        // Build the user-level LocalAppData path dynamically since it varies per user.
+        let mut user_paths: Vec<String> = Vec::new();
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            user_paths.push(format!(r"{}\Google\Chrome\Application\chrome.exe", local));
+            user_paths.push(format!(r"{}\Chromium\Application\chrome.exe", local));
+        }
+        let fixed: Vec<&str> = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files\Chromium\Application\chrome.exe",
+            r"C:\Program Files (x86)\Chromium\Application\chrome.exe",
+        ].iter().copied()
+            .chain(user_paths.iter().map(|s| s.as_str()))
+            .collect();
+        for path in &fixed {
+            let p = std::path::Path::new(path);
+            if p.exists() { return Some(p.to_path_buf()); }
+        }
+        // PATH fallback on Windows
+        for name in &["chrome.exe", "chromium.exe"] {
+            if let Ok(out) = std::process::Command::new("where").arg(name).output() {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout);
+                    if let Some(first) = s.lines().next() {
+                        let p = std::path::PathBuf::from(first.trim());
+                        if p.exists() { return Some(p); }
+                    }
+                }
             }
         }
     }
+
+    // ── macOS: standard application bundle paths ──────────────────────────
+    #[cfg(target_os = "macos")]
+    {
+        let fixed: &[&str] = &[
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+        ];
+        for path in fixed {
+            let p = std::path::Path::new(path);
+            if p.exists() { return Some(p.to_path_buf()); }
+        }
+    }
+
+    // ── Linux: fixed paths for snap, flatpak, and common package managers ──
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let fixed: &[&str] = &[
+            // Standard package manager installs
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            // Snap installs
+            "/snap/bin/chromium",
+            "/snap/bin/google-chrome",
+            // Flatpak wrapper scripts (vary by distro — check common locations)
+            "/var/lib/flatpak/exports/bin/com.google.Chrome",
+            "/usr/local/bin/google-chrome",
+            "/opt/google/chrome/chrome",
+        ];
+        for path in fixed {
+            let p = std::path::Path::new(path);
+            if p.exists() { return Some(p.to_path_buf()); }
+        }
+    }
+
+    // ── All platforms: PATH fallback via which (Linux/macOS) ─────────────
+    #[cfg(not(target_os = "windows"))]
+    {
+        let names: &[&str] = &[
+            "google-chrome", "google-chrome-stable", "chromium-browser", "chromium", "chrome",
+        ];
+        for name in names {
+            if let Ok(out) = std::process::Command::new("which").arg(name).output() {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !s.is_empty() { return Some(std::path::PathBuf::from(s)); }
+                }
+            }
+        }
+    }
+
     None
 }

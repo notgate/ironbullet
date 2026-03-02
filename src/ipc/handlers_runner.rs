@@ -650,16 +650,32 @@ pub(super) fn inspect_browser_open(
         let js = js_tx.clone();
         let state2 = state.clone();
 
+        // Generate the profile dir UUID here so it can be stored in AppState
+        // (for cleanup on next launch) AND passed into the async task.
+        // UUID-per-launch prevents Chrome profile-dir locking when a prior
+        // Chrome process was orphaned by a timed-out launch — a URL-derived
+        // fixed name would be locked by the zombie, causing infinite failures.
+        let tmp_profile = std::env::temp_dir()
+            .join(format!("ib-chrome-{}", uuid::Uuid::new_v4()));
+        let tmp_profile_task = tmp_profile.clone();
+
         let capture_task = handle.spawn(async move {
-            // Abort any prior capture session and wait for Chrome to fully exit
-            // before launching a new instance — avoids CDP port conflicts that
-            // cause Browser::launch() to hang indefinitely on relaunch.
-            let had_prior = {
+            let tmp_profile = tmp_profile_task;
+
+            // Abort any prior capture session and clean up its stale Chrome
+            // profile before launching. The old profile dir is locked by the
+            // previous Chrome process if it didn't exit cleanly (e.g. launch
+            // timeout). Removing it prevents the next launch from failing with
+            // a "profile in use" error.
+            let stale_profile = {
                 let mut s = state.lock().await;
-                if let Some(h) = s.browser_capture_abort.take() { h.abort(); true } else { false }
-            }; // MutexGuard dropped here, lock released
-            if had_prior {
-                tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+                if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
+                s.browser_capture_profile.take()
+            };
+            if let Some(old_dir) = stale_profile {
+                // Brief delay so Chrome has time to release file locks after abort.
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                let _ = tokio::fs::remove_dir_all(&old_dir).await;
             }
 
             let url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -681,12 +697,6 @@ pub(super) fn inspect_browser_open(
                 }));
                 return;
             }
-
-            // Use an isolated temp profile so Chrome never shows first-run UI,
-            // account login prompts, or extension nags — all common causes of
-            // a frozen launch that never fires the CDP ready signal.
-            let tmp_profile = std::env::temp_dir()
-                .join(format!("ib-chrome-{}", &url.replace("://", "-").replace('/', "-").chars().take(20).collect::<String>()));
 
             let mut config_builder = BrowserConfig::builder()
                 .with_head()
@@ -883,6 +893,8 @@ pub(super) fn inspect_browser_open(
         handle.spawn(async move {
             let mut s = state2.lock().await;
             s.browser_capture_abort = Some(abort);
+            // Store the profile path so the NEXT launch can clean it up.
+            s.browser_capture_profile = Some(tmp_profile);
         });
     }
 }
@@ -894,12 +906,20 @@ pub(super) fn inspect_browser_close(
     // The frontend already updates browserOpen/browserLoading synchronously in
     // closeBrowser() before this IPC even arrives. Emitting a "closed" event here
     // would hit the *next* session's listener (registered moments later) and
-    // incorrectly reset its loading state. Just abort the task silently.
+    // incorrectly reset its loading state. Just abort the task and clean up.
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let mut s = state.lock().await;
-            if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
+            let profile = {
+                let mut s = state.lock().await;
+                if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
+                s.browser_capture_profile.take()
+            };
+            // Give Chrome a moment to release file locks, then remove its profile dir.
+            if let Some(dir) = profile {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let _ = tokio::fs::remove_dir_all(&dir).await;
+            }
         });
     }
 }
