@@ -66,6 +66,11 @@ pub struct ExecutionContext {
     pub override_http2fp: Option<String>,
     #[serde(skip)]
     pub plugin_manager: Option<std::sync::Arc<crate::plugin::manager::PluginManager>>,
+    /// Reusable reqwest client for RustTLS requests — persists cookie jar between
+    /// HTTP blocks within a single pipeline execution so multi-step login flows work.
+    /// Reset for every new ExecutionContext (i.e. every credential checked).
+    #[serde(skip)]
+    pub rustls_client: Option<reqwest::Client>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +141,7 @@ impl ExecutionContext {
             override_ja3: None,
             override_http2fp: None,
             plugin_manager: None,
+            rustls_client: None,
         }
     }
 

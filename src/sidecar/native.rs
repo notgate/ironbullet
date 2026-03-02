@@ -45,48 +45,66 @@ pub fn create_native_backend() -> mpsc::Sender<(SidecarRequest, oneshot::Sender<
 
 // ── Per-request RustTLS backend (full runner) ───────────────────────────────
 
-/// Execute a single HTTP request using reqwest+rustls, fully applying all
-/// per-request settings: proxy, ssl_verify, redirects, timeout, headers, body.
+/// Execute a single HTTP request using reqwest+rustls.
 ///
-/// This is used when `HttpRequestSettings.tls_client == TlsClient::RustTLS`.
-/// A fresh reqwest::Client is built per request so that settings like ssl_verify
-/// and proxy take effect correctly without leaking across different block configs.
-pub async fn execute_rustls_request(req: &SidecarRequest, ssl_verify: bool) -> SidecarResponse {
+/// Accepts an optional pre-built client for cookie persistence across multiple HTTP
+/// blocks in the same pipeline execution. Returns the client so the caller can reuse
+/// it for subsequent requests (cookie jar survives between blocks, matching how
+/// azuretls sessions work). A None `existing_client` builds a fresh one.
+pub async fn execute_rustls_request(
+    req: &SidecarRequest,
+    ssl_verify: bool,
+    existing_client: Option<reqwest::Client>,
+) -> (SidecarResponse, reqwest::Client) {
     let id = req.id.clone();
 
-    // ── Build per-request client ──────────────────────────────────────────────
-    let mut builder = reqwest::Client::builder()
-        .use_rustls_tls()
-        .cookie_store(true)
-        .danger_accept_invalid_certs(!ssl_verify);
+    let client = if let Some(c) = existing_client {
+        // Reuse existing client (shared cookie jar, same TLS session pool).
+        // Note: ssl_verify and proxy changes between blocks take effect on
+        // newly established connections; existing keep-alive connections are
+        // unaffected. For per-block proxy changes use AzureTLS instead.
+        c
+    } else {
+        // Build a new session-scoped client with all per-block settings.
+        let mut builder = reqwest::Client::builder()
+            .use_rustls_tls()
+            .cookie_store(true)
+            .danger_accept_invalid_certs(!ssl_verify);
 
-    // Proxy configuration
-    if let Some(ref proxy_str) = req.proxy {
-        if !proxy_str.is_empty() {
-            match reqwest::Proxy::all(proxy_str) {
-                Ok(proxy) => { builder = builder.proxy(proxy); }
-                Err(e) => {
-                    return error_response(id, 0, String::new(), format!("Invalid proxy '{}': {}", proxy_str, e));
+        if let Some(ref proxy_str) = req.proxy {
+            if !proxy_str.is_empty() {
+                match reqwest::Proxy::all(proxy_str) {
+                    Ok(proxy) => { builder = builder.proxy(proxy); }
+                    Err(e) => {
+                        let err = error_response(id, 0, String::new(), format!("Invalid proxy '{}': {}", proxy_str, e));
+                        // Return a dummy client alongside the error
+                        let fallback = reqwest::Client::builder().use_rustls_tls().build().unwrap_or_default();
+                        return (err, fallback);
+                    }
                 }
             }
         }
-    }
 
-    // Redirect policy
-    let follow = req.follow_redirects.unwrap_or(true);
-    let max_redirects = req.max_redirects.unwrap_or(8) as usize;
-    builder = if follow && max_redirects > 0 {
-        builder.redirect(reqwest::redirect::Policy::limited(max_redirects))
-    } else {
-        builder.redirect(reqwest::redirect::Policy::none())
+        let follow = req.follow_redirects.unwrap_or(true);
+        let max_redirects = req.max_redirects.unwrap_or(8) as usize;
+        builder = if follow && max_redirects > 0 {
+            builder.redirect(reqwest::redirect::Policy::limited(max_redirects))
+        } else {
+            builder.redirect(reqwest::redirect::Policy::none())
+        };
+
+        match builder.build() {
+            Ok(c) => c,
+            Err(e) => {
+                let err = error_response(id, 0, String::new(), format!("Client build error: {}", e));
+                let fallback = reqwest::Client::builder().use_rustls_tls().build().unwrap_or_default();
+                return (err, fallback);
+            }
+        }
     };
 
-    let client = match builder.build() {
-        Ok(c) => c,
-        Err(e) => return error_response(id, 0, String::new(), format!("Client build error: {}", e)),
-    };
-
-    execute_with_client(&client, req).await
+    let resp = execute_with_client(&client, req).await;
+    (resp, client)
 }
 
 // ── Core request execution ──────────────────────────────────────────────────

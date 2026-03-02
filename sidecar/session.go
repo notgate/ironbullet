@@ -172,6 +172,29 @@ func handleHTTPRequest(req SidecarRequest) {
 		}
 	}
 
+	// Apply a per-block browser_profile change when requested.
+	// This lets individual HTTP Request blocks use a different TLS fingerprint
+	// without requiring a fresh session for every request in the pipeline.
+	if req.Browser != "" && req.Browser != sw.Browser {
+		sw.Session.Browser = req.Browser
+		if req.JA3 != "" {
+			sw.Session.ApplyJa3(req.JA3, req.Browser)
+		}
+		if req.HTTP2FP != "" {
+			sw.Session.ApplyHTTP2(req.HTTP2FP)
+		}
+		sw.Browser = req.Browser
+	}
+
+	// Apply per-request JA3/HTTP2FP overrides even when the browser profile
+	// is unchanged — lets individual blocks customize just the fingerprint.
+	if req.JA3 != "" && req.Browser == "" {
+		sw.Session.ApplyJa3(req.JA3, sw.Browser)
+	}
+	if req.HTTP2FP != "" && req.Browser == "" {
+		sw.Session.ApplyHTTP2(req.HTTP2FP)
+	}
+
 	// Only call SetProxy when the proxy actually changes.
 	// azuretls rebuilds internal transport state on SetProxy, which tears down
 	// any keep-alive connections — calling it redundantly on every request

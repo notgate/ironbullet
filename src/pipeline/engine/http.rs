@@ -33,6 +33,23 @@ impl ExecutionContext {
         }
 
         // ── Build the protocol-level request (shared by both backends) ────────
+        // Per-block JA3/browser overrides take precedence over pipeline-level settings.
+        let effective_ja3 = if !settings.ja3_override.is_empty() {
+            Some(settings.ja3_override.clone())
+        } else {
+            self.override_ja3.clone()
+        };
+        let effective_http2fp = if !settings.http2fp_override.is_empty() {
+            Some(settings.http2fp_override.clone())
+        } else {
+            self.override_http2fp.clone()
+        };
+        let effective_browser = if !settings.browser_profile.is_empty() {
+            Some(settings.browser_profile.clone())
+        } else {
+            None
+        };
+
         let sidecar_req = SidecarRequest {
             id: Uuid::new_v4().to_string(),
             action: "request".into(),
@@ -43,10 +60,9 @@ impl ExecutionContext {
             body: Some(body.clone()),
             timeout: Some(settings.timeout_ms as i64),
             proxy: self.proxy.clone(),
-            // AzureTLS-specific fields — only populated when using the sidecar
-            browser: None,
-            ja3: self.override_ja3.clone(),
-            http2fp: self.override_http2fp.clone(),
+            browser: effective_browser,
+            ja3: effective_ja3,
+            http2fp: effective_http2fp,
             follow_redirects: Some(settings.follow_redirects),
             max_redirects: Some(settings.max_redirects as i64),
             ssl_verify: if settings.ssl_verify { None } else { Some(false) },
@@ -57,12 +73,16 @@ impl ExecutionContext {
         // ── Dispatch to the chosen TLS backend ────────────────────────────────
         let resp = match settings.tls_client {
             TlsClient::RustTLS => {
-                // Native reqwest + rustls — no sidecar, per-request client config.
-                // All standard settings apply; JA3/browser fingerprinting is N/A.
-                crate::sidecar::native::execute_rustls_request(
+                // Native reqwest + rustls. Reuse the session-scoped client so the
+                // cookie jar persists across HTTP blocks in the same pipeline run.
+                let existing = self.rustls_client.take();
+                let (resp, client) = crate::sidecar::native::execute_rustls_request(
                     &sidecar_req,
                     settings.ssl_verify,
-                ).await
+                    existing,
+                ).await;
+                self.rustls_client = Some(client);
+                resp
             }
             TlsClient::AzureTLS => {
                 // Go sidecar path — azuretls with JA3/TLS fingerprinting support.
