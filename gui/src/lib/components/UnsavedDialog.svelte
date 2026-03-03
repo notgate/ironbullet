@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { app, closeTab, markTabSaved, continueAppClose, cancelAppClose } from '$lib/state.svelte';
-	import { send } from '$lib/ipc';
+	import { send, savePipeline } from '$lib/ipc';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import AlertTriangle from '@lucide/svelte/icons/triangle-alert';
 
@@ -21,7 +21,7 @@
 	function handleSave() {
 		if (!app.pendingCloseTabId) return;
 		// Save then close
-		send('save_pipeline', {});
+		savePipeline();
 		markTabSaved();
 		if (app.pendingAppClose) {
 			// Mark as saved (no longer dirty), then continue to next unsaved tab

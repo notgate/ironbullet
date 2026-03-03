@@ -1,5 +1,5 @@
 import { app, undo, redo, pushUndo, zoomIn, zoomOut, zoomReset, selectAllBlocks, createNewTab } from '$lib/state.svelte';
-import { send } from '$lib/ipc';
+import { send, savePipeline } from '$lib/ipc';
 import type { Block } from '$lib/types';
 
 export function isEditableFocused(): boolean {
@@ -21,7 +21,7 @@ export function createKeydownHandler(
 
 		const editable = isEditableFocused();
 
-		if (e.ctrlKey && e.key === 's') { e.preventDefault(); send('save_pipeline', {}); return; }
+		if (e.ctrlKey && e.key === 's') { e.preventDefault(); savePipeline(); return; }
 		if (e.ctrlKey && e.key === 'o') { e.preventDefault(); send('load_pipeline'); return; }
 		if (e.key === 'F1') { e.preventDefault(); app.showBlockDocs = true; app.blockDocsInitialType = null; return; }
 		if (e.ctrlKey && e.key === 'f') { e.preventDefault(); app.pipelineSearchFocused = true; return; }

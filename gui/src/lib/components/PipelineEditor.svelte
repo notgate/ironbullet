@@ -3,7 +3,7 @@
 	import BlockList from './BlockList.svelte';
 	import PipelineMinimap from './PipelineMinimap.svelte';
 	import { app, pushUndo, collapseAllBlocks, expandAllBlocks, blockMatchesSearch } from '$lib/state.svelte';
-	import { send } from '$lib/ipc';
+	import { send, savePipeline } from '$lib/ipc';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Search from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
@@ -257,7 +257,7 @@
 			<button class="p-0.5 rounded hover:bg-secondary text-muted-foreground" onclick={expandAllBlocks} title="Expand All"><ChevronsUpDown size={11} /></button>
 			<button class="p-0.5 rounded hover:bg-secondary {app.showMinimap ? 'text-primary' : 'text-muted-foreground'}" onclick={() => { app.showMinimap = !app.showMinimap; }} title="Toggle Minimap"><Map size={11} /></button>
 			<button class="p-0.5 rounded hover:bg-secondary {app.previewMode ? 'text-primary' : 'text-muted-foreground'}" onclick={() => { app.previewMode = !app.previewMode; }} title="Preview Variables"><Scan size={11} /></button>
-			<button class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-green" onclick={() => send('save_pipeline', {})} title="Save Config (Ctrl+S)"><Save size={11} /></button>
+			<button class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-green" onclick={() => savePipeline()} title="Save Config (Ctrl+S)"><Save size={11} /></button>
 		</div>
 
 		<span class="text-[10px] text-muted-foreground shrink-0">{app.pipeline.blocks.length} block{app.pipeline.blocks.length !== 1 ? 's' : ''}</span>

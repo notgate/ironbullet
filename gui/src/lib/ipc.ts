@@ -10,6 +10,17 @@ const MUTATION_CMDS = new Set([
 // High-frequency cmds to suppress from send() log
 const SILENT_SEND_CMDS = new Set(['get_runner_stats']);
 
+/** Save the active pipeline, passing its current tab file path so the backend
+ *  never uses a stale path from a previously opened config. */
+export function savePipeline(opts: { forceDialog?: boolean } = {}) {
+	const tab = app.configTabs.find((t: any) => t.id === app.activeTabId) as any;
+	const filePath = tab?.filePath ?? null;
+	send('save_pipeline', {
+		...(filePath ? { path: filePath } : {}),
+		...(opts.forceDialog ? { force_dialog: true } : {}),
+	});
+}
+
 export function send(cmd: string, data: Record<string, unknown> = {}) {
 	// In native panel windows this webview is receive-only.
 	// Sending IPC from panel windows causes Rust to broadcast responses to ALL
