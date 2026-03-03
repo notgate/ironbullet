@@ -155,6 +155,7 @@ export function openInNewTab(pipeline: Pipeline, filePath?: string) {
 	app.selectedBlockIds = [];
 	app.editingBlockId = null;
 	resetHistory();
+	syncPipelineToBackend();
 }
 
 /** Mark the active tab as saved */

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
-	import { send } from '$lib/ipc';
+	import { send, savePipeline } from '$lib/ipc';
 	import { app, undo, redo, pushUndo, zoomIn, zoomOut, zoomReset, selectAllBlocks, collapseAllBlocks, expandAllBlocks } from '$lib/state.svelte';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Redo2 from '@lucide/svelte/icons/redo-2';
@@ -29,10 +29,10 @@
 				<DropdownMenu.Item class="menu-item" onSelect={() => send('load_pipeline')}>
 					Open Config <span class="menu-shortcut">Ctrl+O</span>
 				</DropdownMenu.Item>
-				<DropdownMenu.Item class="menu-item" onSelect={() => send('save_pipeline', {})}>
+				<DropdownMenu.Item class="menu-item" onSelect={() => savePipeline()}>
 					Save Config <span class="menu-shortcut">Ctrl+S</span>
 				</DropdownMenu.Item>
-				<DropdownMenu.Item class="menu-item" onSelect={() => send('save_pipeline', { force_dialog: true })}>
+				<DropdownMenu.Item class="menu-item" onSelect={() => savePipeline({ forceDialog: true })}>
 					Save Config As...
 				</DropdownMenu.Item>
 				<DropdownMenu.Separator class="menu-sep" />

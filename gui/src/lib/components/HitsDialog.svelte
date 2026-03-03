@@ -391,10 +391,9 @@
 		<!-- Live feed — shown when a running job is selected -->
 		{#if selectedJobId}
 			{@const liveJob = app.jobs.find((j: any) => j.id === selectedJobId) as any}
-			{@const recentResults = liveJob?.stats?.recent_results ?? []}
 			{@const isRunning = liveJob?.state === 'Running'}
-			{#if isRunning && recentResults.length > 0}
-				{@const recentSlice = recentResults.slice(-30).reverse()}
+			{#if isRunning && (liveJob?.stats?.recent_results?.length ?? 0) > 0}
+				{@const recentSlice = (liveJob?.stats?.recent_results ?? []).slice(-30).reverse()}
 				<div class="border-t border-border shrink-0">
 					<div class="flex items-center gap-1.5 px-3 py-1 bg-surface/60 border-b border-border/50">
 						<Activity size={10} class="text-green" />
