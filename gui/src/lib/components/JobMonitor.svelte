@@ -748,45 +748,7 @@ Error handling
 							</td>
 						</tr>
 
-						<!-- Live result log — visible only for selected job when it has recent results -->
-						{#if isActive && job.stats?.recent_results?.length}
-							{@const recentSlice = job.stats.recent_results.slice(-20).reverse()}
-							<tr class="border-b border-border/30 bg-background/60">
-								<td colspan="11" class="px-2 pt-1 pb-2">
-									<div class="text-[9px] text-muted-foreground mb-0.5 flex items-center gap-1">
-										<span class="w-1.5 h-1.5 rounded-full bg-green animate-pulse inline-block"></span>
-										Live results (last {recentSlice.length})
-									</div>
-									<div class="font-mono text-[10px] max-h-36 overflow-y-auto space-y-px pr-1"
-										style="scrollbar-width: thin;">
-										{#each recentSlice as r (r.data_line + r.ts_ms)}
-											{@const statusColor =
-												r.status === 'SUCCESS' ? 'text-green bg-green/10 border-green/30' :
-												r.status === 'FAIL'    ? 'text-red-400 bg-red-400/10 border-red-400/30' :
-												r.status === 'BAN'     ? 'text-orange-400 bg-orange-400/10 border-orange-400/30' :
-												r.status === 'RETRY'   ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' :
-												r.status === 'NONE'    ? 'text-muted-foreground/60 bg-muted/5 border-border/40' :
-												                         'text-muted-foreground bg-muted/10 border-border'}
-											<div class="flex items-center gap-1.5 py-0.5 hover:bg-accent/10 rounded px-1">
-												<span class="shrink-0 border rounded px-1 py-px text-[9px] font-semibold {statusColor}">{r.status}</span>
-												<span class="truncate text-foreground/80 flex-1">{r.data_line}</span>
-												{#if r.proxy}
-													<span class="shrink-0 text-muted-foreground/60 text-[9px] truncate max-w-[100px]" title={r.proxy}>via {r.proxy.replace(/https?:\/\//, '')}</span>
-												{/if}
-												{#if r.error}
-													<span class="shrink-0 text-red-400/70 text-[9px] truncate max-w-[140px]" title={r.error}>{r.error}</span>
-												{/if}
-												{#if r.status === 'SUCCESS' && Object.keys(r.captures ?? {}).length}
-													<span class="shrink-0 text-green/70 text-[9px]">
-														{Object.entries(r.captures).map(([k, v]) => `${k}=${v}`).join(' · ')}
-													</span>
-												{/if}
-											</div>
-										{/each}
-									</div>
-								</td>
-							</tr>
-						{/if}
+
 					{/each}
 				</tbody>
 			</table>
