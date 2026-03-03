@@ -9,6 +9,9 @@
 	let dragFromIdx = $state<number | null>(null);
 	let newTabId = $state<string | null>(null);
 	let closingTabId = $state<string | null>(null);
+	let renamingTabId = $state<string | null>(null);
+	let renameValue = $state('');
+	let renameInput: HTMLInputElement | undefined = $state();
 	let scrollContainer: HTMLDivElement | undefined = $state();
 	let canScrollLeft = $state(false);
 	let canScrollRight = $state(false);
@@ -111,6 +114,28 @@
 		dragOverIdx = null;
 	}
 
+	function startRename(e: MouseEvent, tab: (typeof app.configTabs)[0]) {
+		e.stopPropagation();
+		renamingTabId = tab.id;
+		renameValue = tab.id === app.activeTabId ? app.pipeline.name : tab.name;
+		requestAnimationFrame(() => { renameInput?.focus(); renameInput?.select(); });
+	}
+
+	function commitRename() {
+		if (!renamingTabId) return;
+		const name = renameValue.trim() || 'New Config';
+		const tab = app.configTabs.find(t => t.id === renamingTabId);
+		if (tab) {
+			tab.name = name;
+			if (tab.id === app.activeTabId) app.pipeline.name = name;
+		}
+		renamingTabId = null;
+	}
+
+	function cancelRename() {
+		renamingTabId = null;
+	}
+
 	$effect(() => {
 		// Re-check scroll state when tabs change
 		app.configTabs.length;
@@ -149,11 +174,23 @@
 				ondragend={handleDragEnd}
 				title={tab.filePath || tab.name}
 			>
-				<span class="config-tab-name">
+				<span class="config-tab-name" ondblclick={(e) => startRename(e, tab)}>
 					{#if tab.isDirty || (!tab.filePath && tab.id === app.activeTabId && JSON.stringify(app.pipeline) !== tab.savedSnapshot)}
 						<span class="dirty-dot"></span>
 					{/if}
-					{tab.id === app.activeTabId ? (tab.filePath ? tab.name : app.pipeline.name) : tab.name}
+					{#if renamingTabId === tab.id}
+						<!-- svelte-ignore a11y_autofocus -->
+						<input
+							bind:this={renameInput}
+							bind:value={renameValue}
+							class="tab-rename-input"
+							onblur={commitRename}
+							onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitRename(); } else if (e.key === 'Escape') cancelRename(); }}
+							onclick={(e) => e.stopPropagation()}
+						/>
+					{:else}
+						{tab.id === app.activeTabId ? (tab.filePath ? tab.name : app.pipeline.name) : tab.name}
+					{/if}
 				</span>
 				{#if app.configTabs.length > 1}
 					<button
@@ -374,5 +411,19 @@
 	.scroll-btn:hover {
 		color: var(--foreground);
 		background: rgba(255, 255, 255, 0.06);
+	}
+
+	.tab-rename-input {
+		background: transparent;
+		border: none;
+		border-bottom: 1px solid var(--primary);
+		outline: none;
+		color: var(--foreground);
+		font-size: inherit;
+		font-family: inherit;
+		width: 100%;
+		min-width: 60px;
+		padding: 0;
+		line-height: inherit;
 	}
 </style>

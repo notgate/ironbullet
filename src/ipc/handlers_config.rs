@@ -107,13 +107,20 @@ pub(super) fn get_pipeline(
 
 pub(super) fn update_pipeline(
     state: Arc<Mutex<AppState>>,
-    data: serde_json::Value,
+    mut data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let mut s = state.lock().await;
+            // Extract and consume _file_path before deserializing into Pipeline.
+            // This keeps the active tab's save path in sync so Ctrl+S on a new tab
+            // opens a file dialog instead of overwriting the previously opened file.
+            let file_path = data.as_object_mut()
+                .and_then(|o| o.remove("_file_path"))
+                .and_then(|v| v.as_str().map(|s| s.to_string()));
+            s.pipeline_path = file_path.filter(|s| !s.is_empty());
             if let Ok(pipeline) = serde_json::from_value::<Pipeline>(data) {
                 s.pipeline = pipeline;
             }
