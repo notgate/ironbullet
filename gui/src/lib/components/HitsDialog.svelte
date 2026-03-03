@@ -12,6 +12,7 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import CheckCircle from '@lucide/svelte/icons/check-circle';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import Activity from '@lucide/svelte/icons/activity';
 
 	type HitRecord = { data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string };
 	type SortKey = 'time_asc' | 'time_desc' | 'data_asc' | 'data_desc' | 'captures_desc';
@@ -386,6 +387,46 @@
 				</table>
 			{/if}
 		</div>
+
+		<!-- Live feed — shown when a running job is selected -->
+		{#if selectedJobId}
+			{@const liveJob = app.jobs.find((j: any) => j.id === selectedJobId) as any}
+			{@const recentResults = liveJob?.stats?.recent_results ?? []}
+			{@const isRunning = liveJob?.state === 'Running'}
+			{#if isRunning && recentResults.length > 0}
+				{@const recentSlice = recentResults.slice(-30).reverse()}
+				<div class="border-t border-border shrink-0">
+					<div class="flex items-center gap-1.5 px-3 py-1 bg-surface/60 border-b border-border/50">
+						<Activity size={10} class="text-green" />
+						<span class="text-[9px] text-muted-foreground font-medium">Live feed</span>
+						<span class="w-1.5 h-1.5 rounded-full bg-green animate-pulse inline-block ml-0.5"></span>
+					</div>
+					<div class="font-mono text-[10px] max-h-28 overflow-y-auto space-y-px px-2 py-1" style="scrollbar-width: thin;">
+						{#each recentSlice as r (r.data_line + r.ts_ms)}
+							{@const statusColor =
+								r.status === 'SUCCESS' ? 'text-green bg-green/10 border-green/30' :
+								r.status === 'FAIL'    ? 'text-red-400 bg-red-400/10 border-red-400/30' :
+								r.status === 'BAN'     ? 'text-orange-400 bg-orange-400/10 border-orange-400/30' :
+								r.status === 'RETRY'   ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' :
+								                         'text-muted-foreground bg-muted/10 border-border'}
+							<div class="flex items-center gap-1.5 py-0.5 hover:bg-accent/10 rounded px-1">
+								<span class="shrink-0 border rounded px-1 py-px text-[9px] font-semibold {statusColor}">{r.status}</span>
+								<span class="truncate text-foreground/80 flex-1">{r.data_line}</span>
+								{#if r.proxy}
+									<span class="shrink-0 text-muted-foreground/60 text-[9px] truncate max-w-[100px]" title={r.proxy}>via {r.proxy.replace(/https?:\/\//, '')}</span>
+								{/if}
+								{#if r.error}
+									<span class="shrink-0 text-red-400/70 text-[9px] truncate max-w-[140px]" title={r.error}>{r.error}</span>
+								{/if}
+								{#if r.status === 'SUCCESS' && Object.keys(r.captures ?? {}).length}
+									<span class="shrink-0 text-green/70 text-[9px]">{Object.entries(r.captures).map(([k, v]) => `${k}=${v}`).join(' · ')}</span>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+		{/if}
 
 		<!-- Footer -->
 		<div class="px-3 py-1.5 border-t border-border bg-surface/50 shrink-0 flex items-center justify-between">
