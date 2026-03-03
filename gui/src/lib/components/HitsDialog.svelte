@@ -16,8 +16,19 @@
 	type HitRecord = { data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string };
 	type SortKey = 'time_asc' | 'time_desc' | 'data_asc' | 'data_desc' | 'captures_desc';
 
-	let open = $derived(app.showHitsDialog);
-	function onOpenChange(v: boolean) { if (!v) app.showHitsDialog = false; }
+	// Use a stable local $state instead of $derived to avoid re-triggering Dialog
+	// animations on every hit push (app.hits mutates frequently during active jobs).
+	let open = $state(false);
+	function onOpenChange(v: boolean) {
+		open = v;
+		if (!v) app.showHitsDialog = false;
+	}
+
+	// Sync open state from app flag — only trigger on the flag itself, not on hits
+	$effect(() => {
+		const shouldOpen = app.showHitsDialog;
+		if (shouldOpen !== open) open = shouldOpen;
+	});
 
 	let search = $state('');
 	let sortKey = $state<SortKey>('time_desc');
@@ -93,6 +104,28 @@
 			send('get_job_hits', { id: selectedJobId });
 		}
 	}
+
+	let autoRefresh = $state(false);
+	let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+	$effect(() => {
+		if (autoRefresh && selectedJobId && open) {
+			autoRefreshTimer = setInterval(() => {
+				send('get_job_hits', { id: selectedJobId });
+			}, 2000);
+		} else {
+			if (autoRefreshTimer !== null) {
+				clearInterval(autoRefreshTimer);
+				autoRefreshTimer = null;
+			}
+		}
+		return () => {
+			if (autoRefreshTimer !== null) {
+				clearInterval(autoRefreshTimer);
+				autoRefreshTimer = null;
+			}
+		};
+	});
 
 	function exportTxt() {
 		const lines = displayed.map(h => {
@@ -240,8 +273,13 @@
 
 			{#if selectedJobId}
 				<button class="skeu-btn text-[9px] flex items-center gap-0.5 shrink-0" onclick={refreshJobHits} title="Refresh from backend">
-					<RefreshCw size={9} />
+					<RefreshCw size={9} class={autoRefresh ? 'animate-spin' : ''} />
 				</button>
+				<button
+					class="skeu-btn text-[9px] shrink-0 {autoRefresh ? 'text-primary' : ''}"
+					onclick={() => { autoRefresh = !autoRefresh; }}
+					title={autoRefresh ? 'Stop auto-refresh' : 'Auto-refresh every 2s'}
+				>Live</button>
 			{/if}
 
 			<!-- Search -->
