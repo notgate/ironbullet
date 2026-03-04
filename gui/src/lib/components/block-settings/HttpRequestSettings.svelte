@@ -268,11 +268,10 @@
 	<div class="space-y-1">
 
 		<!-- TLS client selector -->
-		{@const tlsClient = block.settings.tls_client || 'RustTLS'}
 		<div>
 			<label class={labelCls}>TLS Client</label>
 			<SkeuSelect
-				value={tlsClient}
+				value={block.settings.tls_client || 'RustTLS'}
 				onValueChange={(v) => updateSettings('tls_client', v)}
 				options={[
 					{ value: 'RustTLS',  label: 'RustTLS — reqwest + rustls (standard HTTPS)' },
@@ -281,9 +280,9 @@
 				]}
 				placeholder="Select TLS client..."
 			/>
-			{#if tlsClient === 'RustTLS'}
+			{#if (block.settings.tls_client || 'RustTLS') === 'RustTLS'}
 				<p class="text-[9px] text-muted-foreground mt-0.5">reqwest + rustls — standard HTTPS, no fingerprinting. Fastest for APIs and internal targets.</p>
-			{:else if tlsClient === 'WreqTLS'}
+			{:else if (block.settings.tls_client || 'RustTLS') === 'WreqTLS'}
 				<p class="text-[9px] text-muted-foreground mt-0.5">wreq + BoringSSL — 100+ browser device emulation profiles with accurate JA3/JA4/HTTP2 fingerprints. No sidecar required.</p>
 			{:else}
 				<p class="text-[9px] text-muted-foreground mt-0.5">Go sidecar (azuretls) — custom JA3/JA4 strings, browser TLS imitation, per-block HTTP/2 fingerprinting, custom cipher suites.</p>
@@ -302,7 +301,7 @@
 		<p class="text-[9px] text-muted-foreground">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
 
 		<!-- WreqTLS emulation profile -->
-		{#if tlsClient === 'WreqTLS'}
+		{#if (block.settings.tls_client || 'RustTLS') === 'WreqTLS'}
 		<div>
 			<label class={labelCls}>Browser Emulation Profile <span class="text-muted-foreground/60">(WreqTLS · TLS + HTTP/2 fingerprint)</span></label>
 			<SkeuSelect
@@ -361,7 +360,7 @@
 		{/if}
 
 		<!-- AzureTLS fingerprinting settings -->
-		{#if tlsClient === 'AzureTLS'}
+		{#if (block.settings.tls_client || 'RustTLS') === 'AzureTLS'}
 		<!-- Browser TLS profile -->
 		<div>
 			<label class={labelCls}>Browser Profile <span class="text-muted-foreground/60">(AzureTLS · TLS + HTTP/2 fingerprint)</span></label>
