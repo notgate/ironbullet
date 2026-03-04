@@ -44,7 +44,6 @@
 	const CONTROL_TYPES = ['IfElse', 'Loop', 'Delay', 'Script', 'Log', 'SetVariable', 'ClearCookies'];
 	const NETWORK_TYPES = ['Webhook', 'WebSocket', 'TcpRequest', 'UdpRequest', 'FtpRequest', 'SshRequest', 'ImapRequest', 'SmtpRequest', 'PopRequest'];
 	const BYPASS_TYPES = ['CaptchaSolver', 'CloudflareBypass', 'LaravelCsrf'];
-	const SECURITY_TYPES = ['JwtToken', 'HeaderSpoof'];
 	const BROWSER_TYPES = ['BrowserOpen', 'NavigateTo', 'ClickElement', 'TypeText', 'WaitForElement', 'GetElementText', 'Screenshot', 'ExecuteJs'];
 	const ADVANCED_TYPES = ['DateFunction', 'CaseSwitch', 'CookieContainer', 'RandomUserAgent', 'OcrCaptcha', 'RecaptchaInvisible', 'XacfSensor', 'RandomData', 'DataDomeSensor', 'Plugin', 'Group', 'AkamaiV3Sensor'];
 </script>
@@ -122,9 +121,9 @@
 			{:else if BYPASS_TYPES.includes(block.settings.type)}
 				<BypassSettings {block} {updateSettings} {embedBadge} />
 			{:else if block.settings.type === 'JwtToken'}
-				<JwtTokenSettings bind:block={block as any} />
+				<JwtTokenSettings {block} {updateSettings} {embedBadge} />
 			{:else if block.settings.type === 'HeaderSpoof'}
-				<HeaderSpoofSettings bind:block={block as any} />
+				<HeaderSpoofSettings {block} {updateSettings} {embedBadge} />
 			{:else if BROWSER_TYPES.includes(block.settings.type)}
 				<BrowserSettings {block} {updateSettings} {embedBadge} />
 			{:else if ADVANCED_TYPES.includes(block.settings.type)}
