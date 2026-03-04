@@ -574,7 +574,7 @@
 									</tr>
 								</thead>
 								<tbody>
-									{#each hitsForJob.slice(-100).reverse() as hit, i (`${selectedHitsJobId}-${i}`)}
+									{#each hitsForJob.slice(-100) as hit, i (`${selectedHitsJobId}-${hitsForJob.length - 100 + i}`)}
 										<tr class="border-b border-border/40 hover:bg-surface/60">
 											<td class="px-2 py-0.5 font-mono text-[9px] text-green truncate max-w-[130px]" title={hit.data_line}>
 												{hit.data_line}

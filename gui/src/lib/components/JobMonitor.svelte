@@ -2,7 +2,6 @@
 	import { app } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
 	import { fmt, formatDuration } from '$lib/utils';
-	import { onDestroy } from 'svelte';
 	import type { Job } from '$lib/types';
 	import SkeuSelect from './SkeuSelect.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -24,33 +23,7 @@
 	let showNewJob = $state(false);
 	let showHelp = $state(false);
 
-	// Poll stats for all running jobs every second
-	let statsInterval: ReturnType<typeof setInterval> | null = null;
-	$effect(() => {
-		const hasRunning = app.jobs.some((j: any) => j.state === 'Running');
-		if (hasRunning) {
-			if (!statsInterval) {
-				console.log('[JobMonitor] starting stats poll interval (1s)');
-				statsInterval = setInterval(() => {
-					for (const job of app.jobs) {
-						if ((job as any).state === 'Running') {
-							send('get_job_stats', { id: (job as any).id });
-						}
-					}
-				}, 1000);
-			}
-		} else {
-			if (statsInterval) {
-				console.log('[JobMonitor] no running jobs — clearing stats poll interval');
-				clearInterval(statsInterval);
-				statsInterval = null;
-			}
-		}
-	});
 
-	onDestroy(() => {
-		if (statsInterval) clearInterval(statsInterval);
-	});
 
 	function selectJob(id: string) {
 		const prev = app.activeJobId;
