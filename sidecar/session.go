@@ -5,12 +5,19 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Noooste/azuretls-client"
 )
 
 type SessionWrapper struct {
+	// mu guards all mutable fields below (Browser, CurrentProxy, LastJA3,
+	// LastHTTP2FP, LastUsed). The map-level sessionsMu only protects the map
+	// itself; two goroutines may hold the same *SessionWrapper simultaneously
+	// (e.g. two HTTP blocks in the same pipeline run on different workers),
+	// so each SessionWrapper needs its own lock for field-level safety.
+	mu           sync.Mutex
 	Session      *azuretls.Session
 	Browser      string
 	// CurrentProxy tracks the proxy currently configured on this session.
@@ -190,11 +197,14 @@ func handleHTTPRequest(req SidecarRequest) {
 		sessionsMu.Unlock()
 	}
 
-	// Update last-used timestamp for GC
+	// All mutable field access on sw must be under sw.mu.
+	// The map lock (sessionsMu) only protects the sessions map itself; two
+	// goroutines can hold the same *SessionWrapper simultaneously when a
+	// pipeline has multiple HTTP blocks running on different Tokio workers.
+	sw.mu.Lock()
 	sw.LastUsed = time.Now()
 
 	// Apply a per-block browser_profile change only when it actually differs.
-	// Changing browser profile requires rebuilding TLS state so we guard it.
 	if req.Browser != "" && req.Browser != sw.Browser {
 		sw.Session.Browser = req.Browser
 		if req.JA3 != "" && req.JA3 != sw.LastJA3 {
@@ -209,9 +219,6 @@ func handleHTTPRequest(req SidecarRequest) {
 	}
 
 	// Apply per-request JA3/HTTP2FP overrides only when the value has changed.
-	// ApplyJa3/ApplyHTTP2 rebuild TLS connection state — calling them on every
-	// request with the same value destroys keep-alive throughput and causes
-	// timeouts under load. Guard with last-applied tracking.
 	if req.JA3 != "" && req.Browser == "" && req.JA3 != sw.LastJA3 {
 		sw.Session.ApplyJa3(req.JA3, sw.Browser)
 		sw.LastJA3 = req.JA3
@@ -222,22 +229,18 @@ func handleHTTPRequest(req SidecarRequest) {
 	}
 
 	// Only call SetProxy when the proxy actually changes.
-	// azuretls rebuilds internal transport state on SetProxy, which tears down
-	// any keep-alive connections — calling it redundantly on every request
-	// within the same pipeline execution (same proxy, multiple HTTP blocks)
-	// forces a fresh TCP+TLS handshake each time and kills throughput.
 	if req.Proxy != "" && req.Proxy != sw.CurrentProxy {
 		if err := sw.Session.SetProxy(req.Proxy); err != nil {
-			// Non-fatal: log and continue with previous proxy config
 			fmt.Fprintf(os.Stderr, "[sidecar] SetProxy error for %s: %v\n", req.Proxy, err)
 		} else {
 			sw.CurrentProxy = req.Proxy
 		}
 	} else if req.Proxy == "" && sw.CurrentProxy != "" {
-		// Proxy explicitly cleared — reset to direct connection
 		sw.Session.SetProxy("")
 		sw.CurrentProxy = ""
 	}
+
+	sw.mu.Unlock()
 
 	// Build ordered headers
 	var orderedHeaders azuretls.OrderedHeaders
@@ -246,13 +249,6 @@ func handleHTTPRequest(req SidecarRequest) {
 			orderedHeaders = append(orderedHeaders, []string{h[0], h[1]})
 		}
 	}
-
-	// Set timeout
-	if req.Timeout > 0 {
-		sw.Session.SetTimeout(time.Duration(req.Timeout) * time.Millisecond)
-	}
-
-	start := time.Now()
 
 	method := strings.ToUpper(req.Method)
 	if method == "" {
@@ -265,18 +261,26 @@ func handleHTTPRequest(req SidecarRequest) {
 		OrderedHeaders: orderedHeaders,
 	}
 
+	// Timeout is set per-request on the Request struct, not on the Session.
+	// sw.Session.SetTimeout() mutates shared session state and races when two
+	// goroutines use the same session concurrently — last write wins, causing
+	// one request to run with the wrong timeout. azuretls.Request.TimeOut is
+	// applied to that request only and is goroutine-safe.
+	if req.Timeout > 0 {
+		httpReq.TimeOut = time.Duration(req.Timeout) * time.Millisecond
+	}
+
 	if req.Body != "" && method != "GET" {
 		httpReq.Body = req.Body
 	}
 
-	// Bug-fix: follow_redirects and max_redirects were previously ignored.
-	// Use per-request fields so session-level defaults aren't clobbered.
 	if req.FollowRedirects != nil && !*req.FollowRedirects {
-		httpReq.DisableRedirects = true // returns 3xx directly without following
+		httpReq.DisableRedirects = true
 	} else if req.MaxRedirects > 0 {
 		httpReq.MaxRedirects = uint(req.MaxRedirects)
 	}
 
+	start := time.Now()
 	resp, err := sw.Session.Do(httpReq)
 
 	elapsed := time.Since(start).Milliseconds()

@@ -233,4 +233,4 @@ mod inner {
 }
 
 #[cfg(unix)]
-pub(crate) use inner::{build_wreq_client, execute_wreq_request, parse_emulation};
+pub(crate) use inner::execute_wreq_request;
