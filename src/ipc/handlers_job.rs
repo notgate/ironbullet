@@ -45,8 +45,26 @@ pub(super) fn create_job(
 
             // ── data source ───────────────────────────────────────────────────
             if let Some(ds) = data.get("data_source") {
-                if let Ok(new_ds) = serde_json::from_value::<ironbullet::runner::job::DataSource>(ds.clone()) {
-                    job.data_source = new_ds;
+                match serde_json::from_value::<ironbullet::runner::job::DataSource>(ds.clone()) {
+                    Ok(new_ds) => {
+                        eprintln!("[create_job] data_source: type={:?} value='{}'",
+                            new_ds.source_type, new_ds.value);
+                        job.data_source = new_ds;
+                    }
+                    Err(e) => {
+                        // Deserialization failed — extract fields manually so we don't
+                        // silently fall back to an empty data source.
+                        eprintln!("[create_job] data_source deser failed: {} — raw: {}", e, ds);
+                        let value = ds.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let source_type = match ds.get("source_type").and_then(|v| v.as_str()) {
+                            Some("Folder") => ironbullet::runner::job::DataSourceType::Folder,
+                            Some("Inline") => ironbullet::runner::job::DataSourceType::Inline,
+                            Some("Url")    => ironbullet::runner::job::DataSourceType::Url,
+                            Some("Range")  => ironbullet::runner::job::DataSourceType::Range,
+                            _              => ironbullet::runner::job::DataSourceType::File,
+                        };
+                        job.data_source = ironbullet::runner::job::DataSource { source_type, value };
+                    }
                 }
             }
 
@@ -326,13 +344,18 @@ pub(super) fn start_job(
             let result = s.job_manager.start_job(uuid, sidecar_tx, Some(pm));
 
             if result.is_none() {
-                // Data source was empty or unreadable — surface a clear error.
-                let resp = IpcResponse::err("job_start_error",
-                    "Job data source is empty or could not be read. \
-                     Check that your wordlist file exists and is not empty.".into());
+                // Data source was empty or unreadable — surface a clear error with path info.
+                let ds_value = s.job_manager.get_job_mut(uuid)
+                    .map(|j| j.data_source.value.clone())
+                    .unwrap_or_default();
+                let msg = if ds_value.is_empty() {
+                    "No wordlist configured. Set a data source path in the job settings.".to_string()
+                } else {
+                    format!("Wordlist '{}' could not be read or is empty. Check the path and file contents.", ds_value)
+                };
+                let resp = IpcResponse::err("job_start_error", msg);
                 eval_js(format!("window.__ipc_callback({})",
                     serde_json::to_string(&resp).unwrap_or_default()));
-                // Push updated jobs list so UI reflects the job stayed in Waiting state
                 let jobs = s.job_manager.list_jobs();
                 let jobs_resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
                 eval_js(format!("window.__ipc_callback({})",
