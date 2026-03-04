@@ -1651,6 +1651,12 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
                 }
             }
         }
+        BlockSettings::JwtToken(_) => {
+            code.push_str(&format!("{}// JWT Token block — use a JWT library crate in generated code\n", pad));
+        }
+        BlockSettings::HeaderSpoof(_) => {
+            code.push_str(&format!("{}// HeaderSpoof block — inject X-Forwarded-For and related headers\n", pad));
+        }
     }
 
     code

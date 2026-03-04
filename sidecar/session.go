@@ -23,6 +23,8 @@ type SessionWrapper struct {
 	// hasn't changed destroys throughput. Skip re-application when unchanged.
 	LastJA3     string
 	LastHTTP2FP string
+	// LastUsed tracks the last request time for GC eviction.
+	LastUsed    time.Time
 }
 
 func handleNewSession(req SidecarRequest) {
@@ -85,6 +87,7 @@ func handleNewSession(req SidecarRequest) {
 		Browser:     browser,
 		LastJA3:     req.JA3,
 		LastHTTP2FP: req.HTTP2FP,
+		LastUsed:    time.Now(),
 	}
 	sessionsMu.Unlock()
 
@@ -161,23 +164,34 @@ func handleHTTPRequest(req SidecarRequest) {
 	sessionsMu.RUnlock()
 
 	if !ok {
-		// Auto-create session if it doesn't exist
-		handleNewSession(SidecarRequest{
-			ID:        req.ID + "_init",
-			Action:    "new_session",
-			Session:   req.Session,
-			Browser:   req.Browser,
-			Proxy:     req.Proxy,
-			SslVerify: req.SslVerify,
-		})
-		sessionsMu.RLock()
+		// Auto-create session under write lock to prevent double-creation race.
+		// Two goroutines arriving simultaneously for the same session ID would
+		// both read !ok and both call handleNewSession, leaking a session.
+		sessionsMu.Lock()
 		sw, ok = sessions[req.Session]
-		sessionsMu.RUnlock()
 		if !ok {
-			sendError(req.ID, "Failed to auto-create session")
-			return
+			session := azuretls.NewSession()
+			browser := req.Browser
+			if browser == "" {
+				browser = "chrome"
+			}
+			session.Browser = browser
+			if req.Proxy != "" {
+				if err := session.SetProxy(req.Proxy); err != nil {
+					fmt.Fprintf(os.Stderr, "[sidecar] auto-create SetProxy error: %v\n", err)
+				}
+			}
+			if req.SslVerify != nil && !*req.SslVerify {
+				session.InsecureSkipVerify = true
+			}
+			sw = &SessionWrapper{Session: session, Browser: browser, LastUsed: time.Now()}
+			sessions[req.Session] = sw
 		}
+		sessionsMu.Unlock()
 	}
+
+	// Update last-used timestamp for GC
+	sw.LastUsed = time.Now()
 
 	// Apply a per-block browser_profile change only when it actually differs.
 	// Changing browser profile requires rebuilding TLS state so we guard it.

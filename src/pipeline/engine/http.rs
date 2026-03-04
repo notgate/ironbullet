@@ -19,6 +19,27 @@ impl ExecutionContext {
             ])
             .collect();
 
+        // Inject SPOOF_HEADERS set by a preceding HeaderSpoof block.
+        // These are a JSON array of [name, value] pairs stored in the SPOOF_HEADERS variable.
+        if let Some(spoof_json) = self.variables.get("SPOOF_HEADERS") {
+            if let Ok(pairs) = serde_json::from_str::<Vec<(String, String)>>(&spoof_json) {
+                for (name, mut value) in pairs {
+                    if name == "X-Forwarded-Host" && value.is_empty() {
+                        // Fill in actual request host from URL
+                        value = settings.url
+                            .split("://").nth(1)
+                            .unwrap_or("")
+                            .split('/').next()
+                            .unwrap_or("")
+                            .to_string();
+                    }
+                    if !name.is_empty() && !value.is_empty() {
+                        headers.push(vec![name, value]);
+                    }
+                }
+            }
+        }
+
         // Inject custom cookies as a Cookie header (one per line: name=value)
         if !settings.custom_cookies.is_empty() {
             let cookie_str = self.variables.interpolate(&settings.custom_cookies);

@@ -87,7 +87,13 @@ mod inner {
         let emu = parse_emulation(emulation);
         let mut builder = wreq::Client::builder()
             .emulation(emu)
-            .cookie_store(true);
+            .cookie_store(true)
+            // Connect timeout — prevents dead hosts hanging for OS TCP timeout (~2 min)
+            .connect_timeout(std::time::Duration::from_secs(10))
+            // Cap idle pool to avoid fd exhaustion at high thread counts
+            .pool_max_idle_per_host(4)
+            .pool_idle_timeout(std::time::Duration::from_secs(30))
+            .tcp_keepalive(std::time::Duration::from_secs(30));
         if !ssl_verify {
             builder = builder.cert_verification(false);
         }

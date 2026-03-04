@@ -7,6 +7,8 @@ mod bypass;
 mod logging;
 mod helpers;
 mod data;
+mod jwt;
+mod header_spoof;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -494,6 +496,14 @@ impl ExecutionContext {
             }
             BlockSettings::FileSystem(settings) => {
                 self.execute_file_system(settings)
+            }
+            BlockSettings::JwtToken(settings) => {
+                self.execute_jwt_token(block, settings).await?;
+                Ok(())
+            }
+            BlockSettings::HeaderSpoof(settings) => {
+                self.execute_header_spoof(block, settings).await?;
+                Ok(())
             }
         }
     }
