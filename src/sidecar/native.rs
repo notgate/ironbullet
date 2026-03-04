@@ -69,7 +69,17 @@ pub async fn execute_rustls_request(
         let mut builder = reqwest::Client::builder()
             .use_rustls_tls()
             .cookie_store(true)
-            .danger_accept_invalid_certs(!ssl_verify);
+            .danger_accept_invalid_certs(!ssl_verify)
+            // Connect timeout separate from total request timeout —
+            // prevents dead hosts from hanging for OS TCP timeout (~2 min)
+            .connect_timeout(Duration::from_secs(10))
+            // Cap idle connections per host to avoid fd exhaustion at high thread counts.
+            // reqwest default is unbounded; at 200+ workers this can leak descriptors.
+            .pool_max_idle_per_host(4)
+            // Evict idle keep-alive connections after 30s to reclaim fds between runs.
+            .pool_idle_timeout(Duration::from_secs(30))
+            // TCP keepalive probes to detect silently dead connections behind proxies.
+            .tcp_keepalive(Duration::from_secs(30));
 
         if let Some(ref proxy_str) = req.proxy {
             if !proxy_str.is_empty() {
@@ -77,7 +87,6 @@ pub async fn execute_rustls_request(
                     Ok(proxy) => { builder = builder.proxy(proxy); }
                     Err(e) => {
                         let err = error_response(id, 0, String::new(), format!("Invalid proxy '{}': {}", proxy_str, e));
-                        // Return a dummy client alongside the error
                         let fallback = reqwest::Client::builder().use_rustls_tls().build().unwrap_or_default();
                         return (err, fallback);
                     }
