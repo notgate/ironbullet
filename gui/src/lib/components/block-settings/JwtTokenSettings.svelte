@@ -1,26 +1,29 @@
 <script lang="ts">
 	import SkeuSelect from '$lib/components/SkeuSelect.svelte';
+	import VariableInput from '$lib/components/VariableInput.svelte';
 	import type { Block } from '$lib/types/block';
 	import type { JwtTokenSettings } from '$lib/types/block-settings';
 
-	let { block = $bindable() }: { block: Block & { settings: { type: 'JwtToken' } & JwtTokenSettings } } = $props();
+	let { block, updateSettings, embedBadge }: {
+		block: Block;
+		updateSettings: (key: string, value: unknown) => void;
+		embedBadge: import('svelte').Snippet<[string | undefined]>;
+	} = $props();
 
+	const s = $derived(block.settings as { type: 'JwtToken' } & JwtTokenSettings);
 	const labelCls = 'text-[10px] uppercase tracking-wider text-muted-foreground block mb-0.5';
-
-	function update(key: keyof JwtTokenSettings, value: unknown) {
-		(block.settings as any)[key] = value;
-	}
+	const action = $derived(s.action || 'Sign');
 </script>
 
 <div class="space-y-2 p-2 text-xs">
-	<!-- Action -->
+	<!-- Mode -->
 	<div>
 		<label class={labelCls}>Mode</label>
 		<SkeuSelect
-			value={block.settings.action || 'Sign'}
-			onValueChange={(v) => update('action', v)}
+			value={action}
+			onValueChange={(v) => updateSettings('action', v)}
 			options={[
-				{ value: 'Sign', label: 'Sign — generate a signed JWT from claims' },
+				{ value: 'Sign',   label: 'Sign — generate a signed JWT from claims' },
 				{ value: 'Decode', label: 'Decode — verify and extract claims from a JWT' },
 			]}
 		/>
@@ -29,12 +32,11 @@
 	<!-- Secret -->
 	<div>
 		<label class={labelCls}>Secret</label>
-		<input
-			type="text"
-			value={block.settings.secret || ''}
-			oninput={(e) => update('secret', (e.target as HTMLInputElement).value)}
-			placeholder="HMAC secret (supports {'{VAR}'} interpolation)"
-			class="skeu-input w-full font-mono text-[11px]"
+		<VariableInput
+			value={s.secret || ''}
+			placeholder="HMAC secret"
+			class="flex-1 skeu-input text-[11px] font-mono"
+			oninput={(e) => updateSettings('secret', (e.target as HTMLInputElement).value)}
 		/>
 	</div>
 
@@ -42,8 +44,8 @@
 	<div>
 		<label class={labelCls}>Algorithm</label>
 		<SkeuSelect
-			value={block.settings.algorithm || 'HS256'}
-			onValueChange={(v) => update('algorithm', v)}
+			value={s.algorithm || 'HS256'}
+			onValueChange={(v) => updateSettings('algorithm', v)}
 			options={[
 				{ value: 'HS256', label: 'HS256' },
 				{ value: 'HS384', label: 'HS384' },
@@ -52,18 +54,20 @@
 		/>
 	</div>
 
-	{#if (block.settings.action || 'Sign') === 'Sign'}
+	{#if action === 'Sign'}
 		<!-- Claims -->
 		<div>
 			<label class={labelCls}>Claims (JSON)</label>
-			<textarea
-				value={block.settings.claims || ''}
-				oninput={(e) => update('claims', (e.target as HTMLTextAreaElement).value)}
-				placeholder={'{"sub": "{USER}", "role": "admin"}'}
-
-				rows={4}
-				class="skeu-input w-full font-mono text-[11px] resize-y"
-			></textarea>
+			<div class="relative">
+				<textarea
+					value={s.claims || ''}
+					oninput={(e) => updateSettings('claims', (e.target as HTMLTextAreaElement).value)}
+					placeholder={'{"sub": "{USER}", "role": "admin"}'}
+					rows={4}
+					class="skeu-input w-full font-mono text-[11px] resize-y"
+				></textarea>
+				{@render embedBadge(s.claims)}
+			</div>
 			<p class="text-[9px] text-muted-foreground mt-0.5">Variable interpolation supported in values. <code>iat</code> injected automatically.</p>
 		</div>
 
@@ -73,9 +77,8 @@
 			<input
 				type="number"
 				min="0"
-				value={block.settings.expires_in_secs ?? 0}
-				oninput={(e) => update('expires_in_secs', parseInt((e.target as HTMLInputElement).value) || 0)}
-				placeholder="0 = no expiry"
+				value={s.expires_in_secs ?? 0}
+				oninput={(e) => updateSettings('expires_in_secs', parseInt((e.target as HTMLInputElement).value) || 0)}
 				class="skeu-input w-full text-[11px]"
 			/>
 			<p class="text-[9px] text-muted-foreground mt-0.5">0 = no <code>exp</code> claim added.</p>
@@ -84,40 +87,49 @@
 		<!-- Output variable -->
 		<div>
 			<label class={labelCls}>Output Variable</label>
-			<input
-				type="text"
-				value={block.settings.output_var || 'JWT'}
-				oninput={(e) => update('output_var', (e.target as HTMLInputElement).value)}
+			<VariableInput
+				value={s.output_var || 'JWT'}
 				placeholder="JWT"
-				class="skeu-input w-full font-mono text-[11px]"
+				class="flex-1 skeu-input text-[11px] font-mono"
+				oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)}
 			/>
-			<p class="text-[9px] text-muted-foreground mt-0.5">Signed token stored as <code>{'{'}OUTPUT_VAR{'}'}</code>.</p>
+			<p class="text-[9px] text-muted-foreground mt-0.5">Signed token stored as this variable for downstream use.</p>
 		</div>
 	{:else}
 		<!-- Token input -->
 		<div>
 			<label class={labelCls}>Token Input</label>
-			<input
-				type="text"
-				value={block.settings.token_input || ''}
-				oninput={(e) => update('token_input', (e.target as HTMLInputElement).value)}
-				placeholder={'{TOKEN}'}
-				class="skeu-input w-full font-mono text-[11px]"
+			<VariableInput
+				value={s.token_input || ''}
+				placeholder="{'{TOKEN}'}"
+				class="flex-1 skeu-input text-[11px] font-mono"
+				oninput={(e) => updateSettings('token_input', (e.target as HTMLInputElement).value)}
 			/>
 			<p class="text-[9px] text-muted-foreground mt-0.5">Raw JWT string to decode. Supports variable interpolation.</p>
 		</div>
 
+		<!-- Output variable (decode) -->
+		<div>
+			<label class={labelCls}>Output Variable</label>
+			<VariableInput
+				value={s.output_var || 'JWT'}
+				placeholder="JWT"
+				class="flex-1 skeu-input text-[11px] font-mono"
+				oninput={(e) => updateSettings('output_var', (e.target as HTMLInputElement).value)}
+			/>
+			<p class="text-[9px] text-muted-foreground mt-0.5">Claims extracted as <code>CLAIM_KEY</code> variables. Full decoded JSON stored here.</p>
+		</div>
+
 		<!-- Verify -->
-		<div class="flex items-center gap-2">
+		<label class="flex items-center gap-2 cursor-pointer">
 			<input
 				type="checkbox"
-				id="jwt-verify"
-				checked={block.settings.verify_on_decode ?? true}
-				onchange={(e) => update('verify_on_decode', (e.target as HTMLInputElement).checked)}
+				checked={s.verify_on_decode ?? true}
+				onchange={(e) => updateSettings('verify_on_decode', (e.target as HTMLInputElement).checked)}
 				class="skeu-checkbox"
 			/>
-			<label for="jwt-verify" class="text-[11px] text-foreground cursor-pointer">Verify signature and expiry</label>
-		</div>
-		<p class="text-[9px] text-muted-foreground">If enabled, block fails on invalid signature or expired token. Claims extracted as <code>CLAIM_&lt;KEY&gt;</code> variables.</p>
+			<span class="text-[11px] text-foreground">Verify signature and expiry</span>
+		</label>
+		<p class="text-[9px] text-muted-foreground">If enabled, block fails on invalid signature or expired token.</p>
 	{/if}
 </div>
