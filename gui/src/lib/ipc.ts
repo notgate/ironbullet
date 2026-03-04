@@ -278,6 +278,9 @@ export function registerCallbacks() {
 			case 'import_error':
 				toast(`Import failed: ${resp.error || 'Unknown'}`, 'error');
 				break;
+			case 'job_start_error':
+				toast(resp.error || 'Failed to start job', 'error');
+				break;
 			case 'job_created':
 				if (resp.data) {
 					console.log('[IPC] job_created:', (resp.data as any)?.id ?? 'no-id');
@@ -292,10 +295,10 @@ export function registerCallbacks() {
 				break;
 			case 'jobs_list':
 				if (resp.data && Array.isArray(resp.data)) {
-					console.log('[IPC] jobs_list: received', (resp.data as any[]).length, 'jobs');
 					const newJobsList = resp.data as any[];
-					// Prune jobHitsDb entries for jobs that no longer exist
 					const liveJobIds = new Set(newJobsList.map((j: any) => j.id));
+
+					// Prune jobHitsDb entries for jobs that no longer exist
 					const currentDb = app.jobHitsDb;
 					const staleIds = Object.keys(currentDb).filter(id => !liveJobIds.has(id));
 					if (staleIds.length > 0) {
@@ -305,7 +308,29 @@ export function registerCallbacks() {
 						}
 						app.jobHitsDb = pruned;
 					}
-					app.jobs = newJobsList;
+
+					// Merge into existing array to avoid full re-render flicker.
+					// Update fields in-place for existing jobs; append new ones; remove gone ones.
+					const existingIds = new Set((app.jobs as any[]).map((j: any) => j.id));
+					for (const incoming of newJobsList) {
+						const existing = (app.jobs as any[]).find((j: any) => j.id === incoming.id);
+						if (existing) {
+							// Merge all fields in-place — Svelte 5 proxy tracks property assignments
+							for (const key of Object.keys(incoming)) {
+								if (JSON.stringify(existing[key]) !== JSON.stringify(incoming[key])) {
+									existing[key] = incoming[key];
+								}
+							}
+						} else {
+							(app.jobs as any[]).push(incoming);
+						}
+					}
+					// Remove jobs that disappeared
+					const toRemove = (app.jobs as any[]).filter((j: any) => !liveJobIds.has(j.id));
+					for (const gone of toRemove) {
+						const idx = (app.jobs as any[]).indexOf(gone);
+						if (idx !== -1) (app.jobs as any[]).splice(idx, 1);
+					}
 				}
 				break;
 			case 'job_stats_update':

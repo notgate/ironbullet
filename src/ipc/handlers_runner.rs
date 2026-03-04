@@ -862,17 +862,35 @@ pub(super) fn inspect_browser_open(
                         }));
                     }
                     Some(event) = ev_done.next() => {
-                        // Fetch text response bodies up to 2 MB
-                        if event.encoded_data_length > 0.0 && event.encoded_data_length < 2_097_152.0 {
+                        // Fetch response bodies up to 4 MB.
+                        // encoded_data_length == -1 means unknown length — still attempt fetch.
+                        // base64_encoded == true means the body is base64 — decode it to UTF-8
+                        // lossy so compressed/binary responses still display readable content.
+                        let within_limit = event.encoded_data_length < 0.0
+                            || event.encoded_data_length < 4_194_304.0;
+                        if within_limit {
                             if let Ok(r) = page_body
                                 .execute(GetResponseBodyParams { request_id: event.request_id.clone() })
                                 .await
                             {
-                                if !r.result.base64_encoded {
+                                let body_text = if r.result.base64_encoded {
+                                    // Decode base64; fall back to raw string on error
+                                    use std::io::Read;
+                                    match base64::Engine::decode(
+                                        &base64::engine::general_purpose::STANDARD,
+                                        r.result.body.trim(),
+                                    ) {
+                                        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+                                        Err(_) => r.result.body,
+                                    }
+                                } else {
+                                    r.result.body
+                                };
+                                if !body_text.is_empty() {
                                     emit_sync(&js, serde_json::json!({
                                         "type": "response_body",
                                         "id":   event.request_id.inner().clone(),
-                                        "body": r.result.body,
+                                        "body": body_text,
                                     }));
                                 }
                             }

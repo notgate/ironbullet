@@ -228,6 +228,20 @@ pub(super) fn start_job(
             if is_proxy_check {
                 let pc_rx = s.job_manager.start_proxy_check_job(uuid, inner_handle.clone());
 
+                if pc_rx.is_none() {
+                    // Proxy list was empty or unreadable
+                    let resp = IpcResponse::err("job_start_error",
+                        "Proxy list is empty or could not be read. \
+                         Check that your proxy list file exists and is not empty.".into());
+                    eval_js(format!("window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()));
+                    let jobs = s.job_manager.list_jobs();
+                    let jobs_resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
+                    eval_js(format!("window.__ipc_callback({})",
+                        serde_json::to_string(&jobs_resp).unwrap_or_default()));
+                    return;
+                }
+
                 // Immediate jobs_list so UI transitions Queued → Running right away
                 {
                     let jobs = s.job_manager.list_jobs();
@@ -310,6 +324,21 @@ pub(super) fn start_job(
 
             let pm = s.plugin_manager.clone();
             let result = s.job_manager.start_job(uuid, sidecar_tx, Some(pm));
+
+            if result.is_none() {
+                // Data source was empty or unreadable — surface a clear error.
+                let resp = IpcResponse::err("job_start_error",
+                    "Job data source is empty or could not be read. \
+                     Check that your wordlist file exists and is not empty.".into());
+                eval_js(format!("window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()));
+                // Push updated jobs list so UI reflects the job stayed in Waiting state
+                let jobs = s.job_manager.list_jobs();
+                let jobs_resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
+                eval_js(format!("window.__ipc_callback({})",
+                    serde_json::to_string(&jobs_resp).unwrap_or_default()));
+                return;
+            }
             drop(s);
 
             if let Some((runner, mut hits_rx)) = result {

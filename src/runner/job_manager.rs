@@ -306,6 +306,15 @@ impl JobManager {
             _ => Vec::new(),
         };
 
+        // Guard: if the data source resolved to zero lines, refuse to start rather
+        // than silently completing at 0%. The caller receives None and should surface
+        // an error to the frontend.
+        if data_lines.is_empty() {
+            eprintln!("[job] start_job: data source '{}' resolved to 0 lines — aborting start",
+                job.data_source.value);
+            return None;
+        }
+
         let data_pool = DataPool::new(data_lines);
         let proxy_settings_ref = if !matches!(job.proxy_source.settings.proxy_mode, ProxyMode::None) {
             &job.proxy_source.settings
@@ -411,6 +420,14 @@ impl JobManager {
 
         let total = proxies.len();
         eprintln!("[proxy_check] starting: {} proxies, {} threads, url={}", total, thread_count, check_url);
+
+        // Guard: empty proxy list → refuse to start
+        if total == 0 {
+            eprintln!("[proxy_check] proxy list '{}' resolved to 0 proxies — aborting start", proxy_list_path);
+            job.state = JobState::Waiting;
+            job.started = None;
+            return None;
+        }
 
         // ── Atomic stats shared with every spawned task ────────────────────
         let processed_ctr      = Arc::new(AtomicUsize::new(0));
