@@ -96,7 +96,7 @@ export function requestCloseTab(tabId: string) {
 		tab.pipeline = JSON.parse(JSON.stringify(app.pipeline));
 		tab.isDirty = JSON.stringify(app.pipeline) !== tab.savedSnapshot;
 	}
-	if (tab.isDirty) {
+	if (tab.isDirty && !app.uiPrefs.skipUnsavedDialog) {
 		app.pendingCloseTabId = tabId;
 		app.showUnsavedDialog = true;
 	} else {
@@ -192,6 +192,11 @@ export function updateTabDirtyState() {
 export function requestAppClose() {
 	// Update dirty state for the active tab first
 	saveCurrentTabState();
+	// If skip-close-confirm is enabled, close immediately
+	if (app.uiPrefs.skipCloseConfirm) {
+		send('close');
+		return;
+	}
 	// Find all unsaved tabs
 	const unsaved = app.configTabs.filter(t => t.isDirty);
 	if (unsaved.length === 0) {

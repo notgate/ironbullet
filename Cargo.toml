@@ -1,6 +1,6 @@
 [package]
 name = "ironbullet"
-version = "0.2.3"
+version = "0.3.5"
 edition = "2021"
 description = "Pipelined request automation & script builder"
 
@@ -24,7 +24,8 @@ sha2 = "0.10"
 md-5 = "0.10"
 hmac = "0.12"
 raw-window-handle = "0.6"
-reqwest = { version = "0.12", features = ["cookies", "gzip", "deflate", "brotli", "json", "stream", "rustls-tls", "socks"] }
+reqwest = { version = "0.12", features = ["cookies", "gzip", "deflate", "brotli", "json", "stream", "rustls-tls", "socks"], default-features = false }
+
 chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
 futures = "0.3"
 crc32fast = "1"
@@ -34,8 +35,9 @@ libloading = "0.8"
 scraper = "0.22"
 sxd-document = "0.3"
 sxd-xpath = "0.4"
-native-tls = "0.2"
-tokio-native-tls = "0.3"
+tokio-rustls = "0.26"
+rustls = { version = "0.23", features = ["ring"] }
+webpki-roots = "0.26"
 bcrypt = "0.16"
 aes-gcm = "0.10"
 zip = "2"
@@ -46,6 +48,10 @@ rquickjs = { version = "0.8", features = ["classes"] }
 num-bigint = "0.4"
 num-traits = "0.2"
 resvg = "0.43"
+
+[target.'cfg(unix)'.dependencies]
+wreq = { version = "6.0.0-rc.28", features = ["prefix-symbols", "cookies", "gzip", "deflate", "brotli", "socks"] }
+wreq-util = "3.0.0-rc.10"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_Console"] }

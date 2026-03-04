@@ -256,6 +256,25 @@ function createAppState(): AppState {
 	let blockTemplates = $state<Array<{ name: string; blocks: Block[] }>>(loadTemplates());
 	let previewMode = $state(false);
 
+	// ── UI Preferences (persisted to localStorage) ────────────────────────
+	function loadUiPrefs() {
+		try {
+			const raw = localStorage.getItem('ib_ui_prefs');
+			if (raw) return JSON.parse(raw);
+		} catch {}
+		return {};
+	}
+	function saveUiPrefs(prefs: Record<string, unknown>) {
+		try { localStorage.setItem('ib_ui_prefs', JSON.stringify(prefs)); } catch {}
+	}
+
+	const _uiPrefsDefaults = {
+		skipCloseConfirm: false,
+		skipUnsavedDialog: false,
+		compactMode: false,
+	};
+	let uiPrefs = $state<typeof _uiPrefsDefaults>({ ..._uiPrefsDefaults, ...loadUiPrefs() });
+
 	return {
 		get pipeline() { return pipeline; },
 		set pipeline(v) { pipeline = v; },
@@ -427,6 +446,12 @@ function createAppState(): AppState {
 		get previewMode() { return previewMode; },
 		set previewMode(v) { previewMode = v; },
 		_compileOutputCallback: null as ((data: { line: string; done: boolean; success: boolean; dll_path?: string }) => void) | null,
+		get uiPrefs() { return uiPrefs; },
+		setUiPref<K extends keyof typeof _uiPrefsDefaults>(key: K, value: (typeof _uiPrefsDefaults)[K]) {
+			(uiPrefs as any)[key] = value;
+			saveUiPrefs(uiPrefs);
+		},
+
 	};
 }
 

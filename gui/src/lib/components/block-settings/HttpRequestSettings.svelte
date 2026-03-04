@@ -268,26 +268,25 @@
 	<div class="space-y-1">
 
 		<!-- TLS client selector -->
+		{@const tlsClient = block.settings.tls_client || 'RustTLS'}
 		<div>
 			<label class={labelCls}>TLS Client</label>
 			<SkeuSelect
-				value={block.settings.tls_client || 'RustTLS'}
+				value={tlsClient}
 				onValueChange={(v) => updateSettings('tls_client', v)}
 				options={[
-					{ value: 'AzureTLS', label: 'AzureTLS (Go sidecar · JA3 + fingerprinting)' },
-					{ value: 'RustTLS',  label: 'RustTLS (Rust native · standard HTTPS)' },
+					{ value: 'RustTLS',  label: 'RustTLS — reqwest + rustls (standard HTTPS)' },
+					{ value: 'WreqTLS',  label: 'WreqTLS — wreq + BoringSSL (browser emulation)' },
+					{ value: 'AzureTLS', label: 'AzureTLS — Go sidecar (JA3 + custom fingerprints)' },
 				]}
 				placeholder="Select TLS client..."
 			/>
-			{#if (block.settings.tls_client || 'RustTLS') === 'RustTLS'}
-				<p class="text-[9px] text-muted-foreground mt-0.5">
-					Uses reqwest + rustls — all standard settings apply.
-					JA3 / browser fingerprinting / custom cipher suites are AzureTLS-only.
-				</p>
+			{#if tlsClient === 'RustTLS'}
+				<p class="text-[9px] text-muted-foreground mt-0.5">reqwest + rustls — standard HTTPS, no fingerprinting. Fastest for APIs and internal targets.</p>
+			{:else if tlsClient === 'WreqTLS'}
+				<p class="text-[9px] text-muted-foreground mt-0.5">wreq + BoringSSL — 100+ browser device emulation profiles with accurate JA3/JA4/HTTP2 fingerprints. No sidecar required.</p>
 			{:else}
-				<p class="text-[9px] text-muted-foreground mt-0.5">
-					Uses Go sidecar (azuretls) — supports JA3 fingerprinting, browser TLS imitation, HTTP/2 fingerprinting, and custom cipher suites.
-				</p>
+				<p class="text-[9px] text-muted-foreground mt-0.5">Go sidecar (azuretls) — custom JA3/JA4 strings, browser TLS imitation, per-block HTTP/2 fingerprinting, custom cipher suites.</p>
 			{/if}
 		</div>
 
@@ -302,8 +301,67 @@
 		</label>
 		<p class="text-[9px] text-muted-foreground">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
 
+		<!-- WreqTLS emulation profile -->
+		{#if tlsClient === 'WreqTLS'}
+		<div>
+			<label class={labelCls}>Browser Emulation Profile <span class="text-muted-foreground/60">(WreqTLS · TLS + HTTP/2 fingerprint)</span></label>
+			<SkeuSelect
+				value={block.settings.wreq_emulation || 'Chrome134'}
+				onValueChange={(v) => updateSettings('wreq_emulation', v)}
+				options={[
+					{ value: 'Chrome137', label: 'Chrome 137' },
+					{ value: 'Chrome136', label: 'Chrome 136' },
+					{ value: 'Chrome135', label: 'Chrome 135' },
+					{ value: 'Chrome134', label: 'Chrome 134 (default)' },
+					{ value: 'Chrome133', label: 'Chrome 133' },
+					{ value: 'Chrome132', label: 'Chrome 132' },
+					{ value: 'Chrome131', label: 'Chrome 131' },
+					{ value: 'Chrome130', label: 'Chrome 130' },
+					{ value: 'Chrome128', label: 'Chrome 128' },
+					{ value: 'Chrome127', label: 'Chrome 127' },
+					{ value: 'Chrome124', label: 'Chrome 124' },
+					{ value: 'Chrome120', label: 'Chrome 120' },
+					{ value: 'Chrome116', label: 'Chrome 116' },
+					{ value: 'Chrome110', label: 'Chrome 110' },
+					{ value: 'Chrome107', label: 'Chrome 107' },
+					{ value: 'Edge134', label: 'Edge 134' },
+					{ value: 'Edge131', label: 'Edge 131' },
+					{ value: 'Edge127', label: 'Edge 127' },
+					{ value: 'Edge122', label: 'Edge 122' },
+					{ value: 'Edge101', label: 'Edge 101' },
+					{ value: 'Firefox139', label: 'Firefox 139' },
+					{ value: 'Firefox136', label: 'Firefox 136' },
+					{ value: 'Firefox135', label: 'Firefox 135' },
+					{ value: 'Firefox133', label: 'Firefox 133' },
+					{ value: 'Firefox128', label: 'Firefox 128' },
+					{ value: 'Firefox117', label: 'Firefox 117' },
+					{ value: 'Firefox109', label: 'Firefox 109' },
+					{ value: 'Safari18_3_1', label: 'Safari 18.3.1' },
+					{ value: 'Safari18_3', label: 'Safari 18.3' },
+					{ value: 'Safari18_2', label: 'Safari 18.2' },
+					{ value: 'Safari18', label: 'Safari 18' },
+					{ value: 'Safari17_5', label: 'Safari 17.5' },
+					{ value: 'Safari17_4_1', label: 'Safari 17.4.1' },
+					{ value: 'Safari17_0', label: 'Safari 17.0' },
+					{ value: 'Safari16_5', label: 'Safari 16.5' },
+					{ value: 'Safari16', label: 'Safari 16' },
+					{ value: 'Safari15_6_1', label: 'Safari 15.6.1' },
+					{ value: 'OkHttp5', label: 'OkHttp 5 (Android)' },
+					{ value: 'OkHttp4_12', label: 'OkHttp 4.12 (Android)' },
+					{ value: 'OkHttp4_10', label: 'OkHttp 4.10 (Android)' },
+					{ value: 'OkHttp3_14', label: 'OkHttp 3.14 (Android)' },
+					{ value: 'Opera119', label: 'Opera 119' },
+					{ value: 'Opera118', label: 'Opera 118' },
+					{ value: 'Opera117', label: 'Opera 117' },
+					{ value: 'Opera116', label: 'Opera 116' },
+				]}
+			/>
+			<p class="text-[9px] text-muted-foreground mt-0.5">Sets the full TLS ClientHello, cipher suite order, HTTP/2 SETTINGS frame, and HPACK headers to match the selected browser. Verify at <span class="text-primary">tls.peet.ws</span>.</p>
+		</div>
+		{/if}
+
 		<!-- AzureTLS fingerprinting settings -->
-		{#if (block.settings.tls_client || 'RustTLS') === 'AzureTLS'}
+		{#if tlsClient === 'AzureTLS'}
 		<!-- Browser TLS profile -->
 		<div>
 			<label class={labelCls}>Browser Profile <span class="text-muted-foreground/60">(AzureTLS · TLS + HTTP/2 fingerprint)</span></label>

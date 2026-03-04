@@ -84,6 +84,42 @@ impl ExecutionContext {
                 self.rustls_client = Some(client);
                 resp
             }
+            #[cfg(unix)]
+            TlsClient::WreqTLS => {
+                let emu = if settings.wreq_emulation.is_empty() {
+                    "Chrome134"
+                } else {
+                    settings.wreq_emulation.as_str()
+                };
+                let current_proxy = self.proxy.clone();
+                let existing = self.wreq_client.take().and_then(|slot| {
+                    if slot.emulation == emu && slot.proxy == current_proxy {
+                        Some(slot.client)
+                    } else {
+                        None
+                    }
+                });
+                let (resp, client) = crate::sidecar::wreq_client::execute_wreq_request(
+                    &sidecar_req,
+                    emu,
+                    settings.ssl_verify,
+                    existing,
+                ).await;
+                self.wreq_client = Some(WreqClientSlot {
+                    client,
+                    emulation: emu.to_string(),
+                    proxy: self.proxy.clone(),
+                });
+                resp
+            }
+            #[cfg(not(unix))]
+            TlsClient::WreqTLS => {
+                SidecarResponse {
+                    id: sidecar_req.id.clone(),
+                    error: Some("WreqTLS is not available on Windows builds.".into()),
+                    ..Default::default()
+                }
+            }
             TlsClient::AzureTLS => {
                 // Go sidecar path — azuretls with JA3/TLS fingerprinting support.
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();

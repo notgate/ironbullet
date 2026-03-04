@@ -6,12 +6,16 @@ use serde::{Deserialize, Serialize};
 ///   browser TLS imitation, HTTP/2 fingerprinting, and custom cipher suites.
 /// - `RustTLS`: Rust-native reqwest + rustls — no fingerprinting, but faster for
 ///   standard HTTPS and easier to configure for internal APIs / self-signed certs.
+/// - `WreqTLS`: Rust-native wreq + BoringSSL — 100+ browser device emulation profiles,
+///   accurate JA3/JA4/HTTP2 fingerprints, cookie persistence, no external sidecar needed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TlsClient {
     #[serde(alias = "azuretls", alias = "Azure")]
     AzureTLS,
     #[serde(alias = "rusttls", alias = "Rust")]
     RustTLS,
+    #[serde(alias = "wreqtls", alias = "Wreq")]
+    WreqTLS,
 }
 
 impl Default for TlsClient {
@@ -69,6 +73,11 @@ pub struct HttpRequestSettings {
     /// Overrides the pipeline-level HTTP/2 fingerprint for this specific request.
     #[serde(default)]
     pub http2fp_override: String,
+    /// WreqTLS browser emulation profile.
+    /// Any wreq-util Emulation variant name, e.g. "Chrome134", "Firefox136", "Safari18".
+    /// Empty = "Chrome134" (default).
+    #[serde(default)]
+    pub wreq_emulation: String,
 }
 
 fn default_ssl_verify() -> bool { true }
@@ -108,6 +117,7 @@ impl Default for HttpRequestSettings {
             browser_profile: String::new(),
             ja3_override: String::new(),
             http2fp_override: String::new(),
+            wreq_emulation: String::new(),
         }
     }
 }

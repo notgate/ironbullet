@@ -88,8 +88,11 @@ export interface HttpRequestSettings {
 	 * TLS client to use for this request block.
 	 * - 'AzureTLS' (default): Go sidecar with azuretls — JA3/browser fingerprinting, custom ciphers.
 	 * - 'RustTLS': Rust-native reqwest + rustls — no fingerprinting, standard HTTPS.
+	 * - 'WreqTLS': Rust-native wreq + BoringSSL — 100+ browser emulation profiles, cookie persistence.
 	 */
-	tls_client: 'AzureTLS' | 'RustTLS';
+	tls_client: 'AzureTLS' | 'RustTLS' | 'WreqTLS';
+	/** WreqTLS emulation profile label. e.g. "Chrome134", "Firefox136", "Safari18". Default = "Chrome134". */
+	wreq_emulation: string;
 }
 
 export interface ParseLRSettings {

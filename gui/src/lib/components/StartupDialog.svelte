@@ -65,7 +65,7 @@
 		<div class="flex items-center gap-2 px-4 py-3 border-b border-border-dark panel-raised">
 			<Workflow size={16} class="text-primary" />
 			<span class="text-sm font-semibold text-foreground tracking-tight">Ironbullet</span>
-			<span class="text-[10px] text-muted-foreground/60 font-mono ml-1">v0.1.0</span>
+			<span class="text-[10px] text-muted-foreground/60 font-mono ml-1">v0.3.5</span>
 		</div>
 
 		{#if mode === 'home'}
