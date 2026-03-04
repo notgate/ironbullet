@@ -33,7 +33,7 @@
 			type="text"
 			value={block.settings.secret || ''}
 			oninput={(e) => update('secret', (e.target as HTMLInputElement).value)}
-			placeholder="HMAC secret (supports {VAR} interpolation)"
+			placeholder="HMAC secret (supports {'{VAR}'} interpolation)"
 			class="skeu-input w-full font-mono text-[11px]"
 		/>
 	</div>
@@ -60,6 +60,7 @@
 				value={block.settings.claims || ''}
 				oninput={(e) => update('claims', (e.target as HTMLTextAreaElement).value)}
 				placeholder={'{"sub": "{USER}", "role": "admin"}'}
+
 				rows={4}
 				class="skeu-input w-full font-mono text-[11px] resize-y"
 			></textarea>
@@ -100,7 +101,7 @@
 				type="text"
 				value={block.settings.token_input || ''}
 				oninput={(e) => update('token_input', (e.target as HTMLInputElement).value)}
-				placeholder="{TOKEN}"
+				placeholder={'{TOKEN}'}
 				class="skeu-input w-full font-mono text-[11px]"
 			/>
 			<p class="text-[9px] text-muted-foreground mt-0.5">Raw JWT string to decode. Supports variable interpolation.</p>
