@@ -48,6 +48,8 @@ export type BlockSettings =
 	| { type: 'OcrCaptcha' } & OcrCaptchaSettings
 	| { type: 'RecaptchaInvisible' } & RecaptchaInvisibleSettings
 	| { type: 'XacfSensor' } & XacfSensorSettings
+	| { type: 'JwtToken' } & JwtTokenSettings
+	| { type: 'HeaderSpoof' } & HeaderSpoofSettings
 	| { type: 'RandomData' } & RandomDataSettings
 	| { type: 'DataDomeSensor' } & DataDomeSensorSettings
 	| { type: 'Plugin' } & PluginBlockSettings
@@ -669,4 +671,28 @@ export interface FileSystemSettings {
 	encoding: string;
 	output_var: string;
 	capture: boolean;
+}
+
+export interface JwtTokenSettings {
+	action: 'Sign' | 'Decode';
+	secret: string;
+	algorithm: 'HS256' | 'HS384' | 'HS512';
+	claims: string;
+	token_input: string;
+	output_var: string;
+	expires_in_secs: number;
+	verify_on_decode: boolean;
+}
+
+export interface HeaderSpoofSettings {
+	inject_xff: boolean;
+	inject_x_real_ip: boolean;
+	inject_cf_connecting_ip: boolean;
+	inject_true_client_ip: boolean;
+	strategy: 'RandomPublic' | 'FixedList' | 'FromProxy' | 'Manual';
+	fixed_ips: string;
+	manual_value: string;
+	output_var: string;
+	inject_proto: boolean;
+	inject_host: boolean;
 }
