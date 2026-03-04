@@ -23,7 +23,7 @@
       "-lmingwex",
       "-lmingw32",
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind",
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a",
       "-lmsvcrt",
       "-lmingwex",
       "-luser32",
@@ -34,7 +34,7 @@
       "-lmingwex",
       "-lmingw32",
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind",
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a",
       "-lmsvcrt",
       "-lmingwex",
       "-luser32",
@@ -45,7 +45,7 @@
       "-lmingwex",
       "-lmingw32",
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind",
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a",
       "-lmsvcrt",
       "-lmingwex",
       "-luser32",
@@ -56,7 +56,7 @@
       "-lmingwex",
       "-lmingw32",
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind",
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a",
       "-lmsvcrt",
       "-lmingwex",
       "-luser32",
@@ -66,41 +66,41 @@
   "late-link-args-dynamic": {
     "gnu": [
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind"
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a"
     ],
     "gnu-cc": [
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind"
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a"
     ],
     "gnu-lld": [
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind"
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a"
     ],
     "gnu-lld-cc": [
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind"
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a"
     ]
   },
   "late-link-args-static": {
     "gnu": [
       "/usr/x86_64-w64-mingw32/lib/libpthread.a",
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind"
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a"
     ],
     "gnu-cc": [
       "/usr/x86_64-w64-mingw32/lib/libpthread.a",
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind"
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a"
     ],
     "gnu-lld": [
       "/usr/x86_64-w64-mingw32/lib/libpthread.a",
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind"
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a"
     ],
     "gnu-lld-cc": [
       "/usr/x86_64-w64-mingw32/lib/libpthread.a",
       "/opt/llvm-mingw/lib/clang/22/lib/windows/libclang_rt.builtins-x86_64.a",
-      "-lunwind"
+      "/opt/llvm-mingw/x86_64-w64-mingw32/lib/libunwind.a"
     ]
   },
   "linker": "/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang",
