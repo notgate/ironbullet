@@ -12,28 +12,22 @@ export const CHANGELOG: ChangelogEntry[] = [
 	{
 		version: '0.3.5',
 		date: '2026-03-04',
-		highlights: 'WreqTLS browser emulation backend, UI preferences panel, bottom tab visibility controls, skip-confirmation settings, v0.3.5 release.',
+		highlights: 'WreqTLS browser emulation backend, JWT Token block, Header Spoof block, UI preferences panel, bottom tab visibility controls.',
 		sections: [
 			{
 				title: 'New Features',
 				items: [
 					'WreqTLS backend — third TLS client option on every HTTP Request block. Powered by wreq + BoringSSL with 100+ device emulation profiles (Chrome 100–137, Edge 101–134, Firefox 109–139, Safari 15–18, OkHttp 3–5, Opera 116–119). Accurate JA3/JA4 and HTTP/2 SETTINGS frame emulation with no external sidecar required.',
-					'WreqTLS cookie persistence — wreq client is reused across HTTP blocks within a single pipeline run so multi-step login flows correctly share cookies. Rebuilt automatically if the emulation profile changes mid-pipeline.',
+					'WreqTLS cookie persistence — wreq client is reused across HTTP blocks within a single pipeline run so multi-step login flows correctly share cookies. Rebuilt automatically if the emulation profile or proxy changes mid-pipeline.',
 					'Browser emulation dropdown in HTTP block settings — select any supported profile when WreqTLS is chosen. Verify fingerprints at tls.peet.ws.',
+					'JWT Token block — sign and verify JSON Web Tokens directly in your pipeline. Sign mode produces a signed JWT (HS256/HS384/HS512) from a JSON claims template with variable interpolation, automatic iat injection, and optional exp via Expires In. Decode mode verifies the signature, checks expiry, and extracts all claims as CLAIM_<KEY> variables for downstream use.',
+					'Header Spoof block — inject proxy detection bypass headers (X-Forwarded-For, X-Real-IP, CF-Connecting-IP, True-Client-IP, X-Forwarded-Proto, X-Forwarded-Host) with four IP strategies: random public IPv4, fixed rotation list, extract from current proxy, or manual value. Headers are automatically picked up by the next HTTP Request block without any manual header wiring.',
 					'UI & Panels settings section — new settings page with controls for dialog suppression, panel visibility, and density.',
 					'Skip unsaved dialog — option to close tabs immediately without the "save changes?" prompt.',
 					'Skip app close confirm — option to exit the app immediately even with unsaved tabs.',
 					'Bottom panel tab visibility — show/hide individual tabs (Debugger, Code View, Data/Proxy, Jobs, Network, Variables, Inspector) from settings. State persists across restarts.',
 					'Compact mode setting — reduces spacing in block list and panels.',
 					'Reset panel layout button in settings.',
-				],
-			},
-			{
-				title: 'Bug Fixes',
-				items: [
-					'Config tab save isolation (rework) — openInNewTab now calls syncPipelineToBackend immediately so the backend pipeline_path is set on file open, not just on tab switch. All save callsites now use savePipeline() which always passes the active tab filePath explicitly.',
-					'Hits dialog flickering — stable $state decoupled from $derived; live feed avoids intermediate @const bindings that caused re-evaluation on every stats push.',
-					'Live results panel removed from job datagrid — moved into Hits dialog as a collapsible live feed section.',
 				],
 			},
 		],
