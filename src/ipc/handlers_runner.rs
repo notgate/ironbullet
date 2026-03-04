@@ -923,3 +923,296 @@ pub(super) fn inspect_browser_close(
         });
     }
 }
+
+// ── Local HTTP Proxy Capture (Inspector panel alternative) ────────────────────
+//
+// Binds a TCP listener on a user-specified port (default 8877).
+// The user configures their browser proxy to 127.0.0.1:<port>.
+// Supports:
+//   - Plain HTTP: read the full request, forward to the real server, capture
+//     both request and response, emit inspector_proxy_event to the frontend.
+//   - HTTPS (CONNECT tunnel): respond 200, then relay raw bytes bidirectionally
+//     so the browser's TLS works end-to-end. We emit a minimal capture event
+//     showing the CONNECT target host + URL; we cannot decrypt HTTPS without
+//     a MitM CA (not implemented).
+//
+// Each accepted connection runs in its own tokio task. The listener task holds
+// an AbortHandle stored in AppState so the frontend can stop the proxy cleanly.
+
+pub(super) fn inspect_proxy_start(
+    state: Arc<Mutex<AppState>>,
+    data: serde_json::Value,
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    let rt = tokio::runtime::Handle::try_current();
+    let Ok(handle) = rt else { return };
+
+    let port = data.get("port")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(8877) as u16;
+
+    let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(512);
+    handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
+
+    let js = js_tx.clone();
+
+    fn emit(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
+        let resp = IpcResponse::ok("inspector_proxy_event", payload);
+        let _ = tx.try_send(format!("window.__ipc_callback({})",
+            serde_json::to_string(&resp).unwrap_or_default()));
+    }
+
+    let state2 = state.clone();
+    let js2 = js.clone();
+
+    let task = handle.spawn(async move {
+        // Abort any previous proxy
+        {
+            let mut s = state2.lock().await;
+            if let Some(h) = s.inspect_proxy_abort.take() { h.abort(); }
+            s.inspect_proxy_port = None;
+        }
+
+        let listener = match TcpListener::bind(("127.0.0.1", port)).await {
+            Ok(l) => l,
+            Err(e) => {
+                emit(&js2, serde_json::json!({
+                    "type": "error",
+                    "message": format!("Failed to bind proxy on port {}: {}", port, e)
+                }));
+                return;
+            }
+        };
+
+        {
+            let mut s = state2.lock().await;
+            s.inspect_proxy_port = Some(port);
+        }
+
+        emit(&js2, serde_json::json!({
+            "type": "ready",
+            "port": port,
+            "message": format!("Proxy listening on 127.0.0.1:{}", port)
+        }));
+
+        loop {
+            let (stream, _peer) = match listener.accept().await {
+                Ok(v) => v,
+                Err(_) => break,
+            };
+            let js_conn = js2.clone();
+            tokio::spawn(async move {
+                let _ = handle_proxy_connection(stream, js_conn).await;
+            });
+        }
+    });
+
+    let abort = task.abort_handle();
+    let state3 = state.clone();
+    tokio::runtime::Handle::try_current().ok().map(|h| h.spawn(async move {
+        let mut s = state3.lock().await;
+        s.inspect_proxy_abort = Some(abort);
+    }));
+}
+
+async fn handle_proxy_connection(
+    mut stream: tokio::net::TcpStream,
+    js: tokio::sync::mpsc::Sender<String>,
+) -> std::io::Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    fn emit_conn(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
+        let resp = IpcResponse::ok("inspector_proxy_event", payload);
+        let _ = tx.try_send(format!("window.__ipc_callback({})",
+            serde_json::to_string(&resp).unwrap_or_default()));
+    }
+
+    // Read request header (stop at \r\n\r\n, max 64KB)
+    let mut buf = Vec::with_capacity(8192);
+    loop {
+        let mut byte = [0u8; 1];
+        let n = stream.read(&mut byte).await?;
+        if n == 0 { return Ok(()); }
+        buf.push(byte[0]);
+        if buf.len() >= 4 && &buf[buf.len()-4..] == b"\r\n\r\n" { break; }
+        if buf.len() > 65536 { return Ok(()); }
+    }
+
+    let header_str = String::from_utf8_lossy(&buf);
+    let first_line = header_str.lines().next().unwrap_or("").to_string();
+    let parts: Vec<&str> = first_line.splitn(3, ' ').collect();
+    if parts.len() < 2 { return Ok(()); }
+
+    let method = parts[0];
+    let target = parts[1];
+
+    if method == "CONNECT" {
+        // HTTPS tunnel — respond 200, relay bytes, emit minimal event
+        stream.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await?;
+        emit_conn(&js, serde_json::json!({
+            "type": "request",
+            "id": uuid::Uuid::new_v4().to_string(),
+            "method": "CONNECT",
+            "url": format!("https://{}", target),
+            "host": target,
+            "resource_type": "tunnel",
+            "headers": {},
+            "note": "HTTPS tunnel (encrypted — cannot inspect body)"
+        }));
+        // Relay raw bytes bidirectionally
+        let host = target.to_string();
+        if let Ok(mut upstream) = tokio::net::TcpStream::connect(&host).await {
+            let (mut cr, mut cw) = stream.split();
+            let (mut ur, mut uw) = upstream.split();
+            tokio::select! {
+                _ = tokio::io::copy(&mut cr, &mut uw) => {}
+                _ = tokio::io::copy(&mut ur, &mut cw) => {}
+            }
+        }
+        return Ok(());
+    }
+
+    // Plain HTTP — parse headers, read body if present, forward, capture response
+    let mut headers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut content_length: usize = 0;
+    for line in header_str.lines().skip(1) {
+        if line.is_empty() { break; }
+        if let Some(colon) = line.find(':') {
+            let k = line[..colon].trim().to_lowercase();
+            let v = line[colon+1..].trim().to_string();
+            if k == "content-length" {
+                content_length = v.parse().unwrap_or(0);
+            }
+            headers.insert(k, v);
+        }
+    }
+
+    // Read body
+    let mut body_bytes = vec![0u8; content_length.min(1024 * 1024)];
+    if content_length > 0 {
+        let _ = stream.read_exact(&mut body_bytes).await;
+    }
+    let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+
+    // Determine upstream host + port
+    let host_hdr = headers.get("host").cloned().unwrap_or_default();
+    let (upstream_host, upstream_port) = if host_hdr.contains(':') {
+        let mut it = host_hdr.rsplitn(2, ':');
+        let p: u16 = it.next().unwrap_or("80").parse().unwrap_or(80);
+        (it.next().unwrap_or(&host_hdr).to_string(), p)
+    } else {
+        (host_hdr.clone(), 80u16)
+    };
+
+    let req_id = uuid::Uuid::new_v4().to_string();
+    emit_conn(&js, serde_json::json!({
+        "type": "request",
+        "id": req_id,
+        "method": method,
+        "url": if target.starts_with("http") { target.to_string() } else { format!("http://{}{}", host_hdr, target) },
+        "host": host_hdr,
+        "resource_type": "fetch",
+        "headers": headers,
+        "post_data": if body_str.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(body_str.clone()) }
+    }));
+
+    // Forward to upstream
+    let upstream_addr = format!("{}:{}", upstream_host, upstream_port);
+    let mut upstream = match tokio::net::TcpStream::connect(&upstream_addr).await {
+        Ok(u) => u,
+        Err(e) => {
+            let err_resp = format!("HTTP/1.1 502 Bad Gateway\r\nContent-Length: {}\r\n\r\n{}", e.to_string().len(), e);
+            let _ = stream.write_all(err_resp.as_bytes()).await;
+            return Ok(());
+        }
+    };
+
+    // Forward request (rebuild it)
+    upstream.write_all(&buf).await?;
+    if !body_bytes.is_empty() {
+        upstream.write_all(&body_bytes).await?;
+    }
+
+    // Read response header from upstream
+    let mut resp_buf = Vec::with_capacity(8192);
+    loop {
+        let mut byte = [0u8; 1];
+        let n = upstream.read(&mut byte).await?;
+        if n == 0 { break; }
+        resp_buf.push(byte[0]);
+        if resp_buf.len() >= 4 && &resp_buf[resp_buf.len()-4..] == b"\r\n\r\n" { break; }
+        if resp_buf.len() > 65536 { break; }
+    }
+
+    let resp_header_str = String::from_utf8_lossy(&resp_buf);
+    let resp_first = resp_header_str.lines().next().unwrap_or("");
+    let resp_parts: Vec<&str> = resp_first.splitn(3, ' ').collect();
+    let resp_status: u16 = resp_parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let resp_status_text = resp_parts.get(2).unwrap_or(&"").to_string();
+
+    let mut resp_headers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut resp_cl: usize = 0;
+    let mut chunked = false;
+    for line in resp_header_str.lines().skip(1) {
+        if line.is_empty() { break; }
+        if let Some(colon) = line.find(':') {
+            let k = line[..colon].trim().to_lowercase();
+            let v = line[colon+1..].trim().to_string();
+            if k == "content-length" { resp_cl = v.parse().unwrap_or(0); }
+            if k == "transfer-encoding" && v.contains("chunked") { chunked = true; }
+            resp_headers.insert(k, v);
+        }
+    }
+
+    // Read response body (cap at 2MB for capture)
+    let mut resp_body_bytes = Vec::new();
+    if resp_cl > 0 {
+        resp_body_bytes.resize(resp_cl.min(2 * 1024 * 1024), 0);
+        let _ = upstream.read_exact(&mut resp_body_bytes).await;
+    } else if chunked {
+        // Simple chunked read — read until 0-size chunk
+        let mut chunk_buf = vec![0u8; 65536];
+        loop {
+            let n = upstream.read(&mut chunk_buf).await.unwrap_or(0);
+            if n == 0 { break; }
+            resp_body_bytes.extend_from_slice(&chunk_buf[..n]);
+            if resp_body_bytes.len() > 2 * 1024 * 1024 { break; }
+        }
+    }
+
+    // Forward response back to client
+    stream.write_all(&resp_buf).await?;
+    stream.write_all(&resp_body_bytes).await?;
+
+    let resp_body_str = String::from_utf8_lossy(&resp_body_bytes);
+    let mime = resp_headers.get("content-type").cloned().unwrap_or_default();
+
+    emit_conn(&js, serde_json::json!({
+        "type": "response",
+        "id": req_id,
+        "resp_status": resp_status,
+        "resp_status_text": resp_status_text,
+        "resp_mime": mime,
+        "resp_headers": resp_headers,
+        "resp_body": resp_body_str.chars().take(65536).collect::<String>()
+    }));
+
+    Ok(())
+}
+
+pub(super) fn inspect_proxy_stop(
+    state: Arc<Mutex<AppState>>,
+    _eval_js: impl Fn(String) + Send + 'static,
+) {
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        handle.spawn(async move {
+            let mut s = state.lock().await;
+            if let Some(h) = s.inspect_proxy_abort.take() { h.abort(); }
+            s.inspect_proxy_port = None;
+        });
+    }
+}

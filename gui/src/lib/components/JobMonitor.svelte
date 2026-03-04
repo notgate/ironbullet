@@ -17,6 +17,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import PlayCircle from '@lucide/svelte/icons/play-circle';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import HelpModal from './HelpModal.svelte';
 
@@ -286,17 +287,22 @@ Error handling
 		console.log('[JobMonitor] openEditDialog:', job.id, job.name);
 	}
 
-	function saveJobEdit() {
+	function saveJobEdit(andResume = false) {
 		if (!editingJob) return;
+		const id = editingJob.id;
 		send('update_job', {
-			id: editingJob.id,
+			id,
 			name: editName,
 			thread_count: editThreads,
 			data_source: { source_type: editingJob.data_source?.source_type ?? 'File', value: editDataSource },
 			proxy_check_url: editProxyCheckUrl,
 			proxy_check_list: editProxyCheckList,
 		});
-		console.log('[JobMonitor] saveJobEdit:', editingJob.id);
+		if (andResume) {
+			// Brief delay so update_job settles before starting
+			setTimeout(() => startJob(id), 150);
+		}
+		console.log('[JobMonitor] saveJobEdit:', id, andResume ? '(+resume)' : '');
 		showEditDialog = false;
 		editingJob = null;
 	}
@@ -730,6 +736,8 @@ Error handling
 									{:else if job.state === 'Paused'}
 										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Resume" onclick={() => resumeJob((job as any).id)}><Play size={11} /></button>
 										<button class="p-0.5 rounded hover:bg-secondary text-red" title="Stop" onclick={() => stopJob((job as any).id)}><Square size={11} /></button>
+									{:else if job.state === 'Stopped' || job.state === 'Completed'}
+										<button class="p-0.5 rounded hover:bg-secondary text-green" title="Resume from last position" onclick={() => startJob((job as any).id)}><PlayCircle size={11} /></button>
 									{/if}
 									<button
 										class="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"
@@ -799,7 +807,10 @@ Error handling
 					</div>
 				{/if}
 				<div class="flex gap-2 pt-1">
-					<button class="skeu-btn text-xs text-green flex-1" onclick={saveJobEdit}>Save Changes</button>
+					<button class="skeu-btn text-xs text-green flex-1" onclick={() => saveJobEdit(false)}>Save</button>
+					<button class="skeu-btn text-xs flex-1 flex items-center justify-center gap-1" style="color: var(--primary)" onclick={() => saveJobEdit(true)}>
+						<PlayCircle size={12} />Save & Resume
+					</button>
 					<button class="skeu-btn text-xs text-muted-foreground" onclick={() => showEditDialog = false}>Cancel</button>
 				</div>
 			{/if}

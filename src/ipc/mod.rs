@@ -75,6 +75,10 @@ pub struct AppState {
     /// Cleaned up when the session ends or a new one starts, preventing
     /// Chrome from finding a locked profile from a zombie prior instance.
     pub browser_capture_profile: Option<std::path::PathBuf>,
+    /// Abort handle for the local HTTP proxy capture server (Inspector panel).
+    pub inspect_proxy_abort: Option<tokio::task::AbortHandle>,
+    /// Port the proxy capture server is listening on.
+    pub inspect_proxy_port: Option<u16>,
 }
 
 impl AppState {
@@ -100,6 +104,8 @@ impl AppState {
             plugin_manager: Arc::new(pm),
             browser_capture_abort: None,
             browser_capture_profile: None,
+            inspect_proxy_abort: None,
+            inspect_proxy_port: None,
         }
     }
 }
@@ -289,6 +295,14 @@ pub fn handle_ipc_cmd(
         }
         "inspect_browser_close" => {
             handlers_runner::inspect_browser_close(state, eval_js);
+            None
+        }
+        "inspect_proxy_start" => {
+            handlers_runner::inspect_proxy_start(state, data, eval_js);
+            None
+        }
+        "inspect_proxy_stop" => {
+            handlers_runner::inspect_proxy_stop(state, eval_js);
             None
         }
 

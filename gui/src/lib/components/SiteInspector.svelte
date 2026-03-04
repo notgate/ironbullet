@@ -15,7 +15,12 @@
 	import List from '@lucide/svelte/icons/list';
 
 	// ── Mode ───────────────────────────────────────────────────────────────────
-	let mode = $state<'manual' | 'browser'>('manual');
+	let mode = $state<'manual' | 'browser' | 'proxy'>('manual');
+
+	// ── Proxy Capture State ────────────────────────────────────────────────────
+	let proxyPort        = $state(8877);
+	let proxyActive      = $state(false);
+	let proxyError       = $state('');
 
 	// ── Browser Capture State ──────────────────────────────────────────────────
 	interface CapturedRequest {
@@ -147,6 +152,47 @@
 			}
 		});
 	});
+
+	// Proxy capture event listener
+	$effect(() => {
+		onResponse('inspector_proxy_event', (data: unknown) => {
+			const ev = data as any;
+			if (ev.type === 'error')  { proxyError = ev.message ?? 'Unknown error'; proxyActive = false; return; }
+			if (ev.type === 'ready')  { proxyActive = true; proxyError = ''; return; }
+			if (ev.type === 'request') {
+				if (capturedRequests.some(r => r.id === ev.id)) return;
+				const next = [...capturedRequests, {
+					id: ev.id, url: ev.url, method: ev.method,
+					resource_type: ev.resource_type ?? 'fetch',
+					headers: ev.headers ?? {}, post_data: ev.post_data ?? null,
+				}];
+				capturedRequests = next;
+				if (!selectedReqId) { selectedReqId = ev.id; applySelReq = new Set(Object.keys(ev.headers ?? {})); }
+				persistCaptures(next);
+			} else if (ev.type === 'response') {
+				const next = capturedRequests.map(r => r.id !== ev.id ? r : {
+					...r,
+					resp_status: ev.resp_status, resp_status_text: ev.resp_status_text,
+					resp_mime: ev.resp_mime, resp_headers: ev.resp_headers, resp_body: ev.resp_body,
+				});
+				capturedRequests = next;
+				persistCaptures(next);
+			}
+		});
+	});
+
+	function startProxy() {
+		proxyError = '';
+		capturedRequests = [];
+		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
+		selectedReqId = null; applyPanelOpen = false;
+		send('inspect_proxy_start', { port: proxyPort });
+	}
+
+	function stopProxy() {
+		send('inspect_proxy_stop', {});
+		proxyActive = false;
+	}
 
 	// Register manual-inspect result listener on mount for the same reason —
 	// the external panel window receives the broadcast and updates its display.
@@ -435,10 +481,16 @@
 			class="flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] transition-colors {mode === 'browser' ? 'bg-primary/20 text-primary font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/20'}"
 			onclick={() => { mode = 'browser'; }}
 		><MonitorPlay size={10} />Browser Capture</button>
+		<button
+			class="flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] transition-colors {mode === 'proxy' ? 'bg-primary/20 text-primary font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/20'}"
+			onclick={() => { mode = 'proxy'; }}
+		><List size={10} />Proxy Capture</button>
 		{#if mode === 'browser' && browserOpen}
 			<span class="ml-2 flex items-center gap-1 text-[9px] text-green animate-pulse"><span class="w-1.5 h-1.5 rounded-full bg-green inline-block"></span>Capturing</span>
 		{:else if mode === 'browser' && browserLoading}
 			<span class="ml-2 flex items-center gap-1 text-[9px] text-muted-foreground"><Loader2 size={9} class="animate-spin" />Launching Chrome…</span>
+		{:else if mode === 'proxy' && proxyActive}
+			<span class="ml-2 flex items-center gap-1 text-[9px] text-green animate-pulse"><span class="w-1.5 h-1.5 rounded-full bg-green inline-block"></span>Proxy Active</span>
 		{/if}
 	</div>
 
@@ -708,6 +760,113 @@
 				<div class="flex items-center justify-center flex-1 text-muted-foreground/40 text-[11px] panel-inset">
 					Select a request from the list
 				</div>
+			{/if}
+		</div>
+	</div>
+	{/if}
+
+	{:else if mode === 'proxy'}
+	<!-- ══ PROXY CAPTURE MODE ═══════════════════════════════════════════════ -->
+
+	<!-- Controls bar -->
+	<div class="flex items-center gap-2 px-2 py-1.5 panel-raised shrink-0">
+		<span class="text-[10px] text-muted-foreground shrink-0">Port</span>
+		<input type="number" min="1024" max="65535" bind:value={proxyPort}
+			class="skeu-input text-[11px] font-mono w-20 shrink-0"
+			disabled={proxyActive}
+		/>
+		{#if proxyActive}
+			<button class="skeu-btn flex items-center gap-1 text-[11px] text-red shrink-0" onclick={stopProxy}>
+				<Square size={11} />Stop Proxy
+			</button>
+		{:else}
+			<button class="skeu-btn flex items-center gap-1 text-[11px] text-green shrink-0" onclick={startProxy}>
+				<Play size={11} />Start Proxy
+			</button>
+		{/if}
+		<button class="skeu-btn text-[10px] text-muted-foreground ml-auto shrink-0" onclick={() => { capturedRequests = []; selectedReqId = null; try { localStorage.removeItem('ib_inspector_captures'); } catch {} }}>
+			<Trash2 size={10} />Clear
+		</button>
+	</div>
+
+	<!-- Setup instructions -->
+	{#if !proxyActive && capturedRequests.length === 0}
+	<div class="flex flex-col items-center justify-center flex-1 gap-3 p-6 text-center">
+		<List size={28} class="text-muted-foreground/30" />
+		<div class="space-y-1">
+			<p class="text-[11px] font-medium text-foreground">Proxy Capture</p>
+			<p class="text-[10px] text-muted-foreground max-w-xs">No Chrome required. Start the proxy, then configure your browser or system to use <code class="text-foreground/80">127.0.0.1:{proxyPort}</code> as an HTTP proxy.</p>
+		</div>
+		<ol class="text-left text-[10px] text-muted-foreground space-y-1 max-w-xs">
+			<li>1. Click <span class="text-green font-medium">Start Proxy</span></li>
+			<li>2. In Chrome/Firefox: Settings → Proxy → Manual → <code class="text-foreground/80">127.0.0.1:{proxyPort}</code></li>
+			<li>3. Browse to your target — requests appear here in real time</li>
+			<li>4. HTTPS tunnels are relayed but not decrypted (no MitM)</li>
+		</ol>
+		{#if proxyError}
+			<p class="text-[10px] text-red bg-red/10 rounded px-3 py-1.5 border border-red/20 max-w-xs">{proxyError}</p>
+		{/if}
+	</div>
+	{:else}
+	<!-- Reuse the same captured requests panel from browser mode -->
+	<div class="flex flex-1 min-h-0">
+		<!-- Left: request list -->
+		<div class="flex flex-col border-r border-border shrink-0 overflow-hidden" style="width: {splitWidth}px">
+			<div class="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0 bg-background/40">
+				<input type="text" bind:value={searchQuery} placeholder="Filter…" class="skeu-input text-[10px] flex-1 min-w-0" />
+			</div>
+			<div class="flex-1 overflow-y-auto">
+				{#each filteredRequests as req (req.id)}
+					<button
+						class="w-full text-left flex items-center gap-1.5 px-2 py-0.5 hover:bg-accent/10 transition-colors border-b border-border/30 {selectedReqId === req.id ? 'bg-primary/10' : ''}"
+						onclick={() => selectReq(req.id)}
+					>
+						<span class="font-mono text-[9px] shrink-0 {req.method === 'CONNECT' ? 'text-muted-foreground' : req.method === 'POST' ? 'text-orange' : 'text-blue-400'}">{req.method}</span>
+						<span class="text-[9px] text-muted-foreground truncate font-mono">{req.url.replace(/^https?:\/\//, '')}</span>
+						{#if req.resp_status}
+							<span class="ml-auto text-[9px] font-mono shrink-0 {req.resp_status >= 400 ? 'text-red' : req.resp_status >= 300 ? 'text-orange' : 'text-green'}">{req.resp_status}</span>
+						{/if}
+					</button>
+				{/each}
+				{#if filteredRequests.length === 0}
+					<p class="text-[10px] text-muted-foreground p-4 text-center">{proxyActive ? 'Waiting for traffic…' : 'No requests captured.'}</p>
+				{/if}
+			</div>
+		</div>
+		<!-- Right: detail — reuse selectedReq display identical to browser mode -->
+		<div class="flex-1 min-w-0 flex flex-col overflow-hidden">
+			{#if selectedReq}
+				<div class="flex items-center gap-1 px-2 py-1 border-b border-border bg-background/40 shrink-0 flex-wrap">
+					{#each ['headers','payload','response'] as t}
+						<button
+							class="px-2 py-0.5 rounded text-[10px] transition-colors {detailTab === t ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}"
+							onclick={() => detailTab = t as any}
+						>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
+					{/each}
+				</div>
+				<div class="flex-1 overflow-y-auto p-2 font-mono text-[10px]">
+					{#if detailTab === 'headers'}
+						<p class="text-muted-foreground mb-1">Request Headers</p>
+						{#each Object.entries(selectedReq.headers) as [k, v]}
+							<div class="flex gap-2 py-0.5 border-b border-border/20"><span class="text-primary/80 shrink-0">{k}</span><span class="text-foreground/70 truncate">{v}</span></div>
+						{/each}
+					{:else if detailTab === 'payload'}
+						<pre class="whitespace-pre-wrap break-all text-foreground/80">{selectedReq.post_data ?? '(no body)'}</pre>
+					{:else if detailTab === 'response'}
+						{#if selectedReq.resp_headers}
+							<p class="text-muted-foreground mb-1">Response Headers</p>
+							{#each Object.entries(selectedReq.resp_headers) as [k, v]}
+								<div class="flex gap-2 py-0.5 border-b border-border/20"><span class="text-primary/80 shrink-0">{k}</span><span class="text-foreground/70 truncate">{v}</span></div>
+							{/each}
+						{/if}
+						{#if selectedReq.resp_body}
+							<p class="text-muted-foreground mt-2 mb-1">Body</p>
+							<pre class="whitespace-pre-wrap break-all text-foreground/80">{selectedReq.resp_body}</pre>
+						{/if}
+					{/if}
+				</div>
+			{:else}
+				<div class="flex-1 flex items-center justify-center text-muted-foreground text-[10px]">Select a request</div>
 			{/if}
 		</div>
 	</div>
