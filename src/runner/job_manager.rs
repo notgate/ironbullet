@@ -265,12 +265,17 @@ impl JobManager {
         // Load data from source
         let data_lines = match job.data_source.source_type {
             DataSourceType::File => {
-                std::fs::read_to_string(&job.data_source.value)
-                    .unwrap_or_default()
-                    .lines()
-                    .filter(|l| !l.trim().is_empty())
-                    .map(|l| l.to_string())
-                    .collect::<Vec<_>>()
+                match std::fs::read_to_string(&job.data_source.value) {
+                    Ok(content) => content.lines()
+                        .filter(|l| !l.trim().is_empty())
+                        .map(|l| l.to_string())
+                        .collect::<Vec<_>>(),
+                    Err(e) => {
+                        eprintln!("[job] start_job: cannot read file '{}': {}",
+                            job.data_source.value, e);
+                        Vec::new()
+                    }
+                }
             }
             DataSourceType::Folder => {
                 // Read all .txt / .csv files in the folder, concatenate their lines
@@ -310,8 +315,8 @@ impl JobManager {
         // than silently completing at 0%. The caller receives None and should surface
         // an error to the frontend.
         if data_lines.is_empty() {
-            eprintln!("[job] start_job: data source '{}' resolved to 0 lines — aborting start",
-                job.data_source.value);
+            eprintln!("[job] start_job: data source '{:?}' value='{}' resolved to 0 lines — aborting start",
+                job.data_source.source_type, job.data_source.value);
             return None;
         }
 
