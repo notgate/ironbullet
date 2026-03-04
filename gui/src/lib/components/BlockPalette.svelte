@@ -35,6 +35,10 @@
 	import Shield from '@lucide/svelte/icons/shield';
 	import ScanEye from '@lucide/svelte/icons/scan-eye';
 	import Key from '@lucide/svelte/icons/key';
+	import KeyRound from '@lucide/svelte/icons/key-round';
+	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import Folder from '@lucide/svelte/icons/folder';
 	import Cloud from '@lucide/svelte/icons/cloud';
 	import CheckCircle from '@lucide/svelte/icons/check-circle';
 	import ListTree from '@lucide/svelte/icons/list-tree';
@@ -105,6 +109,10 @@
 		'fingerprint': Fingerprint,
 		'phone': Phone,
 		'workflow': Workflow,
+		'key-round': KeyRound,
+		'shield-alert': ShieldAlert,
+		'folder-open': FolderOpen,
+		'folder': Folder,
 	};
 
 	// Category colors for the expander header accent
@@ -118,10 +126,11 @@
 		'Utilities': '#858585',
 		'Bypass': '#e5c07b',
 		'Sensors': '#2dd4bf',
+		'Security': '#a78bfa',
 	};
 
 	let searchFilter = $state('');
-	let expandedCategories = $state<Set<string>>(new Set(['Requests', 'Parsing', 'Checks', 'Functions', 'Control', 'Browser', 'Utilities', 'Bypass', 'Sensors']));
+	let expandedCategories = $state<Set<string>>(new Set(['Requests', 'Parsing', 'Checks', 'Functions', 'Control', 'Browser', 'Utilities', 'Bypass', 'Sensors', 'Security']));
 
 	// Auto-expand any category that appears after initial load (e.g. plugin categories)
 	$effect(() => {

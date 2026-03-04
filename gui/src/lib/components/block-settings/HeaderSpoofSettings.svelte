@@ -27,7 +27,7 @@
 				{ value: 'RandomPublic', label: 'Random Public IPv4 — new random IP each request' },
 				{ value: 'FixedList', label: 'Fixed List — rotate through a custom IP list' },
 				{ value: 'FromProxy', label: 'From Proxy — use the current proxy\'s IP' },
-				{ value: 'Manual', label: 'Manual — static value (supports {VAR})' },
+				{ value: 'Manual', label: 'Manual — static value (supports {"{VAR}"})' },
 			]}
 		/>
 	</div>
@@ -52,7 +52,7 @@
 				type="text"
 				value={block.settings.manual_value || ''}
 				oninput={(e) => update('manual_value', (e.target as HTMLInputElement).value)}
-				placeholder="1.2.3.4 or {VAR}"
+				placeholder={"1.2.3.4 or {VAR}"}
 				class="skeu-input w-full font-mono text-[11px]"
 			/>
 		</div>
