@@ -10,6 +10,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Square from '@lucide/svelte/icons/square';
+	import Play from '@lucide/svelte/icons/play';
 	import MonitorPlay from '@lucide/svelte/icons/monitor-play';
 	import MonitorOff from '@lucide/svelte/icons/monitor-off';
 	import List from '@lucide/svelte/icons/list';
