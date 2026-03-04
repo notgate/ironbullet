@@ -10,7 +10,7 @@ export type PanelId = 'debugger' | 'code' | 'data' | 'jobs' | 'network' | 'varia
  * - float:   CSS overlay (legacy, kept for non-Windows)
  * - native:  panel is open in a real native OS window (managed by Rust)
  */
-export type DockZone = 'bottom' | 'right' | 'float' | 'left' | 'native';
+export type DockZone = 'bottom' | 'right' | 'float' | 'left' | 'native' | 'hidden';
 
 export interface FloatState {
 	x: number;
@@ -56,6 +56,7 @@ function loadFromStorage(): PanelConfig[] {
 			const parsed = JSON.parse(raw) as PanelConfig[];
 			// Reset transient zones to 'bottom' on startup:
 			// 'native' = OS windows don't persist; 'float' = CSS overlays don't persist
+			// 'hidden' is intentionally preserved across restarts
 			const normalized = parsed.map(p =>
 				(p.zone === 'native' || p.zone === 'float')
 					? { ...p, zone: 'bottom' as DockZone }
@@ -94,7 +95,7 @@ function createDockState() {
 				: p.float };
 		});
 		// Re-normalize orders within zones
-		(['bottom', 'right', 'float', 'left', 'native'] as DockZone[]).forEach(z => {
+		(['bottom', 'right', 'float', 'left', 'native', 'hidden'] as DockZone[]).forEach(z => {
 			panelsIn(z).forEach((p, i) => {
 				const found = panels.find(x => x.id === p.id);
 				if (found) found.order = i;
@@ -136,6 +137,17 @@ function createDockState() {
 		saveToStorage(panels);
 	}
 
+	function toggleHidden(id: PanelId) {
+		const panel = panels.find(p => p.id === id);
+		if (!panel) return;
+		const newZone: DockZone = panel.zone === 'hidden' ? 'bottom' : 'hidden';
+		movePanel(id, newZone);
+	}
+
+	function isHidden(id: PanelId) {
+		return panels.find(p => p.id === id)?.zone === 'hidden';
+	}
+
 	function resetLayout() {
 		panels = [...DEFAULT_PANELS];
 		saveToStorage(panels);
@@ -153,6 +165,8 @@ function createDockState() {
 		setFloatPosition,
 		setFloatSize,
 		toggleMinimize,
+		toggleHidden,
+		isHidden,
 		resetLayout,
 	};
 }

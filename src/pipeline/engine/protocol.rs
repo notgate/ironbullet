@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::Arc;
 
 impl ExecutionContext {
     // ── TCP Request ──
@@ -16,12 +17,24 @@ impl ExecutionContext {
             .map_err(|e| crate::error::AppError::Pipeline(format!("TCP connect failed {}: {}", addr, e)))?;
 
         let response_body = if settings.use_tls {
-            let connector = native_tls::TlsConnector::builder()
-                .danger_accept_invalid_certs(!settings.ssl_verify)
-                .build()
-                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
-            let connector = tokio_native_tls::TlsConnector::from(connector);
-            let mut tls_stream = connector.connect(&host, stream).await
+            let tls_config = {
+                let mut cfg = rustls::ClientConfig::builder()
+                    .with_root_certificates({
+                        let mut roots = rustls::RootCertStore::empty();
+                        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+                        roots
+                    })
+                    .with_no_client_auth();
+                if !settings.ssl_verify {
+                    cfg.dangerous().set_certificate_verifier(Arc::new(crate::pipeline::engine::protocol::NoVerify));
+                }
+                Arc::new(cfg)
+            };
+            let connector = tokio_rustls::TlsConnector::from(tls_config);
+            let sn = rustls::pki_types::ServerName::try_from(host.as_str())
+                .map_err(|e| crate::error::AppError::Pipeline(format!("Invalid hostname: {}", e)))?
+                .to_owned();
+            let mut tls_stream = connector.connect(sn, stream).await
                 .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake failed: {}", e)))?;
 
             if !data.is_empty() {
@@ -313,12 +326,24 @@ impl ExecutionContext {
         let mut last_ok = false;
 
         if settings.use_tls {
-            let connector = native_tls::TlsConnector::builder()
-                .danger_accept_invalid_certs(!settings.ssl_verify)
-                .build()
-                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
-            let connector = tokio_native_tls::TlsConnector::from(connector);
-            let tls = connector.connect(&host, stream).await
+            let tls_config = {
+                let mut cfg = rustls::ClientConfig::builder()
+                    .with_root_certificates({
+                        let mut roots = rustls::RootCertStore::empty();
+                        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+                        roots
+                    })
+                    .with_no_client_auth();
+                if !settings.ssl_verify {
+                    cfg.dangerous().set_certificate_verifier(Arc::new(crate::pipeline::engine::protocol::NoVerify));
+                }
+                Arc::new(cfg)
+            };
+            let connector = tokio_rustls::TlsConnector::from(tls_config);
+            let sn = rustls::pki_types::ServerName::try_from(host.as_str())
+                .map_err(|e| crate::error::AppError::Pipeline(format!("Invalid hostname: {}", e)))?
+                .to_owned();
+            let tls = connector.connect(sn, stream).await
                 .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake: {}", e)))?;
             let (reader, writer) = tokio::io::split(tls);
             let mut reader = tokio::io::BufReader::new(reader);
@@ -489,12 +514,24 @@ impl ExecutionContext {
         }
 
         if settings.use_tls {
-            let connector = native_tls::TlsConnector::builder()
-                .danger_accept_invalid_certs(!settings.ssl_verify)
-                .build()
-                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
-            let connector = tokio_native_tls::TlsConnector::from(connector);
-            let tls = connector.connect(&host, stream).await
+            let tls_config = {
+                let mut cfg = rustls::ClientConfig::builder()
+                    .with_root_certificates({
+                        let mut roots = rustls::RootCertStore::empty();
+                        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+                        roots
+                    })
+                    .with_no_client_auth();
+                if !settings.ssl_verify {
+                    cfg.dangerous().set_certificate_verifier(Arc::new(crate::pipeline::engine::protocol::NoVerify));
+                }
+                Arc::new(cfg)
+            };
+            let connector = tokio_rustls::TlsConnector::from(tls_config);
+            let sn = rustls::pki_types::ServerName::try_from(host.as_str())
+                .map_err(|e| crate::error::AppError::Pipeline(format!("Invalid hostname: {}", e)))?
+                .to_owned();
+            let tls = connector.connect(sn, stream).await
                 .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake: {}", e)))?;
             let (reader, writer) = tokio::io::split(tls);
             let mut reader = tokio::io::BufReader::new(reader);
@@ -696,12 +733,24 @@ impl ExecutionContext {
         }
 
         if settings.use_tls {
-            let connector = native_tls::TlsConnector::builder()
-                .danger_accept_invalid_certs(!settings.ssl_verify)
-                .build()
-                .map_err(|e| crate::error::AppError::Pipeline(format!("TLS error: {}", e)))?;
-            let connector = tokio_native_tls::TlsConnector::from(connector);
-            let tls = connector.connect(&host, stream).await
+            let tls_config = {
+                let mut cfg = rustls::ClientConfig::builder()
+                    .with_root_certificates({
+                        let mut roots = rustls::RootCertStore::empty();
+                        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+                        roots
+                    })
+                    .with_no_client_auth();
+                if !settings.ssl_verify {
+                    cfg.dangerous().set_certificate_verifier(Arc::new(crate::pipeline::engine::protocol::NoVerify));
+                }
+                Arc::new(cfg)
+            };
+            let connector = tokio_rustls::TlsConnector::from(tls_config);
+            let sn = rustls::pki_types::ServerName::try_from(host.as_str())
+                .map_err(|e| crate::error::AppError::Pipeline(format!("Invalid hostname: {}", e)))?
+                .to_owned();
+            let tls = connector.connect(sn, stream).await
                 .map_err(|e| crate::error::AppError::Pipeline(format!("TLS handshake: {}", e)))?;
             let (reader, writer) = tokio::io::split(tls);
             let mut reader = tokio::io::BufReader::new(reader);
@@ -776,5 +825,41 @@ impl ExecutionContext {
         }
 
         Ok(())
+    }
+}
+
+/// Rustls verifier that skips certificate verification (used when ssl_verify=false).
+#[derive(Debug)]
+pub struct NoVerify;
+
+impl rustls::client::danger::ServerCertVerifier for NoVerify {
+    fn verify_server_cert(
+        &self,
+        _: &rustls::pki_types::CertificateDer,
+        _: &[rustls::pki_types::CertificateDer],
+        _: &rustls::pki_types::ServerName,
+        _: &[u8],
+        _: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+    fn verify_tls12_signature(&self, _: &[u8], _: &rustls::pki_types::CertificateDer, _: &rustls::DigitallySignedStruct) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+    fn verify_tls13_signature(&self, _: &[u8], _: &rustls::pki_types::CertificateDer, _: &rustls::DigitallySignedStruct) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        vec![
+            rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            rustls::SignatureScheme::RSA_PKCS1_SHA384,
+            rustls::SignatureScheme::RSA_PKCS1_SHA512,
+            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
+            rustls::SignatureScheme::RSA_PSS_SHA256,
+            rustls::SignatureScheme::RSA_PSS_SHA384,
+            rustls::SignatureScheme::RSA_PSS_SHA512,
+            rustls::SignatureScheme::ED25519,
+        ]
     }
 }
