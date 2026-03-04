@@ -10,6 +10,8 @@ mod settings_network;
 mod settings_akamai;
 mod settings_extended_functions;
 mod settings_data;
+mod settings_jwt;
+mod settings_header_spoof;
 
 pub use settings_http::*;
 pub use settings_parse::*;
@@ -23,6 +25,8 @@ pub use settings_network::*;
 pub use settings_akamai::*;
 pub use settings_extended_functions::*;
 pub use settings_data::*;
+pub use settings_jwt::*;
+pub use settings_header_spoof::*;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -140,6 +144,9 @@ pub enum BlockType {
     GenerateGUID,
     PhoneCountry,
     LambdaParser,
+    // Security / Auth utilities
+    JwtToken,
+    HeaderSpoof,
 }
 
 impl BlockType {
@@ -207,6 +214,8 @@ impl BlockType {
             Self::PhoneCountry => "Phone Country",
             Self::LambdaParser => "Lambda Parser",
             Self::FileSystem => "File System",
+            Self::JwtToken => "JWT Token",
+            Self::HeaderSpoof => "Header Spoof",
         }
     }
 
@@ -223,6 +232,7 @@ impl BlockType {
             Self::IfElse | Self::Loop | Self::Delay | Self::Script | Self::CaseSwitch | Self::Group => "Control",
             Self::Log | Self::SetVariable | Self::ClearCookies | Self::Webhook | Self::WebSocket => "Utilities",
             Self::BrowserOpen | Self::NavigateTo | Self::ClickElement | Self::TypeText | Self::WaitForElement | Self::GetElementText | Self::Screenshot | Self::ExecuteJs => "Browser",
+            Self::JwtToken | Self::HeaderSpoof => "Security",
         }
     }
 
@@ -239,6 +249,7 @@ impl BlockType {
             "Sensors" => "#2dd4bf",
             "Data" => "#d4a96a",
             "FileSystem" => "#d4a96a",
+            "Security" => "#f97316",
             _ => "#858585",
         }
     }
@@ -307,6 +318,8 @@ impl BlockType {
             Self::PhoneCountry => BlockSettings::PhoneCountry(PhoneCountrySettings::default()),
             Self::LambdaParser => BlockSettings::LambdaParser(LambdaParserSettings::default()),
             Self::FileSystem => BlockSettings::FileSystem(FileSystemSettings::default()),
+            Self::JwtToken => BlockSettings::JwtToken(JwtSettings::default()),
+            Self::HeaderSpoof => BlockSettings::HeaderSpoof(HeaderSpoofSettings::default()),
         }
     }
 }
@@ -387,4 +400,6 @@ pub enum BlockSettings {
     PhoneCountry(PhoneCountrySettings),
     LambdaParser(LambdaParserSettings),
     FileSystem(FileSystemSettings),
+    JwtToken(JwtSettings),
+    HeaderSpoof(HeaderSpoofSettings),
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 )
 
 // SidecarRequest from Rust
@@ -57,6 +58,26 @@ var (
 )
 
 func main() {
+	// Background session GC — evict sessions idle for >5 minutes.
+	// Handles the case where a worker goroutine crashed before sending close_session,
+	// which would otherwise leak the azuretls session (goroutine + TLS state + fd).
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			cutoff := time.Now().Add(-5 * time.Minute)
+			sessionsMu.Lock()
+			for id, sw := range sessions {
+				if sw.LastUsed.Before(cutoff) {
+					sw.Session.Close()
+					delete(sessions, id)
+					fmt.Fprintf(os.Stderr, "[sidecar] GC: evicted idle session %s\n", id)
+				}
+			}
+			sessionsMu.Unlock()
+		}
+	}()
+
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 0, 10*1024*1024), 10*1024*1024) // 10MB buffer
 

@@ -213,6 +213,15 @@ impl ExecutionContext {
                 let out = if val.is_empty() { String::new() } else { format!(" → {} = {}", s.output_var, truncate_display(&val, 40)) };
                 format!("{:?}({}){}", s.op, s.path, out)
             }
+            BlockSettings::JwtToken(s) => {
+                let action = if matches!(s.action, JwtAction::Sign) { "Sign" } else { "Decode" };
+                let val = self.variables.get(&s.output_var).unwrap_or_default();
+                format!("JWT {} → {} = {}", action, s.output_var, truncate_display(&val, 40))
+            }
+            BlockSettings::HeaderSpoof(s) => {
+                let ip = self.variables.get("SPOOF_IP").unwrap_or_default();
+                format!("HeaderSpoof → SPOOF_IP = {}", if ip.is_empty() { "<pending>".to_string() } else { ip })
+            }
         }
     }
 }
