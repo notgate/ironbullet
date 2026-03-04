@@ -573,3 +573,9 @@ input[type="range"]::-webkit-slider-thumb:active {
 .text-base { font-size: calc(16px * var(--font-scale, 1)) !important; line-height: calc(24px * var(--font-scale, 1)) !important; }
 .text-lg  { font-size: calc(18px * var(--font-scale, 1)) !important; line-height: calc(28px * var(--font-scale, 1)) !important; }
 .text-xl  { font-size: calc(20px * var(--font-scale, 1)) !important; line-height: calc(28px * var(--font-scale, 1)) !important; }
+
+/* ── Compact mode ─────────────────────────────────────────────────── */
+.compact .block-row { padding-top: 2px !important; padding-bottom: 2px !important; }
+.compact .skeu-btn { padding-top: 1px !important; padding-bottom: 1px !important; }
+.compact [class*="py-1.5"] { padding-top: 3px !important; padding-bottom: 3px !important; }
+.compact [class*="py-2"] { padding-top: 4px !important; padding-bottom: 4px !important; }

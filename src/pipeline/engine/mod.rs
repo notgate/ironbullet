@@ -22,6 +22,21 @@ pub(crate) use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 
 use helpers::elapsed_ms;
 
+// ── WreqTLS client slot — Unix only (BoringSSL cross-compile for Windows unsupported) ──
+#[cfg(unix)]
+pub struct WreqClientSlot {
+    pub client: wreq::Client,
+    pub emulation: String,
+    pub proxy: Option<String>,
+}
+
+#[cfg(unix)]
+impl std::fmt::Debug for WreqClientSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WreqClientSlot({})", self.emulation)
+    }
+}
+
 // ── Browser handle wrappers (not serializable/cloneable) ──
 
 #[derive(Default)]
@@ -47,7 +62,7 @@ impl std::fmt::Debug for PageHandle {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExecutionContext {
     pub variables: VariableStore,
     pub status: BotStatus,
@@ -71,6 +86,10 @@ pub struct ExecutionContext {
     /// Reset for every new ExecutionContext (i.e. every credential checked).
     #[serde(skip)]
     pub rustls_client: Option<reqwest::Client>,
+    /// Reusable wreq client for WreqTLS requests — Unix only (BoringSSL).
+    #[cfg(unix)]
+    #[serde(skip)]
+    pub wreq_client: Option<WreqClientSlot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,6 +161,8 @@ impl ExecutionContext {
             override_http2fp: None,
             plugin_manager: None,
             rustls_client: None,
+            #[cfg(unix)]
+            wreq_client: None,
         }
     }
 

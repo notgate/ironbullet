@@ -198,7 +198,7 @@
 			</div>
 		{:else}
 		<!-- Zoom wrapper: everything below title bar -->
-		<div class="flex-1 flex flex-col overflow-hidden app-zoom-container" style="--app-zoom: {app.zoom}">
+		<div class="flex-1 flex flex-col overflow-hidden app-zoom-container" style="--app-zoom: {app.zoom}" class:compact={app.uiPrefs.compactMode}>
 
 		<!-- Toolbar -->
 		<Toolbar

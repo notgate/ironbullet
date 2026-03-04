@@ -12,14 +12,16 @@
 	import PluginsSection from '$lib/components/settings/PluginsSection.svelte';
 	import AboutSection from '$lib/components/settings/AboutSection.svelte';
 	import UpdateSection from '$lib/components/settings/UpdateSection.svelte';
+	import UIPrefsSection from '$lib/components/settings/UIPrefsSection.svelte';
 
-	type Section = 'display' | 'layout' | 'paths' | 'proxies' | 'runner' | 'output' | 'plugins' | 'updates' | 'about';
+	type Section = 'display' | 'layout' | 'paths' | 'proxies' | 'runner' | 'output' | 'plugins' | 'updates' | 'about' | 'uiprefs';
 	let activeSection = $state<Section>('display');
 	let searchQuery = $state('');
 
 	const SECTIONS: { id: Section; label: string }[] = [
 		{ id: 'display', label: 'Display' },
 		{ id: 'layout', label: 'Layout' },
+		{ id: 'uiprefs', label: 'UI & Panels' },
 		{ id: 'paths', label: 'Paths' },
 		{ id: 'proxies', label: 'Proxies' },
 		{ id: 'runner', label: 'Runner' },
@@ -59,6 +61,10 @@
 		{ section: 'output', label: 'Include Response', keywords: 'debug response body include output' },
 		{ section: 'output', label: 'Output Format', keywords: 'format template output' },
 		{ section: 'output', label: 'Output Directory', keywords: 'directory folder path output' },
+		{ section: 'uiprefs', label: 'Skip Unsaved Dialog', keywords: 'unsaved dialog confirm skip close tab' },
+		{ section: 'uiprefs', label: 'Skip Close Confirm', keywords: 'close app exit confirm skip dialog' },
+		{ section: 'uiprefs', label: 'Bottom Panel Tabs', keywords: 'hide show tab panel debugger network code data jobs' },
+		{ section: 'uiprefs', label: 'Compact Mode', keywords: 'compact density spacing layout ui' },
 	];
 
 	function matchesSearch(label: string, keywords: string): boolean {
@@ -129,7 +135,8 @@
 
 			<!-- Content -->
 			<div class="flex-1 overflow-y-auto p-4">
-				{#if sectionHasMatch('display')}<DisplaySection {searchQuery} {shouldShowSetting} />{/if}
+				{#if sectionHasMatch('uiprefs')}<UIPrefsSection />{/if}
+			{#if sectionHasMatch('display')}<DisplaySection {searchQuery} {shouldShowSetting} />{/if}
 				{#if sectionHasMatch('layout')}<LayoutSection {searchQuery} {shouldShowSetting} />{/if}
 				{#if sectionHasMatch('paths')}<PathsSection {searchQuery} {shouldShowSetting} />{/if}
 				{#if sectionHasMatch('proxies')}<ProxiesSection {searchQuery} {shouldShowSetting} />{/if}

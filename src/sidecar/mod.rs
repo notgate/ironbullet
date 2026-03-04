@@ -1,6 +1,7 @@
 pub mod native;
 pub mod protocol;
 pub mod session;
+pub mod wreq_client;
 
 use std::process::Stdio;
 use std::sync::Arc;
