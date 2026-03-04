@@ -1,6 +1,18 @@
-[target.x86_64-pc-windows-gnu]
-linker = "x86_64-w64-mingw32-gcc"
-ar = "x86_64-w64-mingw32-ar"
+# Cross-compilation config — llvm-mingw toolchain for Windows builds
+# Custom target JSON at x86_64-pc-windows-llvmmingw.json replaces GCC runtime
+# refs (-lgcc, -lgcc_eh) with libclang_rt.builtins + libunwind from llvm-mingw.
 
-[target.aarch64-unknown-linux-gnu]
-linker = "aarch64-linux-gnu-gcc"
+[target.x86_64-pc-windows-llvmmingw]
+linker = "/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang"
+ar = "/opt/llvm-mingw/bin/llvm-ar"
+
+[env]
+CC_x86_64_pc_windows_llvmmingw = "/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang"
+CXX_x86_64_pc_windows_llvmmingw = "/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang++"
+AR_x86_64_pc_windows_llvmmingw = "/opt/llvm-mingw/bin/llvm-ar"
+CMAKE_ASM_NASM_COMPILER = "/usr/bin/nasm"
+CMAKE_TOOLCHAIN_FILE = "/opt/llvm-mingw/llvm-mingw-toolchain.cmake"
+# bindgen sysroot for boring-sys2 when generating Windows bindings on Linux host
+# bindgen uses host libclang (clang-18); tell it the Windows cross-compile target,
+# the mingw sysroot for Windows headers, and the host clang builtins for stdint.h etc.
+BINDGEN_EXTRA_CLANG_ARGS = "--target=x86_64-w64-windows-gnu --sysroot=/opt/llvm-mingw/x86_64-w64-mingw32 -I/opt/llvm-mingw/x86_64-w64-mingw32/include -I/usr/lib/llvm-18/lib/clang/18/include"
