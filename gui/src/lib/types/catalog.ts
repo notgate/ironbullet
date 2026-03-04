@@ -48,6 +48,9 @@ export const BLOCK_CATALOG: BlockMeta[] = [
 	{ type: 'XacfSensor', label: 'XACF Sensor', category: 'Sensors', color: '#2dd4bf', icon: 'cpu' },
 	{ type: 'DataDomeSensor', label: 'DataDome Sensor', category: 'Sensors', color: '#2dd4bf', icon: 'cpu' },
 	{ type: 'AkamaiV3Sensor', label: 'Akamai V3 Sensor', category: 'Sensors', color: '#2dd4bf', icon: 'cpu' },
+	// Security
+	{ type: 'JwtToken', label: 'JWT Token', category: 'Security', color: '#a78bfa', icon: 'key-round' },
+	{ type: 'HeaderSpoof', label: 'Header Spoof', category: 'Security', color: '#a78bfa', icon: 'shield-alert' },
 	{ type: 'RandomData', label: 'Random Data', category: 'Utilities', color: '#858585', icon: 'dices' },
 	{ type: 'Plugin', label: 'Plugin Block', category: 'Utilities', color: '#858585', icon: 'plug' },
 	{ type: 'Group', label: 'Group', category: 'Control', color: '#dcdcaa', icon: 'folder' },
@@ -82,6 +85,7 @@ export function getBlockCssClass(type: BlockType): string {
 		case 'Control': return 'block-control';
 		case 'Utilities': return 'block-utility';
 		case 'Bypass': return 'block-bypass';
+		case 'Security': return 'block-bypass';
 		case 'Browser': return 'block-browser';
 		case 'Sensors': return 'block-sensor';
 		case 'Data': return 'block-data';
