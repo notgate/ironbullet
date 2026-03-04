@@ -218,7 +218,7 @@ impl ExecutionContext {
                 let val = self.variables.get(&s.output_var).unwrap_or_default();
                 format!("JWT {} → {} = {}", action, s.output_var, truncate_display(&val, 40))
             }
-            BlockSettings::HeaderSpoof(s) => {
+            BlockSettings::HeaderSpoof(_) => {
                 let ip = self.variables.get("SPOOF_IP").unwrap_or_default();
                 format!("HeaderSpoof → SPOOF_IP = {}", if ip.is_empty() { "<pending>".to_string() } else { ip })
             }

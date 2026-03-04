@@ -20,16 +20,22 @@ impl ExecutionContext {
             .collect();
 
         // Inject SPOOF_HEADERS set by a preceding HeaderSpoof block.
-        // These are a JSON array of [name, value] pairs stored in the SPOOF_HEADERS variable.
+        // SPOOF_HEADERS is consumed (cleared) after reading so it only applies
+        // to the next HTTP block, not every subsequent one in the pipeline.
+        // To apply to multiple requests, place a HeaderSpoof block before each one.
         if let Some(spoof_json) = self.variables.get("SPOOF_HEADERS") {
+            // Consume immediately — clear before processing so a failed parse
+            // doesn't leave a poisoned value that re-fires on the next request.
+            self.variables.set_user("SPOOF_HEADERS", String::new(), false);
             if let Ok(pairs) = serde_json::from_str::<Vec<(String, String)>>(&spoof_json) {
                 for (name, mut value) in pairs {
                     if name == "X-Forwarded-Host" && value.is_empty() {
-                        // Fill in actual request host from URL
-                        value = settings.url
+                        // Fill in actual request host from the (interpolated) URL
+                        value = url
                             .split("://").nth(1)
                             .unwrap_or("")
-                            .split('/').next()
+                            .split(&['/', '?', '#'][..])
+                            .next()
                             .unwrap_or("")
                             .to_string();
                     }

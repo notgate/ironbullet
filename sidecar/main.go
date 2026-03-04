@@ -68,7 +68,10 @@ func main() {
 			cutoff := time.Now().Add(-5 * time.Minute)
 			sessionsMu.Lock()
 			for id, sw := range sessions {
-				if sw.LastUsed.Before(cutoff) {
+				sw.mu.Lock()
+				lastUsed := sw.LastUsed
+				sw.mu.Unlock()
+				if lastUsed.Before(cutoff) {
 					sw.Session.Close()
 					delete(sessions, id)
 					fmt.Fprintf(os.Stderr, "[sidecar] GC: evicted idle session %s\n", id)

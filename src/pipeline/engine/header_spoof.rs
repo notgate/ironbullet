@@ -1,45 +1,38 @@
 use super::*;
 
-/// Generate a random public IPv4 address.
-/// Avoids private ranges (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x)
+/// Generate a random public IPv4 address using the thread-local `rand` RNG.
+/// Avoids all private/reserved ranges: 0.x, 10.x, 100.64-127.x (CGNAT),
+/// 127.x, 169.254.x, 172.16-31.x, 192.0.x, 192.168.x, 198.18-19.x,
+/// 203.0.113.x, 224+ (multicast/reserved).
 fn random_public_ipv4() -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
 
-    // Use current time + thread id as entropy source (no rand dep needed)
-    let mut h = DefaultHasher::new();
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos()
-        .hash(&mut h);
-    std::thread::current().id().hash(&mut h);
-    let seed = h.finish();
+    // Safe first-octet set — excludes all IANA special-purpose ranges.
+    // Using a curated list is simpler and more correct than rejection-sampling
+    // because the private ranges cluster at well-known values.
+    const SAFE_FIRST: &[u8] = &[
+        1, 2, 4, 5, 8, 12, 14, 15, 17, 18, 20, 23, 24, 31, 34, 37,
+        38, 40, 41, 43, 44, 45, 46, 47, 50, 51, 52, 53, 54, 55, 57,
+        58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 70, 71, 72, 73,
+        74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
+        89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 101, 102, 103, 104,
+        105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
+        117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 128, 129,
+        130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141,
+        142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153,
+        154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165,
+        166, 167, 168, 170, 171, 173, 174, 175, 176, 177, 178, 179,
+        180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191,
+        193, 194, 195, 196, 197, 199, 200, 201, 202, 204, 205, 206,
+        207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218,
+        219, 220, 221, 222, 223,
+    ];
 
-    // Simple LCG to get 4 octets
-    let lcg = |s: u64| s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-    let s1 = lcg(seed);
-    let s2 = lcg(s1);
-    let s3 = lcg(s2);
-    let s4 = lcg(s3);
-
-    let o1 = (s1 >> 32) as u8;
-    let o2 = (s2 >> 32) as u8;
-    let o3 = (s3 >> 32) as u8;
-    let o4 = ((s4 >> 32) as u8).max(1); // avoid .0
-
-    // Avoid private ranges — regenerate first octet if in private space
-    let o1 = match o1 {
-        0 | 10 | 127 | 169 | 172 | 192 | 198 | 203 | 240..=255 => {
-            // Pick a safe first octet from common public ranges
-            let safe = [1u8, 2, 4, 5, 8, 12, 14, 15, 17, 18, 20, 23, 24, 31, 34, 37,
-                        38, 40, 41, 43, 44, 45, 46, 47, 50, 51, 52, 53, 54, 55, 57,
-                        58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 70, 71, 72, 73,
-                        74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88];
-            safe[o2 as usize % safe.len()]
-        }
-        n => n,
-    };
+    let o1 = SAFE_FIRST[rng.gen_range(0..SAFE_FIRST.len())];
+    let o2: u8 = rng.gen();
+    let o3: u8 = rng.gen();
+    let o4: u8 = rng.gen_range(1..=254); // avoid .0 and .255
 
     format!("{}.{}.{}.{}", o1, o2, o3, o4)
 }
