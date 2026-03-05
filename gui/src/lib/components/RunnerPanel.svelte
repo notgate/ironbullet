@@ -53,7 +53,7 @@
 	}
 
 	let stats = $derived(app.runnerStats);
-	let progressPct = $derived(stats && stats.total > 0 ? (stats.processed / stats.total * 100) : 0);
+	let progressPct = $derived(stats && stats.total > 0 ? (((stats as any).consumed ?? stats.processed) / stats.total * 100) : 0);
 </script>
 
 <div class="flex flex-col h-full bg-surface">
