@@ -406,6 +406,34 @@ pub fn handle_ipc_cmd(
             None
         }
 
+        "open_url" => {
+            let url = data.get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if !url.is_empty() {
+                #[cfg(target_os = "windows")]
+                let _ = std::process::Command::new("cmd")
+                    .args(["/c", "start", "", &url])
+                    .spawn();
+                #[cfg(target_os = "macos")]
+                let _ = std::process::Command::new("open").arg(&url).spawn();
+                #[cfg(target_os = "linux")]
+                let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+            }
+            None
+        }
+
+        "check_chrome" => {
+            let chrome = find_chrome_executable();
+            let found = chrome.is_some();
+            let path = chrome
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let resp = IpcResponse::ok("check_chrome", serde_json::json!({ "found": found, "path": path }));
+            Some(serde_json::to_string(&resp).unwrap_or_default())
+        }
+
         _ => {
             let resp = IpcResponse::err(&cmd_name, format!("Unknown command: {}", cmd_name));
             Some(serde_json::to_string(&resp).unwrap_or_default())

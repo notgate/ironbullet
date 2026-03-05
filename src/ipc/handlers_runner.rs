@@ -875,6 +875,7 @@ pub(super) fn inspect_browser_open(
                             {
                                 let body_text = if r.result.base64_encoded {
                                     // Decode base64; fall back to raw string on error
+                                    #[allow(unused_imports)]
                                     use std::io::Read;
                                     match base64::Engine::decode(
                                         &base64::engine::general_purpose::STANDARD,
@@ -962,7 +963,9 @@ pub(super) fn inspect_proxy_start(
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
+    #[allow(unused_imports)]
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    #[allow(unused_imports)]
     use tokio::net::{TcpListener, TcpStream};
 
     let rt = tokio::runtime::Handle::try_current();

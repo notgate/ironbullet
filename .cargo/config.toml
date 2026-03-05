@@ -6,13 +6,20 @@
 linker = "/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang"
 ar = "/opt/llvm-mingw/bin/llvm-ar"
 
+# Per-target CC/CXX/AR — cargo uses <VAR>_<TARGET_UNDERSCORE> naming natively,
+# so these are already scoped to x86_64-pc-windows-llvmmingw only.
 [env]
 CC_x86_64_pc_windows_llvmmingw = "/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang"
 CXX_x86_64_pc_windows_llvmmingw = "/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang++"
 AR_x86_64_pc_windows_llvmmingw = "/opt/llvm-mingw/bin/llvm-ar"
-CMAKE_ASM_NASM_COMPILER = "/usr/bin/nasm"
-CMAKE_TOOLCHAIN_FILE = "/opt/llvm-mingw/llvm-mingw-toolchain.cmake"
-# bindgen sysroot for boring-sys2 when generating Windows bindings on Linux host
-# bindgen uses host libclang (clang-18); tell it the Windows cross-compile target,
-# the mingw sysroot for Windows headers, and the host clang builtins for stdint.h etc.
-BINDGEN_EXTRA_CLANG_ARGS = "--target=x86_64-w64-windows-gnu --sysroot=/opt/llvm-mingw/x86_64-w64-mingw32 -I/opt/llvm-mingw/x86_64-w64-mingw32/include -I/usr/lib/llvm-18/lib/clang/18/include"
+
+# NOTE: Cargo's [env] table is GLOBAL — it applies to ALL targets.
+# CMAKE_TOOLCHAIN_FILE and BINDGEN_EXTRA_CLANG_ARGS must NOT go here:
+# they would cause boring-sys2 to generate Windows bindings on Linux native
+# builds, breaking struct size assertions.
+#
+# Use scripts/build-windows.sh (or the Makefile) for Windows cross-compile.
+# It injects these vars inline, scoped to that invocation only:
+#   CMAKE_ASM_NASM_COMPILER=/usr/bin/nasm
+#   CMAKE_TOOLCHAIN_FILE=/opt/llvm-mingw/llvm-mingw-toolchain.cmake
+#   BINDGEN_EXTRA_CLANG_ARGS="--target=x86_64-w64-windows-gnu ..."
