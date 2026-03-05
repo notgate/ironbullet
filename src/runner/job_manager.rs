@@ -509,7 +509,7 @@ impl JobManager {
                         processed.fetch_add(1, Ordering::Relaxed);
                         let mut captures = std::collections::HashMap::new();
                         captures.insert("status".into(), "error".into());
-                        let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
+                        let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None, ..Default::default() }).await;
                     }
                     Ok(client) => {
                         active.fetch_add(1, Ordering::Relaxed);
@@ -533,7 +533,7 @@ impl JobManager {
                             }
                         }
 
-                        let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None }).await;
+                        let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None, ..Default::default() }).await;
                     }
                 }
             });

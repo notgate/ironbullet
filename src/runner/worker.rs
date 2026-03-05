@@ -113,6 +113,12 @@ pub(crate) async fn run_worker(
             .unwrap_or_default()
             .as_millis() as u64;
 
+        // Extract response context for {status}, {response}, {headers} output format variables.
+        // RESPONSECODE, LASTRESPONSE, LASTHEADERS are set by the HTTP block engine after every request.
+        let resp_status  = ctx.variables.get("RESPONSECODE").unwrap_or_default();
+        let resp_body    = ctx.variables.get("LASTRESPONSE").unwrap_or_default();
+        let resp_headers = ctx.variables.get("LASTHEADERS").unwrap_or_default();
+
         match ctx.status {
             BotStatus::Success => {
                 stats.hits.fetch_add(1, Ordering::Relaxed);
@@ -121,6 +127,9 @@ pub(crate) async fn run_worker(
                     data_line: data_line.clone(),
                     captures: captures.clone(),
                     proxy: proxy.clone(),
+                    response: resp_body.clone(),
+                    headers: resp_headers.clone(),
+                    status: resp_status.clone(),
                 };
                 if let Some(ref ow) = output_writer {
                     ow.write_hit(&hit, BotStatus::Success);
@@ -200,6 +209,8 @@ pub(crate) async fn run_worker(
                             data_line: data_line.clone(),
                             captures: err_caps,
                             proxy: proxy.clone(),
+                            status: resp_status.clone(),
+                            ..Default::default()
                         }, BotStatus::Error);
                     }
                     if let Ok(mut feed) = result_feed.try_lock() {
@@ -228,6 +239,8 @@ pub(crate) async fn run_worker(
                             data_line: data_line.clone(),
                             captures: err_caps,
                             proxy: proxy.clone(),
+                            status: resp_status.clone(),
+                            ..Default::default()
                         }, BotStatus::Error);
                     }
                     if let Ok(mut feed) = result_feed.try_lock() {

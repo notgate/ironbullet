@@ -75,7 +75,7 @@ impl OutputWriter {
 
         match writer.format {
             OutputFormat::Txt => {
-                let line = format_hit_line(&self.settings.output_format, &hit.data_line, &captures);
+                let line = format_hit_line(&self.settings.output_format, hit, &captures);
                 let _ = writeln!(writer.writer, "{}", line);
             }
             OutputFormat::Csv => {
@@ -179,15 +179,19 @@ pub fn apply_capture_filters(
         .collect()
 }
 
-fn format_hit_line(template: &str, data_line: &str, captures: &HashMap<String, String>) -> String {
+fn format_hit_line(template: &str, hit: &super::HitResult, captures: &HashMap<String, String>) -> String {
     let captures_str = captures.iter()
         .map(|(k, v)| format!("{} = {}", k, v))
         .collect::<Vec<_>>()
         .join(" | ");
 
     template
-        .replace("{data}", data_line)
+        .replace("{data}", &hit.data_line)
         .replace("{captures}", &captures_str)
+        .replace("{response}", &hit.response)
+        .replace("{headers}", &hit.headers)
+        .replace("{status}", &hit.status)
+        .replace("{proxy}", hit.proxy.as_deref().unwrap_or(""))
 }
 
 fn csv_escape(s: &str) -> String {
