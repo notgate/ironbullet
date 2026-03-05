@@ -58,6 +58,14 @@ impl ExecutionContext {
         let source = self.variables.resolve_input(&settings.input_var);
         let path = self.variables.interpolate(&settings.json_path);
 
+        // Empty source is not an error — just produce an empty output (same behaviour as OB2).
+        // Failing the whole check on an empty body makes configs brittle for endpoints that
+        // conditionally return JSON (e.g. success = JSON, failure = empty / redirect).
+        if source.trim().is_empty() {
+            self.variables.set_user(&settings.output_var, String::new(), settings.capture);
+            return Ok(());
+        }
+
         let json: serde_json::Value = serde_json::from_str(&source)
             .map_err(|e| crate::error::AppError::Pipeline(format!("Invalid JSON: {}", e)))?;
 
