@@ -33,6 +33,9 @@ pub struct ResultEntry {
     pub error: Option<String>,
     /// Wall-clock millis since epoch
     pub ts_ms: u64,
+    /// Per-block execution trace (block label, type, timing, request/response, variables)
+    #[serde(default)]
+    pub block_results: Vec<crate::pipeline::engine::BlockResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,7 +57,7 @@ pub struct RunnerStats {
 
 /// Capacity of the live result ring buffer.  100 entries ≈ last few seconds
 /// of work at typical CPM rates; keeping it small avoids lock contention.
-const RESULT_FEED_CAP: usize = 100;
+const RESULT_FEED_CAP: usize = 500;
 
 pub struct RunnerOrchestrator {
     pipeline: Pipeline,
