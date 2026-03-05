@@ -103,8 +103,10 @@ pub(crate) async fn run_worker(
             let _ = sidecar_tx.send((close_sess, tx)).await;
         }
 
-        stats.processed.fetch_add(1, Ordering::Relaxed);
+        // processed = unique lines attempted (no retries). Retries are tracked separately.
+        // This keeps processed consistent with data_pool.consumed() for the UI Done counter.
         if retry_count == 0 {
+            stats.processed.fetch_add(1, Ordering::Relaxed);
             stats.consumed.fetch_add(1, Ordering::Relaxed);
         }
 

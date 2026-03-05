@@ -697,7 +697,7 @@ Error handling
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.fails ?? 0) > 0 ? 'text-red-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.fails) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.bans ?? 0) > 0 ? 'text-orange-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.bans) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.errors ?? 0) > 0 ? 'text-yellow-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.errors) : 0}</td>
-							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">{job.stats ? `${fmt(job.stats.processed)}/${fmt(job.stats.total)}` : '0/0'}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">{job.stats ? `${fmt((job.stats as any).consumed ?? job.stats.processed)}/${fmt(job.stats.total)}` : '0/0'}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">{job.stats ? formatDuration(job.stats.elapsed_secs) : '0:00'}</td>
 							<td class="px-2 py-1 text-center" onclick={(e) => e.stopPropagation()}>
 								<div class="flex items-center justify-center gap-0.5">
