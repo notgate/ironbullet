@@ -21,7 +21,7 @@ function defaultPipeline(): Pipeline {
 }
 
 /** Sync the active pipeline + its save path to the Rust backend. */
-function syncPipelineToBackend() {
+export function syncPipelineToBackend() {
 	if (typeof window !== 'undefined' && (window as any).ipc) {
 		const tab = app.configTabs.find(t => t.id === app.activeTabId);
 		const data = JSON.parse(JSON.stringify(app.pipeline));

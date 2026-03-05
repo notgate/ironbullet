@@ -53,6 +53,28 @@ impl ProxyPool {
         Self::new(Vec::new(), 300)
     }
 
+    pub fn empty_with_ban(ban_duration_secs: u64) -> Self {
+        Self::new(Vec::new(), ban_duration_secs)
+    }
+
+    /// Load proxies from a file into this pool, merging with any already loaded.
+    /// `default_type_str` is the pipeline-level proxy type string (e.g. "http").
+    pub fn load_from_file(&mut self, path: &str, default_type_str: Option<&str>) -> std::io::Result<()> {
+        let default_type = default_type_str.and_then(|s| match s.to_lowercase().as_str() {
+            "https"  => Some(ProxyType::Https),
+            "socks4" => Some(ProxyType::Socks4),
+            "socks5" => Some(ProxyType::Socks5),
+            _        => Some(ProxyType::Http),
+        });
+        let content = std::fs::read_to_string(path)?;
+        let new_proxies: Vec<ProxyEntry> = content.lines()
+            .filter(|l| !l.trim().is_empty())
+            .filter_map(|l| parse_proxy_line(l.trim(), default_type))
+            .collect();
+        self.proxies.extend(new_proxies);
+        Ok(())
+    }
+
     pub fn next_proxy(&self) -> Option<String> {
         if self.proxies.is_empty() {
             return None;
