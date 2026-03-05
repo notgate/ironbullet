@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -34,8 +36,21 @@ type SessionWrapper struct {
 	LastUsed    time.Time
 }
 
+// connectTimeout is the hard limit for establishing a TCP connection to a proxy
+// or target host. Kept intentionally short: if a proxy takes >10s to accept a
+// connection it is unusable regardless of the request timeout.
+const connectTimeout = 10 * time.Second
+
 func handleNewSession(req SidecarRequest) {
 	session := azuretls.NewSession()
+
+	// Set a short connect timeout via ModifyDialer so the plain (non-proxy) dialer
+	// doesn't block for the OS TCP timeout (~2 min) on dead hosts.
+	session.ModifyDialer = func(d *net.Dialer) error {
+		d.Timeout = connectTimeout
+		d.KeepAlive = 30 * time.Second
+		return nil
+	}
 
 	// Set browser profile
 	browser := req.Browser
@@ -86,6 +101,14 @@ func handleNewSession(req SidecarRequest) {
 			// Log but don't fail — fall back to browser default
 			fmt.Fprintf(os.Stderr, "[sidecar] custom_ciphers error: %v\n", err)
 		}
+	}
+
+	// Pre-initialize the transport so the first Do() doesn't pay the lazy-init
+	// cost inline. InitTransport is idempotent; calling it here moves the cost
+	// to session setup time and keeps request latency predictable.
+	if err := session.InitTransport(browser); err != nil {
+		// Non-fatal — the transport will self-initialize on first request.
+		fmt.Fprintf(os.Stderr, "[sidecar] InitTransport warning: %v\n", err)
 	}
 
 	sessionsMu.Lock()
@@ -279,6 +302,18 @@ func handleHTTPRequest(req SidecarRequest) {
 	} else if req.MaxRedirects > 0 {
 		httpReq.MaxRedirects = uint(req.MaxRedirects)
 	}
+
+	// Wrap the entire Do() — including proxy CONNECT tunnel — in a context timeout.
+	// azuretls.Request.TimeOut applies to TLS handshake and response header phases
+	// but NOT to the initial proxy TCP connection (net.Dialer inside proxyDialer has
+	// no timeout). A context deadline bounds all phases end-to-end.
+	timeout := time.Duration(req.Timeout) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 30 * time.Second // fallback if block has no timeout set
+	}
+	reqCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	httpReq.SetContext(reqCtx)
 
 	start := time.Now()
 	resp, err := sw.Session.Do(httpReq)
