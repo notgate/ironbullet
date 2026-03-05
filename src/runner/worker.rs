@@ -146,6 +146,7 @@ pub(crate) async fn run_worker(
                         captures,
                         error: None,
                         ts_ms,
+                        block_results: ctx.block_results.clone(),
                     });
                 }
             }
@@ -160,6 +161,7 @@ pub(crate) async fn run_worker(
                         captures: Default::default(),
                         error: None,
                         ts_ms,
+                        block_results: ctx.block_results.clone(),
                     });
                 }
             }
@@ -177,6 +179,7 @@ pub(crate) async fn run_worker(
                         captures: Default::default(),
                         error: None,
                         ts_ms,
+                        block_results: ctx.block_results.clone(),
                     });
                 }
             }
@@ -194,6 +197,7 @@ pub(crate) async fn run_worker(
                             captures: Default::default(),
                             error: None,
                             ts_ms,
+                            block_results: ctx.block_results.clone(),
                         });
                     }
                 } else {
@@ -224,6 +228,7 @@ pub(crate) async fn run_worker(
                             captures: Default::default(),
                             error: err_msg,
                             ts_ms,
+                            block_results: ctx.block_results.clone(),
                         });
                     }
                 }
@@ -254,6 +259,7 @@ pub(crate) async fn run_worker(
                             captures: Default::default(),
                             error: err_msg,
                             ts_ms,
+                            block_results: ctx.block_results.clone(),
                         });
                     }
                 } else {
@@ -266,6 +272,7 @@ pub(crate) async fn run_worker(
                             captures: Default::default(),
                             error: None,
                             ts_ms,
+                            block_results: ctx.block_results.clone(),
                         });
                     }
                 }

@@ -517,6 +517,35 @@ pub(super) fn get_job_stats(
     }
 }
 
+pub(super) fn get_job_debug_log(
+    state: Arc<Mutex<AppState>>,
+    data: serde_json::Value,
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        handle.spawn(async move {
+            let mut s = state.lock().await;
+            if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
+                if let Ok(uuid) = uuid::Uuid::parse_str(id) {
+                    s.job_manager.update_job_stats(uuid);
+                    let filter = data.get("filter").and_then(|v| v.as_str()).unwrap_or("ALL").to_string();
+                    let results: Vec<_> = s.job_manager.get_job_stats(uuid)
+                        .map(|stats| stats.recent_results.into_iter()
+                            .filter(|r| filter == "ALL" || r.status == filter)
+                            .collect())
+                        .unwrap_or_default();
+                    let resp = IpcResponse::ok("job_debug_log", serde_json::json!({
+                        "id": id,
+                        "results": serde_json::to_value(&results).unwrap_or_default(),
+                    }));
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                }
+            }
+        });
+    }
+}
+
 pub(super) fn get_job_hits(
     state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
