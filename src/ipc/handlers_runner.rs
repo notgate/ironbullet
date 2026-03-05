@@ -138,10 +138,20 @@ pub(super) fn start_runner(
                 DataPool::new(lines)
             };
 
-            // Load proxies from file path if provided
+            // Use frontend pipeline snapshot if provided so proxy_settings is current.
+            let pipeline_for_proxy = data.get("pipeline")
+                .and_then(|v| serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok())
+                .unwrap_or_else(|| s.pipeline.clone());
+            let ban_secs = pipeline_for_proxy.proxy_settings.ban_duration_secs as u64;
+
+            // Load proxies:
+            // 1. Explicit proxy_path from the job (flat file) — highest priority
+            // 2. Active proxy group's sources from pipeline proxy_settings
+            // 3. Global proxy_sources from pipeline proxy_settings
+            // 4. Empty pool (proxyless)
             let proxy_path = data.get("proxy_path").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let proxy_pool = if !proxy_path.is_empty() {
-                match ProxyPool::from_file(&proxy_path, s.pipeline.proxy_settings.ban_duration_secs as u64) {
+                match ProxyPool::from_file(&proxy_path, ban_secs) {
                     Ok(pp) => pp,
                     Err(e) => {
                         let resp = IpcResponse::err("runner_error", format!("Failed to load proxies '{}': {}", proxy_path, e));
@@ -150,7 +160,36 @@ pub(super) fn start_runner(
                     }
                 }
             } else {
-                ProxyPool::empty()
+                // Try to load from pipeline proxy groups / sources
+                let ps = &pipeline_for_proxy.proxy_settings;
+                // Gather all source paths from the active group (or all groups if no active)
+                let sources: Vec<_> = if !ps.active_group.is_empty() {
+                    ps.proxy_groups.iter()
+                        .filter(|g| g.name == ps.active_group)
+                        .flat_map(|g| g.sources.iter())
+                        .collect()
+                } else if !ps.proxy_groups.is_empty() {
+                    ps.proxy_groups.iter().flat_map(|g| g.sources.iter()).collect()
+                } else {
+                    ps.proxy_sources.iter().collect()
+                };
+
+                if !sources.is_empty() {
+                    use ironbullet::pipeline::ProxySourceType;
+                    let mut pool = ProxyPool::empty_with_ban(ban_secs);
+                    for src in sources {
+                        if matches!(src.source_type, ProxySourceType::File) {
+                            let default_type = src.default_proxy_type.as_deref();
+                            if let Err(e) = pool.load_from_file(&src.value, default_type) {
+                                eprintln!("[runner] warning: failed to load proxy source '{}': {}", src.value, e);
+                            }
+                        }
+                        // URL sources could be fetched here in future — skip for now
+                    }
+                    pool
+                } else {
+                    ProxyPool::empty()
+                }
             };
 
             let (hits_tx, mut hits_rx) = tokio::sync::mpsc::channel::<HitResult>(1024);

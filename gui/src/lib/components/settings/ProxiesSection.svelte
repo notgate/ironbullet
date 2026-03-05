@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
 	import { send, savePipeline } from '$lib/ipc';
+	import { syncPipelineToBackend } from '$lib/state/tabs';
 	import { toast } from '$lib/toast.svelte';
 	import SkeuSelect from '$lib/components/SkeuSelect.svelte';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -29,12 +30,23 @@
 		{ value: 'Socks5', label: 'SOCKS5' },
 	];
 
+	// Sync pipeline state to Rust backend THEN save to disk.
+	// ProxiesSection only mutates app.pipeline in Svelte state — Rust's in-memory
+	// pipeline is stale until syncPipelineToBackend() sends update_pipeline.
+	// If save_pipeline fires before update_pipeline, the old (pre-mutation) state
+	// gets serialized to disk and proxy group changes are lost on restart.
+	function saveWithSync() {
+		syncPipelineToBackend();
+		// Short defer so update_pipeline processes before save_pipeline
+		setTimeout(() => savePipeline(), 30);
+	}
+
 	function addProxyGroup() {
 		if (!newGroupName.trim()) return;
 		const group: ProxyGroup = { name: newGroupName.trim(), mode: 'Rotate', sources: [], cpm_per_proxy: 0 };
 		app.pipeline.proxy_settings.proxy_groups = [...app.pipeline.proxy_settings.proxy_groups, group];
 		newGroupName = '';
-		savePipeline();
+		saveWithSync();
 	}
 
 	function removeProxyGroup(idx: number) {
@@ -44,7 +56,7 @@
 		if (app.pipeline.proxy_settings.active_group === removed.name) {
 			app.pipeline.proxy_settings.active_group = '';
 		}
-		savePipeline();
+		saveWithSync();
 	}
 
 	function addGroupSource(gi: number) {
@@ -52,7 +64,7 @@
 		const newSrc: ProxySource = { source_type: 'File', value: '', refresh_interval_secs: 0 };
 		groups[gi] = { ...groups[gi], sources: [...groups[gi].sources, newSrc] };
 		app.pipeline.proxy_settings.proxy_groups = groups;
-		savePipeline();
+		saveWithSync();
 	}
 
 	function updateGroupSourceType(gi: number, si: number, type_val: string) {
@@ -61,14 +73,14 @@
 		srcs[si] = { ...srcs[si], default_proxy_type: type_val as ProxySourceType_t || undefined };
 		groups[gi] = { ...groups[gi], sources: srcs };
 		app.pipeline.proxy_settings.proxy_groups = groups;
-		savePipeline();
+		saveWithSync();
 	}
 
 	function removeGroupSource(gi: number, si: number) {
 		const groups = [...app.pipeline.proxy_settings.proxy_groups];
 		groups[gi] = { ...groups[gi], sources: groups[gi].sources.filter((_: ProxySource, i: number) => i !== si) };
 		app.pipeline.proxy_settings.proxy_groups = groups;
-		savePipeline();
+		saveWithSync();
 	}
 
 	function checkProxies() {
