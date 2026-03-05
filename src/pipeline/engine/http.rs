@@ -203,9 +203,16 @@ impl ExecutionContext {
             }
         }
 
-        // Backward-compat aliases used by legacy checks
+        // Backward-compat aliases used by legacy checks + output format variables
         self.variables.set_data("RESPONSECODE", resp.status.to_string());
         self.variables.set_data("ADDRESS", resp.final_url.clone());
+        // LASTRESPONSE / LASTHEADERS: always-updated aliases for the {response} and
+        // {headers} output format variables so they don't depend on the block's output var name.
+        self.variables.set_data("LASTRESPONSE", resp.body.clone());
+        if let Some(ref hdrs) = resp.headers {
+            let hdr_str = serde_json::to_string(hdrs).unwrap_or_default();
+            self.variables.set_data("LASTHEADERS", hdr_str);
+        }
 
         // ── Update block result (shown in UI block overlay) ───────────────────
         if let Some(last) = self.block_results.last_mut() {
