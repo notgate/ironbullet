@@ -100,6 +100,8 @@ interface AppState {
 	// Fingerprint
 	showFingerprint: boolean;
 	showHitsDialog: boolean;
+	showJobDebugDialog: boolean;
+	debugJobId: string | null;
 	setupDirsDone: boolean;
 	setupDirsPaths: Record<string, string>;
 	pendingJobWordlist: { path: string; isFolder: boolean } | null;
@@ -220,6 +222,8 @@ function createAppState(): AppState {
 	let showChangelog = $state(false);
 	let showFingerprint = $state(false);
 	let showHitsDialog = $state(false);
+	let showJobDebugDialog = $state(false);
+	let debugJobId = $state<string | null>(null);
 	let setupDirsDone = $state(false);
 	let setupDirsPaths = $state<Record<string, string>>({});
 	let pendingJobWordlist = $state<{ path: string; isFolder: boolean } | null>(null);
@@ -389,6 +393,10 @@ function createAppState(): AppState {
 		set showFingerprint(v) { showFingerprint = v; },
 		get showHitsDialog() { return showHitsDialog; },
 		set showHitsDialog(v) { showHitsDialog = v; },
+		get showJobDebugDialog() { return showJobDebugDialog; },
+		set showJobDebugDialog(v) { showJobDebugDialog = v; },
+		get debugJobId() { return debugJobId; },
+		set debugJobId(v) { debugJobId = v; },
 		get setupDirsDone() { return setupDirsDone; },
 		set setupDirsDone(v) { setupDirsDone = v; },
 		get setupDirsPaths() { return setupDirsPaths; },

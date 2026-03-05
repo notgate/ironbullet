@@ -19,9 +19,29 @@
 	import PlayCircle from '@lucide/svelte/icons/play-circle';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import HelpModal from './HelpModal.svelte';
+	import JobDebugDialog from './JobDebugDialog.svelte';
+	import Bug from '@lucide/svelte/icons/bug';
 
 	let showNewJob = $state(false);
 	let showHelp = $state(false);
+
+	// Job row context menu
+	let jobCtxMenu = $state<{ x: number; y: number; job: any } | null>(null);
+
+	function openJobCtxMenu(e: MouseEvent, job: any) {
+		e.preventDefault();
+		jobCtxMenu = { x: e.clientX, y: e.clientY, job };
+	}
+
+	function closeJobCtxMenu() {
+		jobCtxMenu = null;
+	}
+
+	function openDebugLog(jobId: string) {
+		app.debugJobId = jobId;
+		app.showJobDebugDialog = true;
+		closeJobCtxMenu();
+	}
 
 
 
@@ -671,6 +691,7 @@ Error handling
 						<tr
 							class="border-b border-border/50 hover:bg-accent/20 cursor-pointer transition-colors {isActive ? 'bg-primary/8 border-l-2 border-l-primary' : ''}"
 							onclick={() => selectJob((job as any).id)}
+							oncontextmenu={(e) => openJobCtxMenu(e, job)}
 						>
 							<td class="px-2 py-1 font-medium">
 								<div class="flex items-center gap-1">
@@ -792,3 +813,36 @@ Error handling
 </Dialog.Root>
 
 <HelpModal bind:open={showHelp} title="Jobs & Runner Guide" sections={helpSections} />
+
+{#if app.showJobDebugDialog}
+	<JobDebugDialog />
+{/if}
+
+<!-- Job row context menu -->
+{#if jobCtxMenu}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="fixed inset-0 z-40" onclick={closeJobCtxMenu} oncontextmenu={(e) => { e.preventDefault(); closeJobCtxMenu(); }}></div>
+	<div class="menu-content fixed z-50" style="left: {jobCtxMenu.x}px; top: {jobCtxMenu.y}px;">
+		<button class="menu-item w-full text-left" onclick={() => { viewJobHits((jobCtxMenu!.job as any).id); closeJobCtxMenu(); }}>
+			View Hits
+		</button>
+		<div class="menu-sep"></div>
+		<button class="menu-item w-full text-left flex items-center gap-1.5"
+			onclick={() => openDebugLog((jobCtxMenu!.job as any).id)}>
+			<Bug size={11} />
+			View Debug Log
+		</button>
+		<div class="menu-sep"></div>
+		<button class="menu-item w-full text-left"
+			disabled={jobCtxMenu.job.state === 'Running'}
+			onclick={() => { openEditDialog(jobCtxMenu!.job); closeJobCtxMenu(); }}>
+			Edit
+		</button>
+		<div class="menu-sep"></div>
+		<button class="menu-item menu-item-danger w-full text-left"
+			disabled={jobCtxMenu.job.state === 'Running' || jobCtxMenu.job.state === 'Queued'}
+			onclick={() => { send('delete_job', { id: (jobCtxMenu!.job as any).id }); closeJobCtxMenu(); }}>
+			Delete
+		</button>
+	</div>
+{/if}
