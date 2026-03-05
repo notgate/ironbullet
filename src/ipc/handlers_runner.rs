@@ -639,7 +639,6 @@ pub(super) fn inspect_browser_open(
         EnableParams, EventRequestWillBeSent, EventResponseReceived,
         EventLoadingFinished, GetRequestPostDataParams, GetResponseBodyParams,
     };
-    use chromiumoxide::cdp::browser_protocol::page::ReloadParams;
     use futures::StreamExt;
 
     let rt = tokio::runtime::Handle::try_current();
@@ -758,10 +757,12 @@ pub(super) fn inspect_browser_open(
                 let _ = died_tx.send(());
             });
 
-            // Navigate to the target URL. 15s is plenty for the initial load.
+            // Open a blank page first so we can attach listeners BEFORE navigating.
+            // This ensures we capture ALL requests including the very first one.
+            // (new_page(url) would start loading before listeners are attached.)
             let page = match tokio::time::timeout(
                 std::time::Duration::from_secs(15),
-                browser.new_page(&url),
+                browser.new_page("about:blank"),
             ).await {
                 Ok(Ok(p)) => p,
                 Ok(Err(e)) => {
@@ -769,7 +770,7 @@ pub(super) fn inspect_browser_open(
                     return;
                 }
                 Err(_) => {
-                    emit_sync(&js, serde_json::json!({ "type": "error", "message": "Page navigation timed out (15s)" }));
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": "Chrome page open timed out (15s)" }));
                     return;
                 }
             };
@@ -784,7 +785,7 @@ pub(super) fn inspect_browser_open(
                 _ => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "CDP Network.enable failed or timed out" })); return; }
             }
 
-            // Register all listeners before the reload so no requests are missed.
+            // Register all listeners BEFORE navigating so no requests are missed.
             let mut ev_req = match tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 page.event_listener::<EventRequestWillBeSent>(),
@@ -802,13 +803,8 @@ pub(super) fn inspect_browser_open(
                 page.event_listener::<EventLoadingFinished>(),
             ).await { Ok(Ok(e)) => e, _ => return };
 
-            // All listeners registered — reload so capture starts from the first request.
-            // Fire reload; don't block the event loop if it hangs.
-            tokio::time::timeout(std::time::Duration::from_secs(15), page.execute(ReloadParams {
-                ignore_cache:               Some(true),
-                script_to_evaluate_on_load: None,
-                loader_id:                  None,
-            })).await.ok();
+            // Now navigate to the real URL — all listeners are in place.
+            tokio::time::timeout(std::time::Duration::from_secs(15), page.goto(&url)).await.ok();
 
             let page_req  = page.clone();
             let page_body = page.clone();
@@ -862,39 +858,42 @@ pub(super) fn inspect_browser_open(
                         }));
                     }
                     Some(event) = ev_done.next() => {
-                        // Fetch response bodies up to 4 MB.
-                        // encoded_data_length == -1 means unknown length — still attempt fetch.
-                        // base64_encoded == true means the body is base64 — decode it to UTF-8
-                        // lossy so compressed/binary responses still display readable content.
+                        // Fetch response body in a separate task so we don't block
+                        // the event loop while waiting for CDP to return the body.
+                        // This prevents missing requests on pages with many resources.
                         let within_limit = event.encoded_data_length < 0.0
                             || event.encoded_data_length < 4_194_304.0;
                         if within_limit {
-                            if let Ok(r) = page_body
-                                .execute(GetResponseBodyParams { request_id: event.request_id.clone() })
-                                .await
-                            {
-                                let body_text = if r.result.base64_encoded {
-                                    // Decode base64; fall back to raw string on error
-                                    #[allow(unused_imports)]
-                                    use std::io::Read;
-                                    match base64::Engine::decode(
-                                        &base64::engine::general_purpose::STANDARD,
-                                        r.result.body.trim(),
-                                    ) {
-                                        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                                        Err(_) => r.result.body,
+                            let page_body2 = page_body.clone();
+                            let js2 = js.clone();
+                            let req_id = event.request_id.clone();
+                            tokio::spawn(async move {
+                                if let Ok(r) = page_body2
+                                    .execute(GetResponseBodyParams { request_id: req_id.clone() })
+                                    .await
+                                {
+                                    let body_text = if r.result.base64_encoded {
+                                        #[allow(unused_imports)]
+                                        use std::io::Read;
+                                        match base64::Engine::decode(
+                                            &base64::engine::general_purpose::STANDARD,
+                                            r.result.body.trim(),
+                                        ) {
+                                            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+                                            Err(_) => r.result.body,
+                                        }
+                                    } else {
+                                        r.result.body
+                                    };
+                                    if !body_text.is_empty() {
+                                        emit_sync(&js2, serde_json::json!({
+                                            "type": "response_body",
+                                            "id":   req_id.inner().clone(),
+                                            "body": body_text,
+                                        }));
                                     }
-                                } else {
-                                    r.result.body
-                                };
-                                if !body_text.is_empty() {
-                                    emit_sync(&js, serde_json::json!({
-                                        "type": "response_body",
-                                        "id":   event.request_id.inner().clone(),
-                                        "body": body_text,
-                                    }));
                                 }
-                            }
+                            });
                         }
                     }
                     // Chrome process closed — CDP handler task exited and fired
