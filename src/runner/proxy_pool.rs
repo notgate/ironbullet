@@ -123,30 +123,61 @@ impl std::fmt::Display for ProxyEntry {
 fn parse_proxy_line(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
     let fallback = default_type.unwrap_or(ProxyType::Http);
 
-    if line.starts_with("http://") || line.starts_with("https://") ||
-       line.starts_with("socks4://") || line.starts_with("socks5://") {
-        let (proxy_type, rest) = if let Some(rest) = line.strip_prefix("socks5://") {
-            (ProxyType::Socks5, rest)
-        } else if let Some(rest) = line.strip_prefix("socks4://") {
-            (ProxyType::Socks4, rest)
-        } else if let Some(rest) = line.strip_prefix("https://") {
-            (ProxyType::Https, rest)
+    // ── URL-scheme prefix (http://, https://, socks4://, socks5://) ──────────
+    // Pass through as-is: reqwest/wreq/azuretls all accept full URL proxy strings.
+    for (prefix, proxy_type) in &[
+        ("socks5://", ProxyType::Socks5),
+        ("socks4://", ProxyType::Socks4),
+        ("https://",  ProxyType::Https),
+        ("http://",   ProxyType::Http),
+    ] {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            return Some(ProxyEntry { proxy_type: *proxy_type, address: rest.to_string() });
+        }
+    }
+
+    // ── Colon-separated formats (no scheme prefix) ───────────────────────────
+    // Split only on ':' but be careful: the '@' separator in user:pass@host:port
+    // means we can't just count colons naively.
+    //
+    // Supported formats (OB2-compatible):
+    //   host:port                          → 2 parts
+    //   host:port:user:pass                → 4 parts (OB2 standard auth)
+    //   type:host:port:user:pass           → 5 parts (explicit type)
+    //   user:pass@host:port                → contains '@', 3 colons total
+    //   type://user:pass@host:port         → handled above by URL prefix
+
+    // Handle user:pass@host:port (contains '@')
+    if let Some(at_pos) = line.rfind('@') {
+        let user_pass = &line[..at_pos];
+        let host_port = &line[at_pos + 1..];
+        // user_pass may be "user:pass" (1 colon) or just "user" (no colon)
+        let (user, pass) = if let Some(colon) = user_pass.find(':') {
+            (&user_pass[..colon], &user_pass[colon + 1..])
         } else {
-            (ProxyType::Http, line.strip_prefix("http://").unwrap_or(line))
+            (user_pass, "")
         };
-        return Some(ProxyEntry { proxy_type, address: rest.to_string() });
+        let address = if pass.is_empty() {
+            format!("{}@{}", user, host_port)
+        } else {
+            format!("{}:{}@{}", user, pass, host_port)
+        };
+        return Some(ProxyEntry { proxy_type: fallback, address });
     }
 
     let parts: Vec<&str> = line.split(':').collect();
     match parts.len() {
+        // host:port
         2 => Some(ProxyEntry {
             proxy_type: fallback,
             address: format!("{}:{}", parts[0], parts[1]),
         }),
+        // host:port:user:pass  (OB2 standard)
         4 => Some(ProxyEntry {
             proxy_type: fallback,
             address: format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1]),
         }),
+        // type:host:port:user:pass
         5 => {
             let proxy_type = match parts[0].to_lowercase().as_str() {
                 "http"   => ProxyType::Http,
