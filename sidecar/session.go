@@ -253,13 +253,14 @@ func handleHTTPRequest(req SidecarRequest) {
 
 	// Only call SetProxy when the proxy actually changes.
 	if req.Proxy != "" && req.Proxy != sw.CurrentProxy {
+		fmt.Fprintf(os.Stderr, "[sidecar] SetProxy: %q\n", req.Proxy)
 		if err := sw.Session.SetProxy(req.Proxy); err != nil {
-			fmt.Fprintf(os.Stderr, "[sidecar] SetProxy error for %s: %v\n", req.Proxy, err)
+			fmt.Fprintf(os.Stderr, "[sidecar] SetProxy error for %q: %v\n", req.Proxy, err)
 		} else {
 			sw.CurrentProxy = req.Proxy
 		}
 	} else if req.Proxy == "" && sw.CurrentProxy != "" {
-		sw.Session.SetProxy("")
+		sw.Session.ClearProxy()
 		sw.CurrentProxy = ""
 	}
 
@@ -407,23 +408,47 @@ func applyCustomCiphers(session *azuretls.Session, browser, ciphers string) erro
 	return session.ApplyJa3(customJA3, browser)
 }
 
-// enrichError adds context to common error messages to aid debugging
+// enrichError adds context to common error messages to aid debugging.
+// Order matters: more specific patterns must come before general ones.
 func enrichError(msg string) string {
 	switch {
+	// ── Proxy-layer errors (proxyconnect prefix = Go's HTTP proxy tunnel) ────
+	case strings.Contains(msg, "proxyconnect") && strings.Contains(msg, "connection refused"):
+		return msg + " [Proxy refused connection — the proxy host:port is wrong, dead, or not accepting connections. Check proxy settings]"
+	case strings.Contains(msg, "proxyconnect") && strings.Contains(msg, "i/o timeout"):
+		return msg + " [Proxy connect timed out — proxy is slow or unreachable. Check proxy host:port and consider increasing timeout]"
+	case strings.Contains(msg, "proxyconnect") && strings.Contains(msg, "no such host"):
+		return msg + " [Proxy hostname not found — DNS cannot resolve the proxy host. Check proxy format: scheme://host:port]"
+	case strings.Contains(msg, "proxyconnect"):
+		return msg + " [Proxy tunnel error — could not establish CONNECT tunnel through proxy. Check proxy credentials and format]"
+
+	// ── Context / timeout errors ─────────────────────────────────────────────
+	case strings.Contains(msg, "context deadline exceeded"):
+		return msg + " [Request timed out — consider increasing the HTTP block timeout. If using a proxy, the proxy connect may be slow]"
+	case strings.Contains(msg, "context canceled"):
+		return msg + " [Request was cancelled — job stopped or timeout reached]"
+
+	// ── TLS errors ───────────────────────────────────────────────────────────
 	case strings.Contains(msg, "SEC_E_ILLEGAL_MESSAGE"):
-		return msg + " [TLS: Server rejected handshake — try enabling a different JA3 fingerprint or set ssl_verify=false for debugging]"
+		return msg + " [TLS: Server rejected handshake — try a different JA3 fingerprint or set ssl_verify=false for debugging]"
 	case strings.Contains(msg, "tls: handshake failure") || strings.Contains(msg, "handshake failure"):
 		return msg + " [TLS handshake failed — server may require specific cipher suites or SNI. Try a Chrome JA3 fingerprint]"
 	case strings.Contains(msg, "certificate") && strings.Contains(msg, "expired"):
 		return msg + " [TLS: Server certificate expired — set ssl_verify=false to bypass (testing only)]"
 	case strings.Contains(msg, "certificate signed by unknown authority"):
 		return msg + " [TLS: Self-signed/unknown CA — set ssl_verify=false to bypass (testing only)]"
+
+	// ── Connection errors (target server, not proxy) ─────────────────────────
 	case strings.Contains(msg, "EOF") || strings.Contains(msg, "empty response"):
 		return msg + " [Empty response — server closed connection. Common causes: TLS fingerprint rejected, IP banned, proxy issue]"
 	case strings.Contains(msg, "connection refused"):
-		return msg + " [Connection refused — server is down or port is blocked]"
-	case strings.Contains(msg, "no such host") || strings.Contains(msg, "i/o timeout"):
-		return msg + " [DNS/network error — check URL and proxy settings]"
+		return msg + " [Target server refused connection — port may be closed or server is down. Verify the URL is correct]"
+	case strings.Contains(msg, "no route to host") || strings.Contains(msg, "host unreachable") || strings.Contains(msg, "network is unreachable"):
+		return msg + " [Network unreachable — check proxy settings or network connectivity]"
+	case strings.Contains(msg, "no such host"):
+		return msg + " [DNS error — hostname not found. Check the URL for typos]"
+	case strings.Contains(msg, "i/o timeout"):
+		return msg + " [I/O timeout — server is not responding. Consider increasing the HTTP block timeout]"
 	default:
 		return msg
 	}
