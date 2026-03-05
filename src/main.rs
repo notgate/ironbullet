@@ -147,7 +147,7 @@ mod win32_titlebar {
     }
 
     pub unsafe fn install(hwnd: HWND) {
-        let orig = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, custom_wndproc as isize);
+        let orig = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, custom_wndproc as *const () as isize);
         ORIGINAL_WNDPROC.store(orig, Ordering::Relaxed);
     }
 }

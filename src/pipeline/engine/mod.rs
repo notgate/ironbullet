@@ -25,14 +25,14 @@ pub(crate) use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 use helpers::elapsed_ms;
 
 // ── WreqTLS client slot — Unix only (BoringSSL cross-compile for Windows unsupported) ──
-#[cfg(unix)]
+#[cfg(any(unix, target_os = "windows"))]
 pub struct WreqClientSlot {
     pub client: wreq::Client,
     pub emulation: String,
     pub proxy: Option<String>,
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, target_os = "windows"))]
 impl std::fmt::Debug for WreqClientSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "WreqClientSlot({})", self.emulation)
@@ -89,7 +89,7 @@ pub struct ExecutionContext {
     #[serde(skip)]
     pub rustls_client: Option<reqwest::Client>,
     /// Reusable wreq client for WreqTLS requests — Unix only (BoringSSL).
-    #[cfg(unix)]
+    #[cfg(any(unix, target_os = "windows"))]
     #[serde(skip)]
     pub wreq_client: Option<WreqClientSlot>,
 }
@@ -163,7 +163,7 @@ impl ExecutionContext {
             override_http2fp: None,
             plugin_manager: None,
             rustls_client: None,
-            #[cfg(unix)]
+            #[cfg(any(unix, target_os = "windows"))]
             wreq_client: None,
         }
     }

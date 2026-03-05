@@ -14,6 +14,9 @@
 	import MonitorPlay from '@lucide/svelte/icons/monitor-play';
 	import MonitorOff from '@lucide/svelte/icons/monitor-off';
 	import List from '@lucide/svelte/icons/list';
+	import Chrome from '@lucide/svelte/icons/chrome';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Terminal from '@lucide/svelte/icons/terminal';
 
 	// ── Mode ───────────────────────────────────────────────────────────────────
 	let mode = $state<'manual' | 'browser' | 'proxy'>('manual');
@@ -40,6 +43,47 @@
 	let browserOpen      = $state(false);
 	let browserLoading   = $state(false);
 	let browserError     = $state('');
+	let chromeNotInstalled = $derived(
+		browserError.toLowerCase().includes('chrome not installed') ||
+		browserError.toLowerCase().includes('chrome') && browserError.toLowerCase().includes('install')
+	);
+	let fixChromeChecking = $state(false);
+
+	function openChromeDownload() {
+		send('open_url', { url: 'https://www.google.com/chrome/' });
+	}
+
+	function getInstallCommand(): string {
+		const ua = navigator.userAgent.toLowerCase();
+		if (ua.includes('win')) {
+			return 'winget install Google.Chrome';
+		} else if (ua.includes('mac')) {
+			return 'brew install --cask google-chrome';
+		} else {
+			return 'sudo apt install google-chrome-stable\n# or: sudo dnf install google-chrome-stable';
+		}
+	}
+
+	let installCmdCopied = $state(false);
+	function copyInstallCmd() {
+		navigator.clipboard.writeText(getInstallCommand());
+		installCmdCopied = true;
+		setTimeout(() => installCmdCopied = false, 2000);
+	}
+
+	function recheckChrome() {
+		fixChromeChecking = true;
+		send('check_chrome', {});
+	}
+
+	onResponse('check_chrome', (data: any) => {
+		fixChromeChecking = false;
+		if (data?.found) {
+			browserError = '';
+		} else {
+			browserError = 'Chrome still not detected. Restart IronBullet after installing.';
+		}
+	});
 	let capturedRequests = $state<CapturedRequest[]>((() => { try { const r = localStorage.getItem('ib_inspector_captures'); return r ? JSON.parse(r) as CapturedRequest[] : []; } catch { return []; } })());
 	let selectedReqId    = $state<string | null>((() => { try { return localStorage.getItem('ib_inspector_sel') || null; } catch { return null; } })());
 	let searchQuery      = $state('');
@@ -536,7 +580,64 @@
 	</div>
 
 	{#if browserError}
-		<div class="px-2 py-0.5 bg-red/10 border-b border-red/20 text-red text-[10px] shrink-0">{browserError}</div>
+		{#if chromeNotInstalled}
+			<!-- ── Fix Chrome panel ───────────────────────────────────── -->
+			<div class="shrink-0 border-b border-border bg-background/60 p-3 flex flex-col gap-2.5">
+				<!-- Header row -->
+				<div class="flex items-center gap-2">
+					<div class="w-6 h-6 rounded-md bg-red/10 border border-red/20 flex items-center justify-center shrink-0">
+						<Chrome size={13} class="text-red/70" />
+					</div>
+					<div class="flex-1 min-w-0">
+						<p class="text-[11px] font-medium text-foreground leading-tight">Chrome not found</p>
+						<p class="text-[9px] text-muted-foreground mt-0.5">Browser Capture requires Google Chrome or Chromium.</p>
+					</div>
+				</div>
+
+				<!-- Install command -->
+				<div class="bg-muted/30 border border-border rounded-md px-2.5 py-1.5 flex items-center gap-2 group">
+					<Terminal size={10} class="text-muted-foreground shrink-0" />
+					<code class="text-[9px] text-foreground/80 font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+						{getInstallCommand().split('\n')[0]}
+					</code>
+					<button
+						onclick={copyInstallCmd}
+						class="shrink-0 text-[8px] font-medium px-1.5 py-0.5 rounded border transition-colors
+							{installCmdCopied
+								? 'bg-green/10 border-green/30 text-green'
+								: 'bg-muted/40 border-border text-muted-foreground hover:text-foreground hover:border-border/80'}"
+					>
+						{installCmdCopied ? '✓ Copied' : 'Copy'}
+					</button>
+				</div>
+
+				<!-- Action buttons -->
+				<div class="flex gap-1.5">
+					<button
+						onclick={openChromeDownload}
+						class="skeu-btn flex-1 flex items-center justify-center gap-1.5 text-[10px] py-1.5"
+					>
+						<ExternalLink size={10} />
+						Download Chrome
+					</button>
+					<button
+						onclick={recheckChrome}
+						disabled={fixChromeChecking}
+						class="skeu-btn flex items-center justify-center gap-1.5 text-[10px] py-1.5 px-3 disabled:opacity-50"
+					>
+						{#if fixChromeChecking}
+							<Loader2 size={10} class="animate-spin" />
+						{:else}
+							<Check size={10} />
+						{/if}
+						{fixChromeChecking ? 'Checking…' : 'Recheck'}
+					</button>
+				</div>
+			</div>
+		{:else}
+			<!-- Generic error banner -->
+			<div class="px-2 py-0.5 bg-red/10 border-b border-red/20 text-red text-[10px] shrink-0">{browserError}</div>
+		{/if}
 	{/if}
 
 	{#if !browserOpen && capturedRequests.length === 0}
