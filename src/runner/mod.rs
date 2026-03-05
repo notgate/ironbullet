@@ -84,11 +84,20 @@ pub(crate) struct RunnerStatsInner {
     start_time_ms: AtomicU64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HitResult {
     pub data_line: String,
     pub captures: std::collections::HashMap<String, String>,
     pub proxy: Option<String>,
+    /// Last HTTP response body (from RESPONSEBODY variable, if set)
+    #[serde(default)]
+    pub response: String,
+    /// Last HTTP response headers (from last SOURCE.HEADERS variable, if set)
+    #[serde(default)]
+    pub headers: String,
+    /// Last HTTP response status code (from RESPONSECODE variable)
+    #[serde(default)]
+    pub status: String,
 }
 
 impl RunnerOrchestrator {
