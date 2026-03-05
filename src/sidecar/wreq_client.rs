@@ -1,6 +1,6 @@
 // WreqTLS is Unix-only — BoringSSL cross-compile for Windows requires llvm-mingw.
 
-#[cfg(unix)]
+#[cfg(any(unix, target_os = "windows"))]
 mod inner {
     use std::time::Instant;
     use wreq::redirect;
@@ -232,5 +232,5 @@ mod inner {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, target_os = "windows"))]
 pub(crate) use inner::execute_wreq_request;

@@ -49,8 +49,7 @@ num-bigint = "0.4"
 num-traits = "0.2"
 resvg = "0.43"
 
-[target.'cfg(unix)'.dependencies]
-wreq = { version = "6.0.0-rc.28", features = ["prefix-symbols", "cookies", "gzip", "deflate", "brotli", "socks"] }
+wreq = { version = "6.0.0-rc.28", features = ["cookies", "gzip", "deflate", "brotli", "socks"] }
 wreq-util = "3.0.0-rc.10"
 
 [target.'cfg(windows)'.dependencies]

@@ -111,7 +111,7 @@ impl ExecutionContext {
                 self.rustls_client = Some(client);
                 resp
             }
-            #[cfg(unix)]
+            #[cfg(any(unix, target_os = "windows"))]
             TlsClient::WreqTLS => {
                 let emu = if settings.wreq_emulation.is_empty() {
                     "Chrome134"
@@ -139,7 +139,7 @@ impl ExecutionContext {
                 });
                 resp
             }
-            #[cfg(not(unix))]
+            #[cfg(not(any(unix, target_os = "windows")))]
             TlsClient::WreqTLS => {
                 SidecarResponse {
                     id: sidecar_req.id.clone(),

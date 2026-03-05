@@ -83,8 +83,8 @@ impl SidecarManager {
                  (file exists={}, is_executable={})",
                 sidecar_path, e,
                 path.exists(),
-                path.metadata().map(|m| {
-                    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; m.permissions().mode() & 0o111 != 0 }
+                path.metadata().map(|_m| {
+                    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; _m.permissions().mode() & 0o111 != 0 }
                     #[cfg(not(unix))] { true }
                 }).unwrap_or(false)
             )))?;
