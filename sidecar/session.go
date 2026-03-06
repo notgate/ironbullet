@@ -46,9 +46,14 @@ func handleNewSession(req SidecarRequest) {
 
 	// Set a short connect timeout via ModifyDialer so the plain (non-proxy) dialer
 	// doesn't block for the OS TCP timeout (~2 min) on dead hosts.
+	// Also set SO_LINGER=0 (RST instead of FIN on close) to immediately release
+	// the local port instead of leaving it in TIME_WAIT for ~4 minutes.
+	// This is critical on Windows where the ephemeral port range (~16k ports) is
+	// exhausted quickly at high thread counts, causing WSAEADDRINUSE errors.
 	session.ModifyDialer = func(d *net.Dialer) error {
 		d.Timeout = connectTimeout
 		d.KeepAlive = 30 * time.Second
+		d.Control = soLingerZero
 		return nil
 	}
 
@@ -437,6 +442,12 @@ func enrichError(msg string) string {
 		return msg + " [TLS: Server certificate expired — set ssl_verify=false to bypass (testing only)]"
 	case strings.Contains(msg, "certificate signed by unknown authority"):
 		return msg + " [TLS: Self-signed/unknown CA — set ssl_verify=false to bypass (testing only)]"
+
+	// ── Windows socket exhaustion ────────────────────────────────────────────
+	case strings.Contains(msg, "Only one usage of each socket address") ||
+		strings.Contains(msg, "WSAEADDRINUSE") ||
+		strings.Contains(msg, "connectex") && strings.Contains(msg, "normally permitted"):
+		return msg + " [Windows port exhaustion — ephemeral ports (49152–65535) are full. Reduce thread count, or the fix has been applied (SO_LINGER=0). Restart the job]"
 
 	// ── Connection errors (target server, not proxy) ─────────────────────────
 	case strings.Contains(msg, "EOF") || strings.Contains(msg, "empty response"):
