@@ -75,11 +75,16 @@ pub async fn execute_rustls_request(
             .connect_timeout(Duration::from_secs(10))
             // Cap idle connections per host to avoid fd exhaustion at high thread counts.
             // reqwest default is unbounded; at 200+ workers this can leak descriptors.
-            .pool_max_idle_per_host(4)
-            // Evict idle keep-alive connections after 30s to reclaim fds between runs.
-            .pool_idle_timeout(Duration::from_secs(30))
+            .pool_max_idle_per_host(2)
+            // Aggressively evict idle connections — on Windows, connections sitting in
+            // the pool still hold their local port. Short TTL means ports are released
+            // quickly, reducing TIME_WAIT accumulation at high thread counts.
+            .pool_idle_timeout(Duration::from_secs(4))
             // TCP keepalive probes to detect silently dead connections behind proxies.
-            .tcp_keepalive(Duration::from_secs(30));
+            .tcp_keepalive(Duration::from_secs(30))
+            // Disable Nagle — send data immediately without waiting to coalesce packets.
+            // Reduces first-byte latency on POST requests.
+            .tcp_nodelay(true);
 
         if let Some(ref proxy_str) = req.proxy {
             if !proxy_str.is_empty() {
@@ -155,6 +160,14 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
             rb = rb.timeout(Duration::from_millis(ms as u64));
         }
     }
+
+    // Inject Connection: close before user headers so the server initiates FIN
+    // after the response. When the server closes the connection the local socket
+    // enters CLOSE_WAIT (not TIME_WAIT), which releases the ephemeral port much
+    // faster. This prevents WSAEADDRINUSE port exhaustion on Windows at high
+    // thread counts where TIME_WAIT can hold ~16k ports for up to 4 minutes.
+    // User headers are applied after and can override this if needed.
+    rb = rb.header("Connection", "close");
 
     // Headers — apply in order, last value wins for duplicates
     if let Some(ref headers) = req.headers {
