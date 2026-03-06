@@ -18,7 +18,15 @@ impl ExecutionContext {
     }
 
     pub(super) fn evaluate_condition(&self, cond: &KeyCondition) -> bool {
-        let source_val = self.variables.get(&cond.source).unwrap_or_default();
+        // Try the source as-is first (handles data.X, input.X, bare var names).
+        // If that misses, try stripping a "data." prefix and checking user_vars —
+        // this is a common authoring mistake where users write "data.MYVAR" for a
+        // ParseJSON output that lives in user_vars, not the data namespace.
+        let source_val = self.variables.get(&cond.source)
+            .or_else(|| {
+                cond.source.strip_prefix("data.").and_then(|bare| self.variables.get(bare))
+            })
+            .unwrap_or_default();
         let target = self.variables.interpolate(&cond.value);
 
         match cond.comparison {
