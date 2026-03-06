@@ -10,6 +10,35 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.3.6',
+		date: '2026-03-06',
+		highlights: 'Critical KeyCheck bug fix, proxy rotation fix, proxy auth parser fix, request latency fix, output format variables, View Debug Log.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Critical: KeyCheck conditions using "data.VARNAME" now correctly resolve variables set by ParseJSON, JwtToken, and other blocks that store into user_vars. Previously this caused all-error runs with 0 hits when conditions referenced parsed output variables.',
+					'Proxy rotation not working — runner now correctly loads proxies from pipeline proxy groups and proxy sources. Previously proxies were only loaded from a per-job flat file, causing all runs to be proxyless.',
+					'Proxy auth parser — user:pass@host:port format (no scheme prefix) was silently dropped, causing proxyless requests instead of an error.',
+					'Request latency 5–6s — AzureTLS sidecar had no TCP connect timeout (zero-value net.Dialer). Added 10s connect timeout and per-request context deadline via session.Do() wrapper.',
+					'Done/Total counter inflated by retries — stats.processed was incremented on every attempt including retries. Fixed: only increment on first attempt (retry_count == 0).',
+					'Output format variables {response}, {headers}, {status}, {proxy} now correctly substituted when writing hits to file.',
+					'Proxy groups not persisting — ProxiesSection.svelte now syncs Svelte state to Rust before saving.',
+					'Parse block "Invalid JSON" on empty response body — now returns empty output instead of erroring.',
+					'Browser capture reliability — CDP listeners now attached before navigation; response body fetches run as independent tasks to avoid blocking the event loop.',
+					'ClearProxy — replaced SetProxy("") (errors on empty string in azuretls) with session.ClearProxy().',
+					'Sidecar proxy error diagnostics — proxyconnect errors now correctly attributed to proxy layer; enriched error messages for context deadline exceeded, no route to host, i/o timeout.',
+				],
+			},
+			{
+				title: 'New Features',
+				items: [
+					'View Debug Log — right-click any job row to open a full debug popup with a live result feed (status, data line, timestamp) and a per-block execution trace accordion (Request, Response, Variables tabs per block). Auto-refreshes every 2 seconds while the job runs.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.3.5',
 		date: '2026-03-04',
 		highlights: 'WreqTLS browser emulation backend, JWT Token block, Header Spoof block, UI preferences panel, bottom tab visibility controls.',
