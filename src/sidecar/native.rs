@@ -161,14 +161,6 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
         }
     }
 
-    // Inject Connection: close before user headers so the server initiates FIN
-    // after the response. When the server closes the connection the local socket
-    // enters CLOSE_WAIT (not TIME_WAIT), which releases the ephemeral port much
-    // faster. This prevents WSAEADDRINUSE port exhaustion on Windows at high
-    // thread counts where TIME_WAIT can hold ~16k ports for up to 4 minutes.
-    // User headers are applied after and can override this if needed.
-    rb = rb.header("Connection", "close");
-
     // Headers — apply in order, last value wins for duplicates
     if let Some(ref headers) = req.headers {
         for pair in headers {
