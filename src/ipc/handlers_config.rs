@@ -100,7 +100,16 @@ pub(super) fn get_pipeline(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let s = state.lock().await;
-            let resp = IpcResponse::ok("pipeline_loaded", serde_json::to_value(&s.pipeline).unwrap_or_default());
+            let mut pipeline_val = serde_json::to_value(&s.pipeline).unwrap_or_default();
+            // Include _file_path so the frontend restores the correct tab file path
+            // on startup (prevents the "path disappears on restart" issue where the
+            // tab shows filePath=null even though the pipeline was previously saved).
+            if let Some(ref path) = s.pipeline_path {
+                if let Some(obj) = pipeline_val.as_object_mut() {
+                    obj.insert("_file_path".to_string(), serde_json::Value::String(path.clone()));
+                }
+            }
+            let resp = IpcResponse::ok("pipeline_loaded", pipeline_val);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
     }
@@ -124,8 +133,20 @@ pub(super) fn update_pipeline(
             s.pipeline_path = file_path.filter(|s| !s.is_empty());
             if let Ok(pipeline) = serde_json::from_value::<Pipeline>(data) {
                 s.pipeline = pipeline;
-                // Persist proxy groups to GuiConfig (so they survive app restarts)
-                s.config.proxy_groups = s.pipeline.proxy_settings.proxy_groups.clone();
+                // Merge pipeline's proxy groups INTO the global config store — never
+                // overwrite with an empty list. Switching to a tab that has no proxy
+                // groups should not wipe the globally saved groups.
+                let pipeline_groups = s.pipeline.proxy_settings.proxy_groups.clone();
+                for group in pipeline_groups {
+                    if !s.config.proxy_groups.iter().any(|g| g.name == group.name) {
+                        s.config.proxy_groups.push(group);
+                    } else {
+                        // Update existing entry (sources may have changed)
+                        if let Some(existing) = s.config.proxy_groups.iter_mut().find(|g| g.name == group.name) {
+                            *existing = group;
+                        }
+                    }
+                }
                 config::save_config(&s.config);
             }
             let resp = IpcResponse::ok("pipeline_updated", serde_json::json!({}));
