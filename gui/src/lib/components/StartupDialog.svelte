@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
+	import { createNewTab } from '$lib/state/tabs';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import Workflow from '@lucide/svelte/icons/workflow';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
@@ -22,9 +23,20 @@
 	}
 
 	function createNew() {
-		app.pipeline.name = configName.trim() || 'New Config';
+		// Use the same logic as the "+" button in ConfigTabBar
+		// This ensures a fresh pipeline with no file path inheritance
+		createNewTab();
+		// Override the generated name with user's input if provided
+		const name = configName.trim() || 'New Config';
+		app.pipeline.name = name;
+		const tab = app.configTabs.find(t => t.id === app.activeTabId);
+		if (tab) {
+			tab.name = name;
+			tab.pipeline.name = name;
+		}
 		app.showStartup = false;
 		mode = 'home';
+		configName = 'New Config'; // Reset for next time
 	}
 
 	function openRecent(path: string) {

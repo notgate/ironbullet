@@ -9,20 +9,29 @@
 	let criticalCount = $derived(app.securityIssues.filter(i => i.severity === 'Critical').length);
 	let warningCount = $derived(app.securityIssues.filter(i => i.severity === 'Warning').length);
 	let isDependencyCheck = $derived(criticalCount === 0 && warningCount > 0);
+	let dontShowAgain = $state(false);
 
 	function onOpenChange(v: boolean) {
 		if (!v) {
+			if (isDependencyCheck && dontShowAgain) {
+				app.uiPrefs.skipDependencyWarnings = true;
+			}
 			app.securityIssues = [];
+			dontShowAgain = false;
 		}
 	}
 
 	function handleClose() {
+		if (isDependencyCheck && dontShowAgain) {
+			app.uiPrefs.skipDependencyWarnings = true;
+		}
 		app.securityIssues = [];
+		dontShowAgain = false;
 	}
 </script>
 
 <Dialog.Root {open} {onOpenChange}>
-	<Dialog.Content class="sm:max-w-[560px] p-0 gap-0 overflow-hidden max-h-[80vh] flex flex-col" showCloseButton={false}>
+	<Dialog.Content class="sm:max-w-[560px] p-0 gap-0 overflow-hidden max-h-[80vh] flex flex-col" showCloseButton={true}>
 		<div class="p-5 border-b border-border shrink-0">
 			<div class="flex items-start gap-3">
 				<div class="p-2 rounded-md {isDependencyCheck ? 'bg-yellow/10 text-yellow' : 'bg-red/10 text-red'} shrink-0">
@@ -81,6 +90,12 @@
 			<span class="text-[10px] text-muted-foreground mr-auto">
 				{isDependencyCheck ? 'IronBullet is fully operational — only optional features are affected.' : 'Config was loaded — review flagged blocks before running.'}
 			</span>
+			{#if isDependencyCheck}
+				<label class="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">
+					<input type="checkbox" bind:checked={dontShowAgain} class="w-3 h-3" />
+					Don't show again
+				</label>
+			{/if}
 			<button class="skeu-btn text-[10px] text-foreground" onclick={handleClose}>Close</button>
 		</div>
 	</Dialog.Content>
