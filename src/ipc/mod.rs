@@ -93,9 +93,12 @@ impl AppState {
         } else {
             None
         };
+        let mut pipeline = Pipeline::default();
+        // Merge global proxy groups from config into pipeline (so they persist across config switches)
+        pipeline.proxy_settings.proxy_groups = cfg.proxy_groups.clone();
         Self {
             config: cfg,
-            pipeline: Pipeline::default(),
+            pipeline,
             pipeline_path,
             sidecar: SidecarManager::new(),
             runner: None,

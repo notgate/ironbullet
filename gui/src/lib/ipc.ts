@@ -86,7 +86,11 @@ export function registerCallbacks() {
 					// Startup integrity check — show missing-dependency warnings.
 					const startupIssues = cfg._security_issues as Array<{ severity: string; title: string; description: string; code_snippet: string }> | undefined;
 					if (startupIssues && startupIssues.length > 0) {
-						app.securityIssues = startupIssues;
+						// Only show warnings if user hasn't opted out
+						const allWarnings = startupIssues.every(i => i.severity === 'Warning');
+						if (!allWarnings || !app.uiPrefs.skipDependencyWarnings) {
+							app.securityIssues = startupIssues;
+						}
 					}
 
 					app.config = cfg;

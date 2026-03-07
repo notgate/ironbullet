@@ -39,6 +39,9 @@ pub struct GuiConfig {
     pub default_proxy_path: String,
     #[serde(default)]
     pub plugins_path: String,
+    /// Global proxy groups (persist across config switches)
+    #[serde(default)]
+    pub proxy_groups: Vec<crate::pipeline::ProxyGroup>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -85,6 +88,7 @@ impl Default for GuiConfig {
             default_wordlist_path: String::new(),
             default_proxy_path: String::new(),
             plugins_path: String::new(),
+            proxy_groups: Vec::new(),
         }
     }
 }
