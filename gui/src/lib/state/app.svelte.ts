@@ -58,6 +58,7 @@ interface AppState {
 	// Appearance
 	fontFamily: string;
 	fontSize: number;
+	fontWeight: string;
 
 	// Paths
 	collectionsPath: string;
@@ -187,6 +188,7 @@ function createAppState(): AppState {
 	let contextMenu = $state<{ x: number; y: number; blockId: string; blockIndex: number } | null>(null);
 	let fontFamily = $state('Cascadia Code');
 	let fontSize = $state(12);
+	let fontWeight = $state('400');
 	let collectionsPath = $state('');
 	let defaultWordlistPath = $state('');
 	let defaultProxyPath = $state('');
@@ -350,6 +352,8 @@ function createAppState(): AppState {
 		set fontFamily(v) { fontFamily = v; },
 		get fontSize() { return fontSize; },
 		set fontSize(v) { fontSize = v; },
+		get fontWeight() { return fontWeight; },
+		set fontWeight(v) { fontWeight = v; },
 		get canUndo() { return canUndo; },
 		set canUndo(v: boolean) { canUndo = v; },
 		get canRedo() { return canRedo; },

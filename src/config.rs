@@ -17,6 +17,8 @@ pub struct GuiConfig {
     pub font_size: u32,
     #[serde(default = "def_font_family")]
     pub font_family: String,
+    #[serde(default = "def_font_weight")]
+    pub font_weight: String,
     #[serde(default)]
     pub last_config_path: String,
     #[serde(default)]
@@ -59,6 +61,7 @@ fn def_height() -> f64 { 946.0 }
 fn def_zoom() -> u32 { 100 }
 fn def_font_size() -> u32 { 12 }
 fn def_font_family() -> String { "Cascadia Code".into() }
+fn def_font_weight() -> String { "400".into() }
 fn def_max_threads() -> u32 { 100 }
 fn def_sidecar_path() -> String {
     if cfg!(target_os = "windows") { "reqflow-sidecar.exe".into() } else { "reqflow-sidecar".into() }
@@ -77,6 +80,7 @@ impl Default for GuiConfig {
             zoom: 100,
             font_size: 12,
             font_family: "Cascadia Code".into(),
+            font_weight: "400".into(),
             last_config_path: String::new(),
             recent_configs: Vec::new(),
             default_threads: 100,

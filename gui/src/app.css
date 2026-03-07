@@ -37,7 +37,7 @@
 	--radius-lg: var(--radius);
 	--radius-xl: calc(var(--radius) + 4px);
 	--font-sans: var(--font-family), system-ui, sans-serif;
-	--font-mono: 'Cascadia Code', Consolas, 'Courier New', monospace;
+	--font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Source Code Pro', Consolas, 'Courier New', monospace;
 }
 
 :root {
@@ -91,10 +91,14 @@ body {
 	color: var(--foreground);
 	font-family: var(--font-family, 'Segoe UI'), system-ui, sans-serif;
 	font-size: var(--font-size, 13px);
+	font-weight: var(--font-weight, 400);
 	height: 100%;
 	overflow: hidden;
 	user-select: none;
 	margin: 0;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
 }
 
 /* ===== Mechanical Scrollbars ===== */

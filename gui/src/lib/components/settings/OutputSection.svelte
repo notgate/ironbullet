@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
+	import { syncPipelineToBackend } from '$lib/state/tabs';
 	import SkeuSelect from '$lib/components/SkeuSelect.svelte';
 
 	let { searchQuery, shouldShowSetting }: {
@@ -22,7 +23,10 @@
 			<input
 				type="checkbox"
 				checked={app.pipeline.output_settings.save_to_file}
-				onchange={() => { app.pipeline.output_settings.save_to_file = !app.pipeline.output_settings.save_to_file; }}
+				onchange={() => {
+					app.pipeline.output_settings.save_to_file = !app.pipeline.output_settings.save_to_file;
+					syncPipelineToBackend();
+				}}
 				class="skeu-checkbox"
 			/>
 		</label>
@@ -40,7 +44,10 @@
 			<input
 				type="checkbox"
 				checked={app.pipeline.output_settings.save_to_database}
-				onchange={() => { app.pipeline.output_settings.save_to_database = !app.pipeline.output_settings.save_to_database; }}
+				onchange={() => {
+					app.pipeline.output_settings.save_to_database = !app.pipeline.output_settings.save_to_database;
+					syncPipelineToBackend();
+				}}
 				class="skeu-checkbox"
 			/>
 		</label>
@@ -51,6 +58,7 @@
 			<input
 				type="text"
 				bind:value={app.pipeline.output_settings.database_path}
+				onblur={() => syncPipelineToBackend()}
 				class="w-36 skeu-input text-[10px]"
 				placeholder="results.db"
 			/>
@@ -69,7 +77,10 @@
 			<input
 				type="checkbox"
 				checked={app.pipeline.output_settings.include_response}
-				onchange={() => { app.pipeline.output_settings.include_response = !app.pipeline.output_settings.include_response; }}
+				onchange={() => {
+					app.pipeline.output_settings.include_response = !app.pipeline.output_settings.include_response;
+					syncPipelineToBackend();
+				}}
 				class="skeu-checkbox"
 			/>
 		</label>
@@ -88,6 +99,7 @@
 		<input
 			type="text"
 			bind:value={app.pipeline.output_settings.output_directory}
+			onblur={() => syncPipelineToBackend()}
 			class="w-full skeu-input text-[10px] font-mono"
 			placeholder="results/"
 		/>
@@ -101,6 +113,7 @@
 		<input
 			type="text"
 			bind:value={app.pipeline.output_settings.output_format}
+			oninput={() => syncPipelineToBackend()}
 			class="w-full skeu-input text-[10px]"
 			placeholder="{'{data}'} | {'{captures}'}"
 		/>
@@ -111,7 +124,10 @@
 		<span class="text-[11px]">File Format</span>
 		<SkeuSelect
 			value={app.pipeline.output_settings.output_format_type}
-			onValueChange={(v) => { app.pipeline.output_settings.output_format_type = v as any; }}
+			onValueChange={(v) => {
+				app.pipeline.output_settings.output_format_type = v as any;
+				syncPipelineToBackend();
+			}}
 			options={[{value:'Txt',label:'TXT'},{value:'Csv',label:'CSV'},{value:'Json',label:'JSON'}]}
 			class="text-[10px] w-24"
 		/>
@@ -126,6 +142,7 @@
 					...app.pipeline.output_settings.capture_filters,
 					{ variable_name: '*', filter_type: 'NotEmpty', value: '', negate: false }
 				];
+				syncPipelineToBackend();
 			}}>+ Add</button>
 		</div>
 		{#each app.pipeline.output_settings.capture_filters as filter, i}
@@ -133,12 +150,16 @@
 				<input
 					type="text"
 					bind:value={filter.variable_name}
+					onblur={() => syncPipelineToBackend()}
 					class="skeu-input text-[9px] w-20"
 					placeholder="* or var name"
 				/>
 				<SkeuSelect
 					value={filter.filter_type}
-					onValueChange={(v) => { filter.filter_type = v as any; }}
+					onValueChange={(v) => {
+						filter.filter_type = v as any;
+						syncPipelineToBackend();
+					}}
 					options={[
 						{value:'Contains',label:'Contains'},{value:'Equals',label:'Equals'},
 						{value:'StartsWith',label:'Starts With'},{value:'EndsWith',label:'Ends With'},
@@ -150,15 +171,22 @@
 				<input
 					type="text"
 					bind:value={filter.value}
+					onblur={() => syncPipelineToBackend()}
 					class="skeu-input text-[9px] w-16"
 					placeholder="value"
 				/>
 				<label class="flex items-center gap-1 text-[9px]">
-					<input type="checkbox" bind:checked={filter.negate} class="skeu-checkbox" />
+					<input
+						type="checkbox"
+						bind:checked={filter.negate}
+						onchange={() => syncPipelineToBackend()}
+						class="skeu-checkbox"
+					/>
 					<span>Negate</span>
 				</label>
 				<button class="text-[9px] text-red-400 hover:text-red-300 px-1" onclick={() => {
 					app.pipeline.output_settings.capture_filters = app.pipeline.output_settings.capture_filters.filter((_, idx) => idx !== i);
+					syncPipelineToBackend();
 				}}>x</button>
 			</div>
 		{/each}

@@ -50,6 +50,7 @@ export function saveSettings() {
 		zoom: Math.round(app.zoom * 100),
 		font_size: app.fontSize,
 		font_family: app.fontFamily,
+		font_weight: app.fontWeight,
 		default_threads: app.pipeline.runner_settings.threads,
 		left_panel_width: app.leftPanelWidth,
 		bottom_panel_height: app.bottomPanelHeight,
@@ -97,6 +98,7 @@ export function registerCallbacks() {
 					if (cfg.zoom) app.zoom = cfg.zoom / 100;
 					if (cfg.font_size) app.fontSize = cfg.font_size;
 					if (cfg.font_family) app.fontFamily = cfg.font_family;
+					if (cfg.font_weight) app.fontWeight = cfg.font_weight;
 					if (cfg.default_threads) app.threadCount = cfg.default_threads;
 					if (cfg.left_panel_width) app.leftPanelWidth = cfg.left_panel_width;
 					if (cfg.bottom_panel_height) app.bottomPanelHeight = cfg.bottom_panel_height;
