@@ -258,6 +258,10 @@ export function registerCallbacks() {
 					else if (field === 'job_wordlist' || field === 'proxy_check_list') app.pendingJobWordlist = { path, isFolder: false };
 					else if (field === 'job_proxy_file') app.pendingJobProxyFile = path;
 					else if (field === 'job_config') app.pendingJobConfig = path;
+					else if (field === 'chrome_exe') {
+						(app.config as any).chrome_executable_path = path;
+						send('save_settings', { chrome_executable_path: path });
+					}
 				}
 				break;
 			case 'recent_configs':

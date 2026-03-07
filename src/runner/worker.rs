@@ -25,6 +25,7 @@ pub(crate) async fn run_worker(
     hits_tx: mpsc::Sender<HitResult>,
     output_writer: Option<Arc<OutputWriter>>,
     plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
+    chrome_executable_path: Option<std::path::PathBuf>,
     result_feed: Arc<Mutex<VecDeque<ResultEntry>>>,
 ) {
     stats.active_threads.fetch_add(1, Ordering::Relaxed);
@@ -80,6 +81,7 @@ pub(crate) async fn run_worker(
         let mut ctx = ExecutionContext::new(session_id.clone());
         ctx.proxy = proxy.clone();
         ctx.plugin_manager = plugin_manager.clone();
+        ctx.chrome_executable_path = chrome_executable_path.clone();
 
         let parts: Vec<&str> = data_line.split(pipeline.data_settings.separator).collect();
         for (i, slice_name) in pipeline.data_settings.slices.iter().enumerate() {
