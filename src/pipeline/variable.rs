@@ -76,11 +76,19 @@ impl VariableStore {
         if let Some(rest) = key.strip_prefix("input.") {
             self.input.get(rest).cloned()
         } else if let Some(rest) = key.strip_prefix("data.") {
+            // data. prefix: check data namespace first, fall back to user_vars.
+            // ParseJSON/JwtToken/etc. write to user_vars; configs often use
+            // "data.MYVAR" for these — fall back so both forms resolve correctly.
             self.data.get(rest).cloned()
+                .or_else(|| self.user_vars.get(rest).map(|v| v.value.as_str()))
         } else if let Some(rest) = key.strip_prefix("globals.") {
             self.globals.get(rest).cloned()
         } else {
+            // Bare name: check user_vars first (ParseJSON output), then data namespace.
+            // HTTP blocks store RESPONSECODE/LASTRESPONSE/SOURCE via set_data —
+            // a bare "RESPONSECODE" should still resolve for convenience.
             self.user_vars.get(key).map(|v| v.value.as_str())
+                .or_else(|| self.data.get(key).cloned())
         }
     }
 
