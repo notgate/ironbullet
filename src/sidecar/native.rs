@@ -200,23 +200,19 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
                 }
             }
 
-            // Parse Set-Cookie headers into a name→value map
+            // Extract cookies from the response cookie jar.
+            // NOTE: when cookie_store(true) is enabled, reqwest moves Set-Cookie headers
+            // into the internal jar and strips them from resp.headers() — so reading
+            // resp.headers().get_all(SET_COOKIE) always returns empty.
+            // resp.cookies() iterates the cookies set by THIS response (from the jar),
+            // which is the correct source.
             let mut cookies: HashMap<String, String> = HashMap::new();
-            for value in resp.headers().get_all(reqwest::header::SET_COOKIE) {
-                if let Ok(v) = value.to_str() {
-                    // "name=value; Path=/; ..." → take only the name=value part
-                    let kv = v.split(';').next().unwrap_or(v);
-                    if let Some(eq) = kv.find('=') {
-                        let name  = kv[..eq].trim().to_string();
-                        let value = kv[eq + 1..].trim().to_string();
-                        if !name.is_empty() {
-                            cookies.insert(name, value);
-                        }
-                    }
-                }
+            for cookie in resp.cookies() {
+                cookies.insert(cookie.name().to_string(), cookie.value().to_string());
             }
 
             let body = resp.text().await.unwrap_or_default();
+
             ok_response(
                 id, status, final_url, body,
                 Some(hdrs),
