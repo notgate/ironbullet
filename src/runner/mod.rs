@@ -73,6 +73,8 @@ pub struct RunnerOrchestrator {
     output_writer: Option<Arc<output::OutputWriter>>,
     plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
     result_feed: Arc<Mutex<VecDeque<ResultEntry>>>,
+    /// Optional Chrome/Chromium executable override for BrowserOpen blocks.
+    chrome_executable_path: Option<std::path::PathBuf>,
 }
 
 pub(crate) struct RunnerStatsInner {
@@ -113,6 +115,7 @@ impl RunnerOrchestrator {
         thread_count: usize,
         hits_tx: mpsc::Sender<HitResult>,
         plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
+        chrome_executable_path: Option<std::path::PathBuf>,
     ) -> Self {
         let ow = if pipeline.output_settings.save_to_file {
             Some(Arc::new(output::OutputWriter::new(
@@ -145,6 +148,7 @@ impl RunnerOrchestrator {
             hits_tx,
             output_writer: ow,
             plugin_manager,
+            chrome_executable_path,
             result_feed: Arc::new(Mutex::new(VecDeque::with_capacity(RESULT_FEED_CAP))),
         }
     }
@@ -194,6 +198,7 @@ impl RunnerOrchestrator {
             let hits_tx = self.hits_tx.clone();
             let output_writer = self.output_writer.clone();
             let plugin_manager = self.plugin_manager.clone();
+            let chrome_executable_path = self.chrome_executable_path.clone();
             let result_feed = self.result_feed.clone();
 
             let handle = tokio::spawn(async move {
@@ -210,6 +215,7 @@ impl RunnerOrchestrator {
                     hits_tx,
                     output_writer,
                     plugin_manager,
+                    chrome_executable_path,
                     result_feed,
                 ).await;
             });

@@ -220,6 +220,7 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
         threads,
         hits_tx,
         None,
+        None, // chrome_executable_path — not used in CLI mode
     ));
 
     eprintln!("[*] starting with {} threads", threads);

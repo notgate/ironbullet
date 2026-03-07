@@ -21,6 +21,11 @@ impl ExecutionContext {
             }
         }
 
+        // Resolve Chrome executable: prefer user-configured path → auto-discovery.
+        if let Some(ref exe) = self.chrome_executable_path {
+            builder = builder.chrome_executable(exe);
+        }
+
         let config = builder.build()
             .map_err(|e| crate::error::AppError::Pipeline(format!("Browser config error: {}", e)))?;
 

@@ -268,6 +268,7 @@ impl JobManager {
         id: Uuid,
         sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
         plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
+        chrome_executable_path: Option<std::path::PathBuf>,
     ) -> Option<(Arc<RunnerOrchestrator>, mpsc::Receiver<HitResult>)> {
         let job = self.jobs.iter_mut().find(|j| j.id == id)?;
 
@@ -348,6 +349,7 @@ impl JobManager {
             job.thread_count,
             hits_tx,
             plugin_manager,
+            chrome_executable_path,
         ));
 
         job.state = JobState::Running;

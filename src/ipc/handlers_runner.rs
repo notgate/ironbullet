@@ -34,12 +34,22 @@ pub(super) fn debug_pipeline(
             }
             let data_settings = frontend_pipeline.as_ref().map(|p| p.data_settings.clone()).unwrap_or_else(|| s.pipeline.data_settings.clone());
             let pm = s.plugin_manager.clone();
+            let chrome_exe = {
+                let cfg_path = s.config.chrome_executable_path.clone();
+                if !cfg_path.is_empty() {
+                    let p = std::path::PathBuf::from(&cfg_path);
+                    if p.exists() { Some(p) } else { super::find_chrome_executable() }
+                } else {
+                    super::find_chrome_executable()
+                }
+            };
             drop(s); // Release lock before async execution
 
             let native_tx = ironbullet::sidecar::native::create_native_backend();
 
             let mut ctx = ExecutionContext::new(uuid::Uuid::new_v4().to_string());
             ctx.plugin_manager = Some(pm);
+            ctx.chrome_executable_path = chrome_exe;
 
             // Populate test data variables from frontend
             if let Some(test_line) = data.get("test_data_line").and_then(|v| v.as_str()) {
@@ -200,6 +210,16 @@ pub(super) fn start_runner(
                 .unwrap_or_else(|| s.pipeline.clone());
             let proxy_mode = pipeline.proxy_settings.proxy_mode.clone();
             let pm = s.plugin_manager.clone();
+            // Resolve chrome executable: prefer user-configured path → auto-discovery
+            let chrome_exe = {
+                let cfg_path = s.config.chrome_executable_path.clone();
+                if !cfg_path.is_empty() {
+                    let p = std::path::PathBuf::from(&cfg_path);
+                    if p.exists() { Some(p) } else { super::find_chrome_executable() }
+                } else {
+                    super::find_chrome_executable()
+                }
+            };
             let runner = Arc::new(RunnerOrchestrator::new(
                 pipeline,
                 proxy_mode,
@@ -209,6 +229,7 @@ pub(super) fn start_runner(
                 threads,
                 hits_tx,
                 Some(pm),
+                chrome_exe,
             ));
 
             s.runner = Some(runner.clone());
@@ -727,11 +748,20 @@ pub(super) fn inspect_browser_open(
 
             // Pre-flight: resolve the Chrome executable before building config so
             // we can give an actionable error immediately instead of hanging 20s.
-            let chrome_exe = super::find_chrome_executable();
+            // Prefer user-configured path from GuiConfig over auto-discovery.
+            let chrome_exe = {
+                let cfg_path = { state.lock().await.config.chrome_executable_path.clone() };
+                if !cfg_path.is_empty() {
+                    let p = std::path::PathBuf::from(&cfg_path);
+                    if p.exists() { Some(p) } else { super::find_chrome_executable() }
+                } else {
+                    super::find_chrome_executable()
+                }
+            };
             if chrome_exe.is_none() {
                 emit_sync(&js, serde_json::json!({
                     "type": "error",
-                    "message": "Google Chrome or Chromium is not installed.\n\nPlease install Chrome from https://www.google.com/chrome/ and relaunch IronBullet."
+                    "message": "Google Chrome or Chromium is not installed or not found.\n\nPlease set the Chrome executable path in Settings → Paths, or install Chrome from https://www.google.com/chrome/"
                 }));
                 return;
             }

@@ -85,6 +85,9 @@ pub(super) fn save_config(
                 pm.scan_directory(v);
                 s.plugin_manager = Arc::new(pm);
             }
+            if let Some(v) = data.get("chrome_executable_path").and_then(|v| v.as_str()) {
+                s.config.chrome_executable_path = v.to_string();
+            }
             config::save_config(&s.config);
             let resp = IpcResponse::ok("config_saved", serde_json::json!({}));
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
