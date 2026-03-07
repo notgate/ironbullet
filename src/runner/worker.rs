@@ -184,7 +184,23 @@ pub(crate) async fn run_worker(
                 }
             }
             BotStatus::Retry | BotStatus::Error => {
-                let is_retry_status = matches!(ctx.status, BotStatus::Retry);
+                // Treat transient network errors (timeout, connection refused, proxy errors)
+                // as retryable — these are proxy-side failures, not credential failures.
+                // The credential should be re-queued rather than discarded as an error.
+                let is_network_error = result.as_ref().err().map(|e| {
+                    let msg = e.to_string();
+                    msg.contains("timed out") ||
+                    msg.contains("Request timed out") ||
+                    msg.contains("Connection refused") ||
+                    msg.contains("host unreachable") ||
+                    msg.contains("proxyconnect") ||
+                    msg.contains("WSAEADDRINUSE") ||
+                    msg.contains("Only one usage of each socket address") ||
+                    msg.contains("network is unreachable") ||
+                    msg.contains("context deadline exceeded") ||
+                    msg.contains("i/o timeout")
+                }).unwrap_or(false);
+                let is_retry_status = matches!(ctx.status, BotStatus::Retry) || is_network_error;
                 if is_retry_status && retry_count < max_retries {
                     stats.retries.fetch_add(1, Ordering::Relaxed);
                     data_pool.return_line(data_line.clone(), retry_count + 1);
