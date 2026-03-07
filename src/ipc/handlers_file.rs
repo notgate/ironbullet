@@ -239,6 +239,11 @@ pub(super) fn browse_file(
                             .add_filter("All files", &["*"])
                     }
                 },
+                "proxy_group_source" => {
+                    dialog.set_title("Select Proxy File")
+                        .add_filter("Text files", &["txt", "csv", "lst"])
+                        .add_filter("All files", &["*"])
+                },
                 _ => dialog.set_title("Select File")
                     .add_filter("All files", &["*"]),
             };
