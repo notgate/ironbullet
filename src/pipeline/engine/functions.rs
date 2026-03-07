@@ -9,7 +9,7 @@ impl ExecutionContext {
                 KeychainMode::And => keychain.conditions.iter().all(|cond| self.evaluate_condition(cond)),
                 KeychainMode::Or  => keychain.conditions.iter().any(|cond| self.evaluate_condition(cond)),
             };
-            if matched {
+                if matched {
                 self.status = keychain.result;
                 break;
             }

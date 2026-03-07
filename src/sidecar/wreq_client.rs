@@ -189,17 +189,13 @@ mod inner {
                     );
                 }
 
+                // Extract cookies via resp.cookies() — the correct source when
+                // cookie_store(true) is active. Reading Set-Cookie from resp.headers()
+                // always returns empty because wreq/reqwest consumes those headers into
+                // the internal jar before we see them.
                 let mut cookies_map = std::collections::HashMap::new();
-                for (name, value) in resp.headers().iter() {
-                    if name.as_str().eq_ignore_ascii_case("set-cookie") {
-                        if let Ok(v) = value.to_str() {
-                            if let Some((cookie_part, _)) = v.split_once(';') {
-                                if let Some((k, val)) = cookie_part.split_once('=') {
-                                    cookies_map.insert(k.trim().to_string(), val.trim().to_string());
-                                }
-                            }
-                        }
-                    }
+                for cookie in resp.cookies() {
+                    cookies_map.insert(cookie.name().to_string(), cookie.value().to_string());
                 }
 
                 let body = match resp.text().await {

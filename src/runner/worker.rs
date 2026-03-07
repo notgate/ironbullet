@@ -117,9 +117,11 @@ pub(crate) async fn run_worker(
 
         // Extract response context for {status}, {response}, {headers} output format variables.
         // RESPONSECODE, LASTRESPONSE, LASTHEADERS are set by the HTTP block engine after every request.
-        let resp_status  = ctx.variables.get("RESPONSECODE").unwrap_or_default();
-        let resp_body    = ctx.variables.get("LASTRESPONSE").unwrap_or_default();
-        let resp_headers = ctx.variables.get("LASTHEADERS").unwrap_or_default();
+        // HTTP blocks store RESPONSECODE / LASTRESPONSE / LASTHEADERS via set_data(),
+        // so they live in the data namespace and must be accessed with the "data." prefix.
+        let resp_status  = ctx.variables.get("data.RESPONSECODE").unwrap_or_default();
+        let resp_body    = ctx.variables.get("data.LASTRESPONSE").unwrap_or_default();
+        let resp_headers = ctx.variables.get("data.LASTHEADERS").unwrap_or_default();
 
         match ctx.status {
             BotStatus::Success => {
@@ -247,6 +249,36 @@ pub(crate) async fn run_worker(
                             block_results: ctx.block_results.clone(),
                         });
                     }
+                }
+            }
+            BotStatus::Custom => {
+                // Custom = hit with a distinct category (e.g. FREE tier account).
+                // Write to file and stdout just like Success, but tagged as Custom.
+                stats.hits.fetch_add(1, Ordering::Relaxed);
+                let captures = ctx.variables.captures();
+                let hit = HitResult {
+                    data_line: data_line.clone(),
+                    captures: captures.clone(),
+                    proxy: proxy.clone(),
+                    response: resp_body.clone(),
+                    headers: resp_headers.clone(),
+                    status: resp_status.clone(),
+                };
+                if let Some(ref ow) = output_writer {
+                    ow.write_hit(&hit, BotStatus::Custom);
+                }
+                let _ = hits_tx.send(hit).await;
+                if let Ok(mut feed) = result_feed.try_lock() {
+                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                    feed.push_back(ResultEntry {
+                        data_line: data_line.clone(),
+                        status: "CUSTOM".into(),
+                        proxy: proxy.clone(),
+                        captures,
+                        error: None,
+                        ts_ms,
+                        block_results: ctx.block_results.clone(),
+                    });
                 }
             }
             _ => {
