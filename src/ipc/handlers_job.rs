@@ -210,7 +210,7 @@ pub(super) fn list_jobs(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let s = state.lock().await;
+            let mut s = state.lock().await;
             let jobs = s.job_manager.list_jobs();
             let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));

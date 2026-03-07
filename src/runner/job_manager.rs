@@ -177,7 +177,16 @@ impl JobManager {
         self.jobs.len() < len
     }
 
-    pub fn list_jobs(&self) -> &[Job] {
+    pub fn list_jobs(&mut self) -> &[Job] {
+        // Refresh live stats for all running jobs before serializing so the UI
+        // always sees current hits/fails/errors without a separate poll call.
+        let running_ids: Vec<Uuid> = self.jobs.iter()
+            .filter(|j| j.state == super::job::JobState::Running)
+            .map(|j| j.id)
+            .collect();
+        for id in running_ids {
+            self.update_job_stats(id);
+        }
         &self.jobs
     }
 
