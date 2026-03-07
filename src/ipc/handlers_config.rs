@@ -123,6 +123,9 @@ pub(super) fn update_pipeline(
             s.pipeline_path = file_path.filter(|s| !s.is_empty());
             if let Ok(pipeline) = serde_json::from_value::<Pipeline>(data) {
                 s.pipeline = pipeline;
+                // Persist proxy groups to GuiConfig (so they survive app restarts)
+                s.config.proxy_groups = s.pipeline.proxy_settings.proxy_groups.clone();
+                config::save_config(&s.config);
             }
             let resp = IpcResponse::ok("pipeline_updated", serde_json::json!({}));
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
@@ -221,6 +224,14 @@ pub(super) fn load_pipeline(
                     Ok(config) => {
                         let mut s = state.lock().await;
                         s.pipeline = config.pipeline;
+                        // Merge global proxy groups from GuiConfig into loaded pipeline
+                        // (so global groups persist across config switches)
+                        let global_groups = s.config.proxy_groups.clone();
+                        for group in global_groups {
+                            if !s.pipeline.proxy_settings.proxy_groups.iter().any(|g| g.name == group.name) {
+                                s.pipeline.proxy_settings.proxy_groups.push(group);
+                            }
+                        }
                         s.pipeline_path = Some(path_str.clone());
                         // Track in recent configs
                         let pipeline_name = s.pipeline.name.clone();
