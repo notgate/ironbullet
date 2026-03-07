@@ -5,6 +5,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import SkeuSelect from '$lib/components/SkeuSelect.svelte';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import type { ProxyGroup, ProxySource, ProxySourceType_t } from '$lib/types';
 
 	let { searchQuery, shouldShowSetting }: {
@@ -22,6 +23,12 @@
 		{ value: 'CpmLimited', label: 'CPM Limited' },
 	];
 
+	const SOURCE_TYPE_OPTIONS = [
+		{ value: 'File', label: 'File' },
+		{ value: 'Inline', label: 'Inline' },
+		{ value: 'Url', label: 'URL' },
+	];
+
 	const PROXY_TYPE_OPTIONS = [
 		{ value: '', label: 'Auto' },
 		{ value: 'Http', label: 'HTTP' },
@@ -31,18 +38,10 @@
 	];
 
 	// Sync pipeline state to Rust backend THEN save to disk.
-	// ProxiesSection only mutates app.pipeline in Svelte state — Rust's in-memory
-	// pipeline is stale until syncPipelineToBackend() sends update_pipeline.
-	// If save_pipeline fires before update_pipeline, the old (pre-mutation) state
-	// gets serialized to disk and proxy group changes are lost on restart.
 	function saveWithSync() {
 		syncPipelineToBackend();
-		// Only auto-save to disk if the pipeline already has a file path.
-		// Calling savePipeline() on an unsaved new config opens an rfd file-save
-		// dialog unexpectedly (seen as "asking to save .rfx" when clicking Open/Import).
 		const activeTab = app.configTabs.find((t: any) => t.id === app.activeTabId);
 		if (activeTab?.filePath) {
-			// Short defer so update_pipeline processes before save_pipeline
 			setTimeout(() => savePipeline(), 30);
 		}
 	}
@@ -73,13 +72,30 @@
 		saveWithSync();
 	}
 
-	function updateGroupSourceType(gi: number, si: number, type_val: string) {
+	function updateGroupSourceKind(gi: number, si: number, kind: string) {
 		const groups = [...app.pipeline.proxy_settings.proxy_groups];
 		const srcs = [...groups[gi].sources];
-		srcs[si] = { ...srcs[si], default_proxy_type: type_val as ProxySourceType_t || undefined };
+		srcs[si] = { ...srcs[si], source_type: kind as 'File' | 'Url' | 'Inline' };
 		groups[gi] = { ...groups[gi], sources: srcs };
 		app.pipeline.proxy_settings.proxy_groups = groups;
 		saveWithSync();
+	}
+
+	function updateGroupSourceProxyType(gi: number, si: number, type_val: string) {
+		const groups = [...app.pipeline.proxy_settings.proxy_groups];
+		const srcs = [...groups[gi].sources];
+		srcs[si] = { ...srcs[si], default_proxy_type: (type_val as ProxySourceType_t) || undefined };
+		groups[gi] = { ...groups[gi], sources: srcs };
+		app.pipeline.proxy_settings.proxy_groups = groups;
+		saveWithSync();
+	}
+
+	function updateGroupSourceValue(gi: number, si: number, val: string) {
+		const groups = [...app.pipeline.proxy_settings.proxy_groups];
+		const srcs = [...groups[gi].sources];
+		srcs[si] = { ...srcs[si], value: val };
+		groups[gi] = { ...groups[gi], sources: srcs };
+		app.pipeline.proxy_settings.proxy_groups = groups;
 	}
 
 	function removeGroupSource(gi: number, si: number) {
@@ -87,6 +103,17 @@
 		groups[gi] = { ...groups[gi], sources: groups[gi].sources.filter((_: ProxySource, i: number) => i !== si) };
 		app.pipeline.proxy_settings.proxy_groups = groups;
 		saveWithSync();
+	}
+
+	function browseGroupSourceFile(gi: number, si: number) {
+		// Register a one-shot callback that ipc.ts will call when file_selected fires
+		// for the 'proxy_group_source' field. Simpler than a custom event bus.
+		(window as any).__proxyGroupFilePicked = (path: string) => {
+			(window as any).__proxyGroupFilePicked = null;
+			updateGroupSourceValue(gi, si, path);
+			saveWithSync();
+		};
+		send('browse_file', { field: 'proxy_group_source' });
 	}
 
 	function checkProxies() {
@@ -183,26 +210,63 @@
 					</div>
 				</div>
 				<!-- Sources -->
-				<div class="space-y-1.5 ml-1">
+				<div class="space-y-2 ml-1">
 					{#each group.sources as src, si}
-						<div class="space-y-0.5">
+						<div class="bg-surface/50 rounded border border-border/50 p-1.5 space-y-1">
+							<!-- Row 1: source type + protocol type + delete -->
 							<div class="flex gap-1 items-center">
-								<!-- Proxy type override -->
+								<SkeuSelect
+									value={src.source_type}
+									onValueChange={(v) => updateGroupSourceKind(gi, si, v)}
+									options={SOURCE_TYPE_OPTIONS}
+									class="text-[9px] w-[62px] shrink-0"
+									title="Source type"
+								/>
 								<SkeuSelect
 									value={src.default_proxy_type ?? ''}
-									onValueChange={(v) => updateGroupSourceType(gi, si, v)}
+									onValueChange={(v) => updateGroupSourceProxyType(gi, si, v)}
 									options={PROXY_TYPE_OPTIONS}
-									class="text-[9px] w-[70px] shrink-0"
-									title="Protocol type for plain ip:port lines in this source"
+									class="text-[9px] w-[68px] shrink-0"
+									title="Protocol for plain host:port lines with no prefix"
 								/>
-								<input type="text" bind:value={src.value} placeholder="path, URL, or inline proxies" class="flex-1 skeu-input text-[9px] font-mono" />
-								<button class="p-0.5 text-muted-foreground hover:text-red shrink-0" onclick={() => removeGroupSource(gi, si)}>
+								<span class="flex-1 text-[8px] text-muted-foreground/50 truncate">
+									{src.source_type === 'File' ? 'Select a .txt proxy file' : src.source_type === 'Url' ? 'Enter URL to fetch proxies from' : 'Enter one proxy per line'}
+								</span>
+								<button class="p-0.5 text-muted-foreground hover:text-red shrink-0" onclick={() => removeGroupSource(gi, si)} title="Remove source">
 									<Trash2 size={9} />
 								</button>
 							</div>
-							<p class="text-[8px] text-muted-foreground/50 ml-1 leading-tight">
-								Formats: <code class="font-mono">ip:port</code> · <code class="font-mono">ip:port:user:pass</code> · <code class="font-mono">socks5://ip:port</code> · <code class="font-mono">socks5://user:pass@ip:port</code>
-							</p>
+							<!-- Row 2: value input (single-line for File/URL, textarea for Inline) -->
+							{#if src.source_type === 'Inline'}
+								<textarea
+									rows={4}
+									value={src.value}
+									oninput={(e) => { updateGroupSourceValue(gi, si, (e.target as HTMLTextAreaElement).value); }}
+									onblur={() => saveWithSync()}
+									placeholder={"127.0.0.1:8080\n127.0.0.1:8081:user:pass\nsocks5://127.0.0.1:1080"}
+									class="w-full skeu-input text-[9px] font-mono resize-y min-h-[56px]"
+								></textarea>
+							{:else}
+								<div class="flex gap-1 items-center">
+									<input
+										type="text"
+										value={src.value}
+										oninput={(e) => { updateGroupSourceValue(gi, si, (e.target as HTMLInputElement).value); }}
+										onblur={() => saveWithSync()}
+										placeholder={src.source_type === 'File' ? '/path/to/proxies.txt' : 'https://example.com/proxies.txt'}
+										class="flex-1 skeu-input text-[9px] font-mono"
+									/>
+									{#if src.source_type === 'File'}
+										<button
+											class="skeu-btn p-1 shrink-0"
+											title="Browse for proxy file"
+											onclick={() => browseGroupSourceFile(gi, si)}
+										>
+											<FolderOpen size={11} />
+										</button>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					{/each}
 					<button class="text-[9px] text-primary hover:underline" onclick={() => addGroupSource(gi)}>+ Add source</button>
