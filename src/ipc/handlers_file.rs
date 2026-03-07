@@ -228,6 +228,17 @@ pub(super) fn browse_file(
                 "proxies" => dialog.set_title("Select Proxy File")
                     .add_filter("Text files", &["txt", "csv", "lst"])
                     .add_filter("All files", &["*"]),
+                "chrome_exe" => {
+                    let title = "Select Chrome / Chromium Executable";
+                    if cfg!(target_os = "windows") {
+                        dialog.set_title(title)
+                            .add_filter("Executables", &["exe"])
+                            .add_filter("All files", &["*"])
+                    } else {
+                        dialog.set_title(title)
+                            .add_filter("All files", &["*"])
+                    }
+                },
                 _ => dialog.set_title("Select File")
                     .add_filter("All files", &["*"]),
             };

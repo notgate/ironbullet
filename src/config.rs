@@ -44,6 +44,10 @@ pub struct GuiConfig {
     /// Global proxy groups (persist across config switches)
     #[serde(default)]
     pub proxy_groups: Vec<crate::pipeline::ProxyGroup>,
+    /// User-specified Chrome/Chromium executable path for browser blocks.
+    /// When empty, IronBullet uses chromiumoxide's built-in auto-discovery.
+    #[serde(default)]
+    pub chrome_executable_path: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -93,6 +97,7 @@ impl Default for GuiConfig {
             default_proxy_path: String::new(),
             plugins_path: String::new(),
             proxy_groups: Vec::new(),
+            chrome_executable_path: String::new(),
         }
     }
 }

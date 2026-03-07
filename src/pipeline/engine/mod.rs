@@ -83,6 +83,10 @@ pub struct ExecutionContext {
     pub override_http2fp: Option<String>,
     #[serde(skip)]
     pub plugin_manager: Option<std::sync::Arc<crate::plugin::manager::PluginManager>>,
+    /// Optional override for the Chrome/Chromium executable used by BrowserOpen blocks.
+    /// Set from GuiConfig.chrome_executable_path at job start time.
+    #[serde(skip)]
+    pub chrome_executable_path: Option<std::path::PathBuf>,
     /// Reusable reqwest client for RustTLS requests — persists cookie jar between
     /// HTTP blocks within a single pipeline execution so multi-step login flows work.
     /// Reset for every new ExecutionContext (i.e. every credential checked).
@@ -162,6 +166,7 @@ impl ExecutionContext {
             override_ja3: None,
             override_http2fp: None,
             plugin_manager: None,
+            chrome_executable_path: None,
             rustls_client: None,
             #[cfg(any(unix, target_os = "windows"))]
             wreq_client: None,

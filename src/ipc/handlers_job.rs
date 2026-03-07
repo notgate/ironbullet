@@ -351,7 +351,16 @@ pub(super) fn start_job(
             }
 
             let pm = s.plugin_manager.clone();
-            let result = s.job_manager.start_job(uuid, sidecar_tx, Some(pm));
+            let chrome_exe = {
+                let cfg_path = s.config.chrome_executable_path.clone();
+                if !cfg_path.is_empty() {
+                    let p = std::path::PathBuf::from(&cfg_path);
+                    if p.exists() { Some(p) } else { super::find_chrome_executable() }
+                } else {
+                    super::find_chrome_executable()
+                }
+            };
+            let result = s.job_manager.start_job(uuid, sidecar_tx, Some(pm), chrome_exe);
 
             if result.is_none() {
                 // Data source was empty or unreadable — surface a clear error with path info.

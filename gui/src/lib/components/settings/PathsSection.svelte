@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
-	import { send } from '$lib/ipc';
+	import { send, savePipeline } from '$lib/ipc';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
 
 	let { searchQuery, shouldShowSetting }: {
 		searchQuery: string;
@@ -60,6 +62,47 @@
 			bind:value={app.defaultProxyPath}
 			class="w-full skeu-input text-[10px] font-mono mt-1"
 			placeholder="Not set"
+		/>
+	</div>
+{/if}
+
+{#if shouldShowSetting('paths', 'Chrome Executable')}
+	<div class="py-1.5">
+		<div class="flex items-center justify-between gap-1">
+			<div class="flex-1 min-w-0">
+				<span class="text-[11px] text-muted-foreground">Chrome / Chromium executable</span>
+				<p class="text-[9px] text-muted-foreground/60">Path to chrome.exe (or chromium). Leave blank for auto-detection. Use this when Chrome is installed but not found automatically.</p>
+			</div>
+			<div class="flex items-center gap-1 shrink-0">
+				<button
+					class="skeu-btn text-[10px] flex items-center gap-1"
+					title="Open Chrome download page"
+					onclick={() => send('open_url', { url: 'https://www.google.com/chrome/' })}
+				>
+					<ExternalLink size={11} />
+					Download
+				</button>
+				<button
+					class="skeu-btn text-[10px]"
+					onclick={() => send('browse_file', { field: 'chrome_exe' })}
+				>
+					Browse
+				</button>
+			</div>
+		</div>
+		<input
+			type="text"
+			value={(app.config as any).chrome_executable_path ?? ''}
+			oninput={(e) => {
+				const val = (e.target as HTMLInputElement).value;
+				(app.config as any).chrome_executable_path = val;
+			}}
+			onblur={(e) => {
+				const val = (e.target as HTMLInputElement).value;
+				send('save_settings', { chrome_executable_path: val });
+			}}
+			class="w-full skeu-input text-[10px] font-mono mt-1"
+			placeholder="Auto-detect (leave blank)"
 		/>
 	</div>
 {/if}
