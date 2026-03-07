@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 
 /// Which TLS/HTTP client to use for this block.
 ///
-/// - `AzureTLS` (default): Go sidecar with azuretls — supports JA3 fingerprinting,
-///   browser TLS imitation, HTTP/2 fingerprinting, and custom cipher suites.
-/// - `RustTLS`: Rust-native reqwest + rustls — no fingerprinting, but faster for
+/// - `RustTLS` (default): Rust-native reqwest + rustls — no fingerprinting, but faster for
 ///   standard HTTPS and easier to configure for internal APIs / self-signed certs.
+/// - `AzureTLS`: Go sidecar with azuretls — supports JA3 fingerprinting,
+///   browser TLS imitation, HTTP/2 fingerprinting, and custom cipher suites.
 /// - `WreqTLS`: Rust-native wreq + BoringSSL — 100+ browser device emulation profiles,
 ///   accurate JA3/JA4/HTTP2 fingerprints, cookie persistence, no external sidecar needed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

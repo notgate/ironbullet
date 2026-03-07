@@ -340,6 +340,16 @@ pub(super) fn start_job(
                 }
             };
 
+            // Health check: verify sidecar channel is not closed immediately after start
+            if sidecar_tx.is_closed() {
+                let resp = IpcResponse::err("job_start_error", "Sidecar process died immediately after start. Check that reqflow-sidecar is a valid executable.".to_string());
+                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                let jobs = s.job_manager.list_jobs();
+                let jobs_resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
+                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&jobs_resp).unwrap_or_default()));
+                return;
+            }
+
             let pm = s.plugin_manager.clone();
             let result = s.job_manager.start_job(uuid, sidecar_tx, Some(pm));
 
