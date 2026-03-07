@@ -88,8 +88,8 @@ export interface HttpRequestSettings {
 	cipher_suites: string;
 	/**
 	 * TLS client to use for this request block.
-	 * - 'AzureTLS' (default): Go sidecar with azuretls — JA3/browser fingerprinting, custom ciphers.
-	 * - 'RustTLS': Rust-native reqwest + rustls — no fingerprinting, standard HTTPS.
+	 * - 'RustTLS' (default): Rust-native reqwest + rustls — no fingerprinting, standard HTTPS.
+	 * - 'AzureTLS': Go sidecar with azuretls — JA3/browser fingerprinting, custom ciphers.
 	 * - 'WreqTLS': Rust-native wreq + BoringSSL — 100+ browser emulation profiles, cookie persistence.
 	 */
 	tls_client: 'AzureTLS' | 'RustTLS' | 'WreqTLS';
