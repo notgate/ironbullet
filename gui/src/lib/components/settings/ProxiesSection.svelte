@@ -37,8 +37,14 @@
 	// gets serialized to disk and proxy group changes are lost on restart.
 	function saveWithSync() {
 		syncPipelineToBackend();
-		// Short defer so update_pipeline processes before save_pipeline
-		setTimeout(() => savePipeline(), 30);
+		// Only auto-save to disk if the pipeline already has a file path.
+		// Calling savePipeline() on an unsaved new config opens an rfd file-save
+		// dialog unexpectedly (seen as "asking to save .rfx" when clicking Open/Import).
+		const activeTab = app.configTabs.find((t: any) => t.id === app.activeTabId);
+		if (activeTab?.filePath) {
+			// Short defer so update_pipeline processes before save_pipeline
+			setTimeout(() => savePipeline(), 30);
+		}
 	}
 
 	function addProxyGroup() {

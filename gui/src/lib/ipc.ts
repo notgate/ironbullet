@@ -117,8 +117,21 @@ export function registerCallbacks() {
 					if (raw._file_path !== undefined) delete raw._file_path;
 					if (raw._tab_id !== undefined) delete raw._tab_id;
 					if (loadedPath) {
-						// File load — open in new tab with full pipeline
-						openInNewTab(raw, loadedPath);
+						// File load — open in new tab with full pipeline.
+						// On startup (get_pipeline), the first pipeline_loaded with a file
+						// path means a previously-saved config was restored — load it into
+						// the existing blank tab instead of opening an extra one, and hide
+						// the startup dialog so the user goes straight to their workspace.
+						const isStartupRestore = app.configTabs.length === 1
+							&& !app.configTabs[0].filePath
+							&& (app.configTabs[0].pipeline?.blocks?.length ?? 0) === 0;
+						if (isStartupRestore) {
+							loadPipelineIntoTab(raw, loadedPath);
+							app.pipeline = JSON.parse(JSON.stringify(raw));
+							app.showStartup = false;
+						} else {
+							openInNewTab(raw, loadedPath);
+						}
 						setTimeout(takePipelineSnapshot, 50);
 					} else if (tabId) {
 						// Mutation response — only update blocks, preserve name/settings
