@@ -101,6 +101,7 @@
 		document.documentElement.style.setProperty('--font-family', `'${app.fontFamily}'`);
 		document.documentElement.style.setProperty('--font-size', `${app.fontSize}px`);
 		document.documentElement.style.setProperty('--font-scale', `${app.fontSize / 13}`);
+		document.documentElement.style.setProperty('--font-weight', app.fontWeight);
 		document.documentElement.style.setProperty('--app-zoom', `${app.zoom}`);
 	});
 

@@ -71,6 +71,7 @@ pub(super) fn save_config(
             if let Some(v) = data.get("zoom").and_then(|v| v.as_u64()) { s.config.zoom = v as u32; }
             if let Some(v) = data.get("font_size").and_then(|v| v.as_u64()) { s.config.font_size = v as u32; }
             if let Some(v) = data.get("font_family").and_then(|v| v.as_str()) { s.config.font_family = v.to_string(); }
+            if let Some(v) = data.get("font_weight").and_then(|v| v.as_str()) { s.config.font_weight = v.to_string(); }
             if let Some(v) = data.get("default_threads").and_then(|v| v.as_u64()) { s.config.default_threads = v as u32; }
             if let Some(v) = data.get("left_panel_width").and_then(|v| v.as_u64()) { s.config.left_panel_width = v as u32; }
             if let Some(v) = data.get("bottom_panel_height").and_then(|v| v.as_u64()) { s.config.bottom_panel_height = v as u32; }
