@@ -261,6 +261,10 @@ export function registerCallbacks() {
 					else if (field === 'chrome_exe') {
 						(app.config as any).chrome_executable_path = path;
 						send('save_settings', { chrome_executable_path: path });
+					} else if (field === 'proxy_group_source') {
+						// One-shot callback registered by browseGroupSourceFile() in ProxiesSection
+						const cb = (window as any).__proxyGroupFilePicked;
+						if (typeof cb === 'function') cb(path);
 					}
 				}
 				break;
