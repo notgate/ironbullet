@@ -18,38 +18,73 @@
 	let configName = $state('New Config');
 	let configDescription = $state('');
 
+	// Allow closing if the workspace already has a usable config loaded
+	// (i.e. not the very first cold launch with nothing open).
+	let canClose = $derived(
+		app.configTabs.some(t => t.filePath !== null) ||
+		app.configTabs.some(t => t.pipeline?.blocks?.length > 0)
+	);
+
 	function onOpenChange(v: boolean) {
-		if (!v) app.showStartup = false;
+		if (!v && canClose) app.showStartup = false;
+	}
+
+	function dismiss() {
+		if (canClose) {
+			app.showStartup = false;
+			mode = 'home';
+		}
+	}
+
+	/** Mark the current blank startup tab as clean so loading/creating doesn't
+	 *  trigger the "unsaved changes" dialog. */
+	function clearStartupDirty() {
+		const tab = app.configTabs.find(t => t.id === app.activeTabId);
+		if (tab && !tab.filePath && (tab.pipeline?.blocks?.length ?? 0) === 0) {
+			tab.isDirty = false;
+			tab.savedSnapshot = JSON.stringify(tab.pipeline);
+		}
 	}
 
 	function createNew() {
-		// Use the same logic as the "+" button in ConfigTabBar
-		// This ensures a fresh pipeline with no file path inheritance
-		createNewTab();
-		// Override the generated name with user's input if provided
 		const name = configName.trim() || 'New Config';
-		app.pipeline.name = name;
-		const tab = app.configTabs.find(t => t.id === app.activeTabId);
-		if (tab) {
-			tab.name = name;
-			tab.pipeline.name = name;
+		const activeTab = app.configTabs.find(t => t.id === app.activeTabId);
+
+		// Reuse the existing blank startup tab instead of creating a duplicate.
+		if (activeTab && !activeTab.filePath && (activeTab.pipeline?.blocks?.length ?? 0) === 0) {
+			activeTab.name = name;
+			activeTab.pipeline.name = name;
+			activeTab.isDirty = false;
+			activeTab.savedSnapshot = JSON.stringify(activeTab.pipeline);
+			app.pipeline = JSON.parse(JSON.stringify(activeTab.pipeline));
+			app.pipeline.name = name;
+		} else {
+			// Only create a new tab if the active tab is not a blank new config.
+			createNewTab();
+			app.pipeline.name = name;
+			const tab = app.configTabs.find(t => t.id === app.activeTabId);
+			if (tab) { tab.name = name; tab.pipeline.name = name; }
 		}
+
 		app.showStartup = false;
 		mode = 'home';
-		configName = 'New Config'; // Reset for next time
+		configName = 'New Config';
 	}
 
 	function openRecent(path: string) {
+		clearStartupDirty();
 		send('load_pipeline', { path });
 		app.showStartup = false;
 	}
 
 	function openFilePicker() {
+		clearStartupDirty();
 		send('load_pipeline');
 		app.showStartup = false;
 	}
 
 	function importConfig() {
+		clearStartupDirty();
 		send('import_config');
 		app.showStartup = false;
 	}
@@ -72,12 +107,23 @@
 </script>
 
 <Dialog.Root {open} onOpenChange={onOpenChange}>
-	<Dialog.Content class="bg-surface border-border max-w-[480px] p-0 gap-0 overflow-hidden flex flex-col" showCloseButton={false} interactOutsideBehavior="ignore" onEscapeKeydown={(e) => e.preventDefault()}>
+	<Dialog.Content class="bg-surface border-border max-w-[480px] p-0 gap-0 overflow-hidden flex flex-col" showCloseButton={false} interactOutsideBehavior={canClose ? 'close' : 'ignore'} onEscapeKeydown={(e) => { if (canClose) dismiss(); else e.preventDefault(); }}>
 		<!-- Header -->
 		<div class="flex items-center gap-2 px-4 py-3 border-b border-border-dark panel-raised">
 			<Workflow size={16} class="text-primary" />
 			<span class="text-sm font-semibold text-foreground tracking-tight">Ironbullet</span>
-			<span class="text-[10px] text-muted-foreground/60 font-mono ml-1">v0.3.5</span>
+			<span class="text-[10px] text-muted-foreground/60 font-mono ml-1">v0.3.6</span>
+			{#if canClose}
+				<button
+					class="ml-auto text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
+					onclick={dismiss}
+					aria-label="Close"
+				>
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+						<line x1="2" y1="2" x2="12" y2="12"/><line x1="12" y1="2" x2="2" y2="12"/>
+					</svg>
+				</button>
+			{/if}
 		</div>
 
 		{#if mode === 'home'}
