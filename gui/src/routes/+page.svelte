@@ -27,6 +27,7 @@
 	import ChangelogDialog from '$lib/components/ChangelogDialog.svelte';
 	import BlockDocsPanel from '$lib/components/BlockDocsPanel.svelte';
 	import SiteInspector from '$lib/components/SiteInspector.svelte';
+	import ToolkitPanel from '$lib/components/ToolkitPanel.svelte';
 	import PluginBuilder from '$lib/components/PluginBuilder.svelte';
 	import Onboarding from '$lib/components/Onboarding.svelte';
 	import SecurityAlertDialog from '$lib/components/SecurityAlertDialog.svelte';
@@ -182,6 +183,7 @@
 		{:else if nativePanelId === 'variables'}<div class="h-full overflow-y-auto"><VariableInspector /></div>
 		{:else if nativePanelId === 'response-viewer'}<ResponseViewer nativeMode={true} />
 		{:else if nativePanelId === 'inspector'}<SiteInspector />
+		{:else if nativePanelId === 'toolkit'}<div class="h-full overflow-hidden"><ToolkitPanel /></div>
 		{/if}
 	</div>
 
@@ -238,6 +240,7 @@
 									{:else if id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
 									{:else if id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
 									{:else if id === 'inspector'}<div class="h-full"><SiteInspector /></div>
+									{:else if id === 'toolkit'}<div class="h-full overflow-hidden"><ToolkitPanel /></div>
 									{/if}
 								{/snippet}
 							</DockZoneTabs>
@@ -293,6 +296,7 @@
 										{:else if id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
 										{:else if id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
 									{:else if id === 'inspector'}<div class="h-full"><SiteInspector /></div>
+									{:else if id === 'toolkit'}<div class="h-full overflow-hidden"><ToolkitPanel /></div>
 										{/if}
 									{/snippet}
 								</DockZoneTabs>
@@ -325,6 +329,7 @@
 								{:else if id === 'network'}<div class="overflow-y-auto h-full"><NetworkViewer /></div>
 								{:else if id === 'variables'}<div class="overflow-y-auto h-full"><VariableInspector /></div>
 									{:else if id === 'inspector'}<div class="h-full"><SiteInspector /></div>
+									{:else if id === 'toolkit'}<div class="h-full overflow-hidden"><ToolkitPanel /></div>
 								{/if}
 							{/snippet}
 						</DockZoneTabs>

@@ -849,6 +849,7 @@ pub(super) fn inspect_browser_open(
                 max_total_buffer_size:    Some(100 * 1024 * 1024),
                 max_resource_buffer_size: Some(5   * 1024 * 1024),
                 max_post_data_size:       Some(5   * 1024 * 1024),
+                ..Default::default()
             })).await {
                 Ok(Ok(_)) => {}
                 _ => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "CDP Network.enable failed or timed out" })); return; }

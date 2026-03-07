@@ -4,7 +4,7 @@
  * Layout is persisted to localStorage.
  */
 
-export type PanelId = 'debugger' | 'code' | 'data' | 'jobs' | 'network' | 'variables' | 'inspector';
+export type PanelId = 'debugger' | 'code' | 'data' | 'jobs' | 'network' | 'variables' | 'inspector' | 'toolkit';
 /** Dock zones:
  * - bottom / right / left: docked tab areas in the main window
  * - float:   CSS overlay (legacy, kept for non-Windows)
@@ -35,6 +35,7 @@ export const PANEL_LABELS: Record<PanelId, string> = {
 	jobs: 'Jobs',
 	network: 'Network',
 	variables: 'Variables',
+	toolkit: '🛠 Toolkit',
 };
 
 const STORAGE_KEY = 'ironbullet_dock_layout_v2';
@@ -47,6 +48,7 @@ const DEFAULT_PANELS: PanelConfig[] = [
 	{ id: 'network',  zone: 'bottom', order: 4 },
 	{ id: 'variables', zone: 'bottom', order: 5 },
 	{ id: 'inspector', zone: 'bottom', order: 6 },
+	{ id: 'toolkit',   zone: 'bottom', order: 7 },
 ];
 
 function loadFromStorage(): PanelConfig[] {

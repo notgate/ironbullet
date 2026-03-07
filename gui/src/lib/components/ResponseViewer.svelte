@@ -537,9 +537,15 @@
 			e.preventDefault();
 			e.stopPropagation();
 			toggleSearch();
-		} else if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !window.getSelection()?.toString()) {
-			e.preventDefault();
-			copyCurrentTab();
+		} else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+			// Only intercept Ctrl+C when there is NO highlighted text selection.
+			// If the user has selected text with the mouse, let the browser copy it natively.
+			const sel = window.getSelection()?.toString() ?? '';
+			if (!sel) {
+				e.preventDefault();
+				copyCurrentTab();
+			}
+			// else: fall through — browser copies highlighted text naturally
 		}
 	}
 </script>
@@ -547,6 +553,7 @@
 {#if (nativeMode || app.showResponseViewer) && hasResults}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		tabindex="-1"
 		class="{nativeMode
 			? 'flex flex-col h-screen w-screen bg-surface'
 			: 'fixed z-50 flex flex-col bg-surface border border-border shadow-2xl'}"
