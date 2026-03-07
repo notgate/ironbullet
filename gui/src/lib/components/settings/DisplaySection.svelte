@@ -16,6 +16,17 @@
 		{ value: 'Cascadia Code', label: 'Cascadia Code' },
 		{ value: 'Consolas', label: 'Consolas' },
 		{ value: 'system-ui', label: 'System Default' },
+		{ value: 'JetBrains Mono', label: 'JetBrains Mono' },
+		{ value: 'Fira Code', label: 'Fira Code' },
+		{ value: 'Source Code Pro', label: 'Source Code Pro' },
+		{ value: 'Comic Code', label: 'Comic Code' },
+		{ value: 'Courier New', label: 'Courier New' },
+	];
+
+	const FONT_WEIGHTS = [
+		{ value: '300', label: 'Light' },
+		{ value: '400', label: 'Regular' },
+		{ value: '500', label: 'Medium' },
 	];
 </script>
 
@@ -46,6 +57,18 @@
 			value={app.fontFamily}
 			onValueChange={(v) => { app.fontFamily = v; }}
 			options={FONTS}
+			class="text-[11px] w-[160px]"
+		/>
+	</div>
+{/if}
+
+{#if shouldShowSetting('display', 'Font Weight')}
+	<div class="flex items-center justify-between py-1.5">
+		<span class="text-[11px] text-muted-foreground">Font Weight</span>
+		<SkeuSelect
+			value={app.fontWeight}
+			onValueChange={(v) => { app.fontWeight = v; }}
+			options={FONT_WEIGHTS}
 			class="text-[11px] w-[160px]"
 		/>
 	</div>
