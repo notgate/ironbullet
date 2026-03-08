@@ -62,5 +62,4 @@ cd ../sidecar && go build -o reqflow-sidecar.exe
 ```
 
 ## License
-
-[MIT License](./LICENSE)
+[MIT LICENSE](./LICENSE) - see LICENSE file for details 
