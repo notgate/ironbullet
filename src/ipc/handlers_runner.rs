@@ -728,13 +728,6 @@ pub(super) fn inspect_browser_open(
             .join(format!("ib-chrome-{}", uuid::Uuid::new_v4()));
         let tmp_profile_task = tmp_profile.clone();
 
-        // Clone js_tx before moving into task so we can send a startup diagnostic
-        let js_pre = js_tx.clone();
-        let _ = js_pre.try_send({
-            let resp = IpcResponse::ok("inspector_browser_event", serde_json::json!({"type":"diagnostic","message":"inspect_browser_open handler entered, spawning capture task"}));
-            format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())
-        });
-
         let state_for_abort = state.clone();
         let capture_task = handle.spawn(async move {
             let tmp_profile = tmp_profile_task;
@@ -745,8 +738,6 @@ pub(super) fn inspect_browser_open(
                 let _ = tx.try_send(format!("window.__ipc_callback({})",
                     serde_json::to_string(&resp).unwrap_or_default()));
             }
-
-            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"capture task started"}));
 
             // Abort any prior capture session and clean up its stale Chrome
             // profile before launching. The old profile dir is locked by the
@@ -759,9 +750,7 @@ pub(super) fn inspect_browser_open(
                 s.browser_capture_profile.take()
             };
 
-            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":format!("prior session cleaned up, stale_profile={}", stale_profile.is_some())}));
             if let Some(old_dir) = stale_profile {
-                emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"sleeping 800ms for stale profile cleanup"}));
                 tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                 // Use a timeout — on Windows, remove_dir_all can hang if Chrome
                 // left file locks behind. Give it 3s max then skip.
@@ -769,11 +758,9 @@ pub(super) fn inspect_browser_open(
                     std::time::Duration::from_secs(3),
                     tokio::fs::remove_dir_all(&old_dir),
                 ).await;
-                emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"stale profile cleaned"}));
             }
 
             let raw_url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":format!("url={}", raw_url)}));
             if raw_url.is_empty() { return; }
             let url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
                 raw_url
@@ -783,7 +770,6 @@ pub(super) fn inspect_browser_open(
 
             // chrome_exe was read synchronously at handler entry (no mutex await needed)
             let chrome_exe = chrome_exe_cfg.or_else(|| super::find_chrome_executable());
-            emit_sync(&js, serde_json::json!({"type":"diagnostic","message": format!("chrome_exe resolved: {:?}", chrome_exe)}));
 
             if chrome_exe.is_none() {
                 emit_sync(&js, serde_json::json!({
@@ -856,10 +842,9 @@ pub(super) fn inspect_browser_open(
                     return;
                 }
             };
-            // Send diagnostic to frontend — shows in browser console AND as error if something goes wrong
             emit_sync(&js, serde_json::json!({
-                "type": "diagnostic",
-                "message": format!("Chrome spawned (pid={:?}), polling CDP on port {}", chrome_child.id(), cdp_port)
+                "type": "status",
+                "message": format!("Chrome started, connecting on port {}...", cdp_port)
             }));
 
             // Poll /json/version until Chrome is ready (up to 15s)

@@ -44,6 +44,7 @@
 	let browserLoading   = $state(false);
 	let launchPending    = false; // non-reactive flag to block synchronous double-fire
 	let browserError     = $state('');
+	let browserStatusMsg = $state('');
 	let chromeNotInstalled = $derived(
 		browserError.toLowerCase().includes('chrome not installed') ||
 		browserError.toLowerCase().includes('chrome') && browserError.toLowerCase().includes('install')
@@ -174,6 +175,7 @@
 			if (ev.type === 'opened')     { browserOpen = true; browserLoading = false; return; }
 			if (ev.type === 'closed')     { browserOpen = false; browserLoading = false; return; }
 			if (ev.type === 'diagnostic') { console.log('[inspector diagnostic]', ev.message); return; }
+			if (ev.type === 'status')     { browserStatusMsg = ev.message ?? ''; return; }
 
 			if (ev.type === 'request') {
 				if (capturedRequests.some(r => r.id === ev.id)) return;
@@ -266,6 +268,7 @@
 		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
 		selectedReqId = null; applyPanelOpen = false;
 		browserLoading = true;
+		browserStatusMsg = '';
 		if (loadTimerId !== null) clearTimeout(loadTimerId);
 		loadTimerId = window.setTimeout(() => {
 			loadTimerId = null;
@@ -563,7 +566,7 @@
 			</button>
 		{:else if browserLoading}
 			<button class="skeu-btn flex items-center gap-1 text-[11px] text-muted-foreground shrink-0" disabled>
-				<Loader2 size={11} class="animate-spin" />Launching…
+				<Loader2 size={11} class="animate-spin" />{browserStatusMsg || 'Launching…'}
 			</button>
 		{:else}
 			<button class="skeu-btn flex items-center gap-1 text-[11px] shrink-0" onclick={openBrowser}>
