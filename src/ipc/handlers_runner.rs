@@ -792,14 +792,36 @@ pub(super) fn inspect_browser_open(
                 }
             };
 
-            // Browser::launch does blocking I/O internally (CDP port bind + process spawn).
-            // Wrapping in spawn_blocking ensures tokio::time::timeout can actually cancel it
-            // instead of hanging indefinitely when Chrome fails to start on Windows.
+            // Browser::launch is async but performs blocking syscalls (OS process
+            // spawn + TCP connect to CDP port) that never yield to the Tokio
+            // executor. On Windows this prevents tokio::time::timeout from ever
+            // polling the timeout future, causing an indefinite hang.
+            //
+            // Fix: run Browser::launch on a dedicated OS thread with its own
+            // single-threaded Tokio runtime. The result is sent back via a oneshot
+            // channel so the main async task can apply a real async timeout.
+            let (launch_tx, launch_rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build();
+                match rt {
+                    Ok(rt) => {
+                        let result = rt.block_on(Browser::launch(config));
+                        let _ = launch_tx.send(result);
+                    }
+                    Err(e) => {
+                        // Can't send the browser error type directly, so send a
+                        // proxy error by dropping the sender (triggers Err on rx).
+                        eprintln!("[browser] failed to build runtime: {e}");
+                        drop(launch_tx);
+                    }
+                }
+            });
+
             let launch_result = tokio::time::timeout(
                 std::time::Duration::from_secs(20),
-                tokio::task::spawn_blocking(move || {
-                    tokio::runtime::Handle::current().block_on(Browser::launch(config))
-                }),
+                launch_rx,
             ).await;
 
             let (browser, mut handler) = match launch_result {
@@ -811,10 +833,10 @@ pub(super) fn inspect_browser_open(
                     }));
                     return;
                 }
-                Ok(Err(e)) => {
+                Ok(Err(_)) => {
                     emit_sync(&js, serde_json::json!({
                         "type": "error",
-                        "message": format!("Browser launch task failed: {}", e)
+                        "message": "Browser launch thread failed to initialize runtime."
                     }));
                     return;
                 }
