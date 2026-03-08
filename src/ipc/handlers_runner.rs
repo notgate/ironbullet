@@ -747,27 +747,27 @@ pub(super) fn inspect_browser_open(
                 s.browser_capture_profile.take()
             };
 
-            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"prior session cleaned up"}));
+            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":format!("prior session cleaned up, stale_profile={}", stale_profile.is_some())}));
             if let Some(old_dir) = stale_profile {
-                // Brief delay so Chrome has time to release file locks after abort.
+                emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"sleeping 800ms for stale profile cleanup"}));
                 tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                 let _ = tokio::fs::remove_dir_all(&old_dir).await;
+                emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"stale profile deleted"}));
             }
 
             let raw_url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":format!("url={}", raw_url)}));
             if raw_url.is_empty() { return; }
-            // Normalize URL — prepend https:// if no scheme present
             let url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
                 raw_url
             } else {
                 format!("https://{}", raw_url)
             };
 
-            // Pre-flight: resolve the Chrome executable before building config so
-            // we can give an actionable error immediately instead of hanging 20s.
-            // Prefer user-configured path from GuiConfig over auto-discovery.
+            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"acquiring state lock for chrome_exe"}));
             let chrome_exe = {
                 let cfg_path = { state.lock().await.config.chrome_executable_path.clone() };
+                emit_sync(&js, serde_json::json!({"type":"diagnostic","message":format!("state lock acquired, cfg_path={:?}", cfg_path)}));
                 if !cfg_path.is_empty() {
                     let p = std::path::PathBuf::from(&cfg_path);
                     if p.exists() { Some(p) } else { super::find_chrome_executable() }
