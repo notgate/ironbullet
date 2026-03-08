@@ -737,8 +737,14 @@ pub(super) fn inspect_browser_open(
                 let _ = tokio::fs::remove_dir_all(&old_dir).await;
             }
 
-            let url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if url.is_empty() { return; }
+            let raw_url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            if raw_url.is_empty() { return; }
+            // Normalize URL — prepend https:// if no scheme present
+            let url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
+                raw_url
+            } else {
+                format!("https://{}", raw_url)
+            };
 
             fn emit_sync(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
                 let resp = IpcResponse::ok("inspector_browser_event", payload);
@@ -809,15 +815,17 @@ pub(super) fn inspect_browser_open(
             let mut cmd = std::process::Command::new(&chrome_exe);
             cmd.args(&chrome_args);
 
-            // On Windows, suppress the console window that flashes behind Chrome
-            #[cfg(target_os = "windows")]
-            {
-                use std::os::windows::process::CommandExt;
-                // CREATE_NO_WINDOW = 0x08000000 — prevents a black console flash
-                cmd.creation_flags(0x08000000);
-            }
+            // Redirect stdout/stderr to null — prevents Chrome from blocking on
+            // pipe buffers filling up (especially on Windows)
+            cmd.stdout(std::process::Stdio::null());
+            cmd.stderr(std::process::Stdio::null());
+            cmd.stdin(std::process::Stdio::null());
 
-            let _chrome_child = match cmd.spawn() {
+            eprintln!("[inspector] spawning Chrome: {:?} with args: {:?}", chrome_exe, chrome_args);
+
+            // Keep chrome_child alive for the duration of the capture session.
+            // Using a non-underscore name ensures Rust doesn't drop it immediately.
+            let mut chrome_child = match cmd.spawn() {
                 Ok(child) => child,
                 Err(e) => {
                     emit_sync(&js, serde_json::json!({
@@ -827,6 +835,7 @@ pub(super) fn inspect_browser_open(
                     return;
                 }
             };
+            eprintln!("[inspector] Chrome spawned, pid={:?}, polling CDP on port {}", chrome_child.id(), cdp_port);
 
             // Poll /json/version until Chrome is ready (up to 15s)
             let version_url = format!("http://127.0.0.1:{}/json/version", cdp_port);
@@ -849,13 +858,17 @@ pub(super) fn inspect_browser_open(
                     match http_client.get(&version_url).send().await {
                         Ok(resp) => {
                             if let Ok(json) = resp.json::<serde_json::Value>().await {
+                                eprintln!("[inspector] CDP /json/version response: {}", json);
                                 if let Some(ws) = json.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) {
+                                    eprintln!("[inspector] Got WS URL: {}", ws);
                                     found = Some(ws.to_string());
                                     break;
                                 }
                             }
                         }
-                        Err(_) => {}
+                        Err(e) => {
+                            eprintln!("[inspector] CDP poll error (retrying): {}", e);
+                        }
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 }
@@ -1054,6 +1067,9 @@ pub(super) fn inspect_browser_open(
             }
 
             emit_sync(&js, serde_json::json!({ "type": "closed" }));
+
+            // Clean up Chrome process when capture session ends
+            let _ = chrome_child.kill();
         });
 
         let abort = capture_task.abort_handle();
