@@ -11,6 +11,9 @@ sidecar/reqflow-sidecar
 configs/*.rfx
 configs/wordlist/
 data/*.txt
+data/IMGS/
+data/OB2/
+data/EXAMPLES/
 data/tb_*
 data/test_*
 data/testsite_*

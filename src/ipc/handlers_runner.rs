@@ -701,13 +701,23 @@ pub(super) fn inspect_browser_open(
     };
     use futures::StreamExt;
 
+    // Read chrome_exe path synchronously with try_lock — avoids an await inside
+    // the async task that can deadlock if another handler holds the mutex.
+    // Falls back to None if the lock is contended; find_chrome_executable() below handles that.
+    let chrome_exe_from_config: Option<std::path::PathBuf> = state.try_lock()
+        .map(|s| {
+            let p = s.config.chrome_executable_path.clone();
+            if !p.is_empty() { let pb = std::path::PathBuf::from(&p); if pb.exists() { Some(pb) } else { None } } else { None }
+        })
+        .ok()
+        .flatten();
+
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(1024);
         handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
 
         let js = js_tx.clone();
-        let state2 = state.clone();
 
         // Generate the profile dir UUID here so it can be stored in AppState
         // (for cleanup on next launch) AND passed into the async task.
@@ -725,8 +735,10 @@ pub(super) fn inspect_browser_open(
             format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())
         });
 
+        let state_for_abort = state.clone();
         let capture_task = handle.spawn(async move {
             let tmp_profile = tmp_profile_task;
+            let chrome_exe_cfg = chrome_exe_from_config;
 
             fn emit_sync(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
                 let resp = IpcResponse::ok("inspector_browser_event", payload);
@@ -769,17 +781,8 @@ pub(super) fn inspect_browser_open(
                 format!("https://{}", raw_url)
             };
 
-            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"acquiring state lock for chrome_exe"}));
-            let chrome_exe = {
-                let cfg_path = { state.lock().await.config.chrome_executable_path.clone() };
-                emit_sync(&js, serde_json::json!({"type":"diagnostic","message":format!("state lock acquired, cfg_path={:?}", cfg_path)}));
-                if !cfg_path.is_empty() {
-                    let p = std::path::PathBuf::from(&cfg_path);
-                    if p.exists() { Some(p) } else { super::find_chrome_executable() }
-                } else {
-                    super::find_chrome_executable()
-                }
-            };
+            // chrome_exe was read synchronously at handler entry (no mutex await needed)
+            let chrome_exe = chrome_exe_cfg.or_else(|| super::find_chrome_executable());
             emit_sync(&js, serde_json::json!({"type":"diagnostic","message": format!("chrome_exe resolved: {:?}", chrome_exe)}));
 
             if chrome_exe.is_none() {
@@ -1101,7 +1104,7 @@ pub(super) fn inspect_browser_open(
 
         let abort = capture_task.abort_handle();
         handle.spawn(async move {
-            let mut s = state2.lock().await;
+            let mut s = state_for_abort.lock().await;
             s.browser_capture_abort = Some(abort);
             // Store the profile path so the NEXT launch can clean it up.
             s.browser_capture_profile = Some(tmp_profile);
