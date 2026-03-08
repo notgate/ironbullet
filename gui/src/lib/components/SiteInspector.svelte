@@ -255,6 +255,8 @@
 
 	function openBrowser() {
 		if (!browserUrl.trim() || browserUrl === 'https://') { browserError = 'Enter a URL first'; return; }
+		// Prevent double-fire — if already loading or open, ignore extra clicks
+		if (browserLoading || browserOpen) return;
 		browserError = '';
 		capturedRequests = [];
 		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
