@@ -694,7 +694,7 @@ pub(super) fn inspect_browser_open(
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
-    use chromiumoxide::browser::{Browser, BrowserConfig};
+    use chromiumoxide::browser::Browser;
     use chromiumoxide::cdp::browser_protocol::network::{
         EnableParams, EventRequestWillBeSent, EventResponseReceived,
         EventLoadingFinished, GetRequestPostDataParams, GetResponseBodyParams,
@@ -766,84 +766,127 @@ pub(super) fn inspect_browser_open(
                 return;
             }
 
-            let mut config_builder = BrowserConfig::builder()
-                .with_head()
-                // Speed up startup by disabling heavy Chrome features
-                .arg("--no-first-run")
-                .arg("--no-default-browser-check")
-                .arg("--disable-sync")
-                .arg("--disable-translate")
-                .arg("--disable-extensions")
-                .arg("--disable-component-extensions-with-background-pages")
-                .arg("--disable-background-networking")
-                .arg("--disable-device-discovery-notifications")
-                .arg("--disable-client-side-phishing-detection")
-                .arg("--no-sandbox")
-                .arg(format!("--user-data-dir={}", tmp_profile.display()));
+            // ── Chrome launch via manual spawn + CDP HTTP poll ──────────────────
+            // Browser::launch reads Chrome's stderr for the WS URL, which is
+            // unreliable on Windows (Chrome may not flush stderr, or may write
+            // to stdout instead). We instead:
+            //   1. Pick a free port
+            //   2. Spawn Chrome via std::process::Command (synchronous, reliable)
+            //   3. Poll http://localhost:{port}/json/version until Chrome responds
+            //   4. Connect via Browser::connect(ws_url) — pure async, no blocking
+            //
+            // This mirrors how Playwright launches Chrome and is far more reliable
+            // across platforms.
 
-            if let Some(exe) = chrome_exe {
-                config_builder = config_builder.chrome_executable(exe);
+            // Pick a free port by binding to :0 and reading the assigned port.
+            let cdp_port = {
+                match std::net::TcpListener::bind("127.0.0.1:0") {
+                    Ok(l) => l.local_addr().map(|a| a.port()).unwrap_or(9222),
+                    Err(_) => 9222,
+                }
+            };
+
+            let chrome_exe = chrome_exe.unwrap(); // already checked above
+            let profile_dir = tmp_profile.clone();
+            let mut chrome_args = vec![
+                format!("--remote-debugging-port={}", cdp_port),
+                format!("--user-data-dir={}", profile_dir.display()),
+                "--no-first-run".to_string(),
+                "--no-default-browser-check".to_string(),
+                "--disable-sync".to_string(),
+                "--disable-translate".to_string(),
+                "--disable-extensions".to_string(),
+                "--disable-component-extensions-with-background-pages".to_string(),
+                "--disable-background-networking".to_string(),
+                "--disable-backgrounding-occluded-windows".to_string(),
+                "--disable-device-discovery-notifications".to_string(),
+                "--disable-client-side-phishing-detection".to_string(),
+                "--no-sandbox".to_string(),
+            ];
+            // Navigate to the target URL directly on launch
+            chrome_args.push(url.clone());
+
+            let mut cmd = std::process::Command::new(&chrome_exe);
+            cmd.args(&chrome_args);
+
+            // On Windows, suppress the console window that flashes behind Chrome
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                // CREATE_NO_WINDOW = 0x08000000 — prevents a black console flash
+                cmd.creation_flags(0x08000000);
             }
-            let config = match config_builder.build() {
-                Ok(c) => c,
+
+            let _chrome_child = match cmd.spawn() {
+                Ok(child) => child,
                 Err(e) => {
-                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Browser config error: {}", e) }));
+                    emit_sync(&js, serde_json::json!({
+                        "type": "error",
+                        "message": format!("Failed to spawn Chrome: {}", e)
+                    }));
                     return;
                 }
             };
 
-            // Browser::launch is async but performs blocking syscalls (OS process
-            // spawn + TCP connect to CDP port) that never yield to the Tokio
-            // executor. On Windows this prevents tokio::time::timeout from ever
-            // polling the timeout future, causing an indefinite hang.
-            //
-            // Fix: run Browser::launch on a dedicated OS thread with its own
-            // single-threaded Tokio runtime. The result is sent back via a oneshot
-            // channel so the main async task can apply a real async timeout.
-            let (launch_tx, launch_rx) = tokio::sync::oneshot::channel();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build();
-                match rt {
-                    Ok(rt) => {
-                        let result = rt.block_on(Browser::launch(config));
-                        let _ = launch_tx.send(result);
+            // Poll /json/version until Chrome is ready (up to 15s)
+            let version_url = format!("http://127.0.0.1:{}/json/version", cdp_port);
+            let http_client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+                .unwrap_or_default();
+
+            let ws_url: String = {
+                let mut found = None;
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
+                loop {
+                    if tokio::time::Instant::now() > deadline {
+                        emit_sync(&js, serde_json::json!({
+                            "type": "error",
+                            "message": "Chrome started but did not open its debug port within 15 seconds."
+                        }));
+                        return;
                     }
-                    Err(e) => {
-                        // Can't send the browser error type directly, so send a
-                        // proxy error by dropping the sender (triggers Err on rx).
-                        eprintln!("[browser] failed to build runtime: {e}");
-                        drop(launch_tx);
+                    match http_client.get(&version_url).send().await {
+                        Ok(resp) => {
+                            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                                if let Some(ws) = json.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) {
+                                    found = Some(ws.to_string());
+                                    break;
+                                }
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+                match found {
+                    Some(ws) => ws,
+                    None => {
+                        emit_sync(&js, serde_json::json!({ "type": "error", "message": "Chrome debug port ready but no WS URL returned." }));
+                        return;
                     }
                 }
-            });
+            };
 
-            let launch_result = tokio::time::timeout(
-                std::time::Duration::from_secs(20),
-                launch_rx,
+            // Connect to already-running Chrome via WS URL — pure async, no blocking
+            let connect_result = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                Browser::connect(ws_url),
             ).await;
 
-            let (browser, mut handler) = match launch_result {
-                Ok(Ok(Ok(pair))) => pair,
-                Ok(Ok(Err(e))) => {
+            let (browser, mut handler) = match connect_result {
+                Ok(Ok(pair)) => pair,
+                Ok(Err(e)) => {
                     emit_sync(&js, serde_json::json!({
                         "type": "error",
-                        "message": format!("Chrome failed to start: {}", e)
-                    }));
-                    return;
-                }
-                Ok(Err(_)) => {
-                    emit_sync(&js, serde_json::json!({
-                        "type": "error",
-                        "message": "Browser launch thread failed to initialize runtime."
+                        "message": format!("CDP connect failed: {}", e)
                     }));
                     return;
                 }
                 Err(_) => {
                     emit_sync(&js, serde_json::json!({
                         "type": "error",
-                        "message": "Chrome did not start within 20 seconds. It may be blocked by antivirus or another instance is already running."
+                        "message": "CDP websocket connect timed out (10s)."
                     }));
                     return;
                 }
