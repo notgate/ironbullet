@@ -29,12 +29,17 @@ impl ExecutionContext {
         let config = builder.build()
             .map_err(|e| crate::error::AppError::Pipeline(format!("Browser config error: {}", e)))?;
 
-        // Browser::launch does blocking I/O (CDP port bind + process spawn).
-        // spawn_blocking ensures the async runtime stays responsive during launch.
-        let (browser, mut handler) = tokio::task::spawn_blocking(move || {
-            tokio::runtime::Handle::current().block_on(Browser::launch(config))
-        }).await
-            .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch task error: {}", e)))?
+        // Browser::launch performs blocking syscalls (process spawn + TCP connect)
+        // that never yield to Tokio. Run it on a dedicated OS thread with its own
+        // runtime so the caller's async context stays unblocked.
+        let (launch_tx, launch_rx) = tokio::sync::oneshot::channel();
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                let _ = launch_tx.send(rt.block_on(Browser::launch(config)));
+            }
+        });
+        let (browser, mut handler) = launch_rx.await
+            .map_err(|_| crate::error::AppError::Pipeline("Browser launch thread died".to_string()))?
             .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch failed: {}", e)))?;
 
         // Spawn CDP event handler in background -- must NOT break on errors
