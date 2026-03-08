@@ -775,6 +775,8 @@ pub(super) fn inspect_browser_open(
                     super::find_chrome_executable()
                 }
             };
+            emit_sync(&js, serde_json::json!({"type":"diagnostic","message": format!("chrome_exe resolved: {:?}", chrome_exe)}));
+
             if chrome_exe.is_none() {
                 emit_sync(&js, serde_json::json!({
                     "type": "error",
