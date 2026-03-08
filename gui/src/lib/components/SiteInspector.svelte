@@ -42,6 +42,7 @@
 	let browserUrl       = $state((() => { try { return localStorage.getItem('ib_inspector_url') || 'https://'; } catch { return 'https://'; } })());
 	let browserOpen      = $state(false);
 	let browserLoading   = $state(false);
+	let launchPending    = false; // non-reactive flag to block synchronous double-fire
 	let browserError     = $state('');
 	let chromeNotInstalled = $derived(
 		browserError.toLowerCase().includes('chrome not installed') ||
@@ -256,8 +257,10 @@
 
 	function openBrowser() {
 		if (!browserUrl.trim() || browserUrl === 'https://') { browserError = 'Enter a URL first'; return; }
-		// Prevent double-fire — if already loading or open, ignore extra clicks
-		if (browserLoading || browserOpen) return;
+		// Prevent double-fire — launchPending is a non-reactive flag so it blocks
+		// synchronous re-entries before Svelte has a chance to re-render browserLoading=true
+		if (launchPending || browserLoading || browserOpen) return;
+		launchPending = true;
 		browserError = '';
 		capturedRequests = [];
 		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
@@ -266,12 +269,15 @@
 		if (loadTimerId !== null) clearTimeout(loadTimerId);
 		loadTimerId = window.setTimeout(() => {
 			loadTimerId = null;
+			launchPending = false;
 			if (browserLoading && !browserOpen) {
 				browserError = 'Chrome did not respond within 25 seconds. Try again.';
 				browserLoading = false;
 			}
 		}, 25000);
 		send('inspect_browser_open', { url: browserUrl.trim() });
+		// Reset launchPending after a tick so legitimate retries after errors work
+		setTimeout(() => { launchPending = false; }, 500);
 	}
 
 	function closeBrowser() {
