@@ -1,10 +1,24 @@
 <script lang="ts">
 	import type { PanelId } from '$lib/state/dock.svelte';
-	import { dock, PANEL_LABELS } from '$lib/state/dock.svelte';
+	import { dock, PANEL_LABELS, PANEL_ICONS } from '$lib/state/dock.svelte';
 	import X from '@lucide/svelte/icons/x';
 	import Minus from '@lucide/svelte/icons/minus';
 	import ArrowDownToLine from '@lucide/svelte/icons/arrow-down-to-line';
 	import GripHorizontal from '@lucide/svelte/icons/grip-horizontal';
+	import Search     from '@lucide/svelte/icons/search';
+	import Bug        from '@lucide/svelte/icons/bug';
+	import FileCode   from '@lucide/svelte/icons/file-code';
+	import Database   from '@lucide/svelte/icons/database';
+	import Cpu        from '@lucide/svelte/icons/cpu';
+	import Globe      from '@lucide/svelte/icons/globe';
+	import Braces     from '@lucide/svelte/icons/braces';
+	import Wrench     from '@lucide/svelte/icons/wrench';
+
+	const ICON_MAP: Record<string, any> = {
+		'search': Search, 'bug': Bug, 'file-code': FileCode,
+		'database': Database, 'cpu': Cpu, 'globe': Globe,
+		'braces': Braces, 'wrench': Wrench,
+	};
 
 	let { id, children }: { id: PanelId; children: import('svelte').Snippet } = $props();
 
@@ -76,6 +90,9 @@
 		onmousedown={onHeaderMouseDown}
 	>
 		<GripHorizontal size={12} class="text-muted-foreground/50 shrink-0" />
+		{#if ICON_MAP[PANEL_ICONS[id]]}
+			<svelte:component this={ICON_MAP[PANEL_ICONS[id]]} size={11} class="text-muted-foreground shrink-0" />
+		{/if}
 		<span class="text-[11px] font-medium flex-1 truncate">{PANEL_LABELS[id]}</span>
 		<button
 			class="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"

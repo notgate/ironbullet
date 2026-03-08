@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
 	import type { PanelId, DockZone } from '$lib/state/dock.svelte';
-	import { dock, PANEL_LABELS } from '$lib/state/dock.svelte';
+	import { dock, PANEL_LABELS, PANEL_ICONS } from '$lib/state/dock.svelte';
 	import { send } from '$lib/ipc';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -13,6 +13,25 @@
 	import MoveRight from '@lucide/svelte/icons/move-right';
 	import MoveLeft from '@lucide/svelte/icons/move-left';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import Search     from '@lucide/svelte/icons/search';
+	import Bug        from '@lucide/svelte/icons/bug';
+	import FileCode   from '@lucide/svelte/icons/file-code';
+	import Database   from '@lucide/svelte/icons/database';
+	import Cpu        from '@lucide/svelte/icons/cpu';
+	import Globe      from '@lucide/svelte/icons/globe';
+	import Braces     from '@lucide/svelte/icons/braces';
+	import Wrench     from '@lucide/svelte/icons/wrench';
+
+	const ICON_MAP: Record<string, any> = {
+		'search':    Search,
+		'bug':       Bug,
+		'file-code': FileCode,
+		'database':  Database,
+		'cpu':       Cpu,
+		'globe':     Globe,
+		'braces':    Braces,
+		'wrench':    Wrench,
+	};
 
 	let {
 		zone,
@@ -118,6 +137,9 @@
 					onclick={() => { if (collapsed) collapsed = false; activeTab = panel.id; }}
 					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { activeTab = panel.id; e.preventDefault(); } }}
 				>
+					{#if ICON_MAP[PANEL_ICONS[panel.id]]}
+						<svelte:component this={ICON_MAP[PANEL_ICONS[panel.id]]} size={11} class="shrink-0 opacity-70" />
+					{/if}
 					{PANEL_LABELS[panel.id]}
 				</div>
 			{/each}

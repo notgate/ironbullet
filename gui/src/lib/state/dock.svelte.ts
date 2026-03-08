@@ -35,7 +35,19 @@ export const PANEL_LABELS: Record<PanelId, string> = {
 	jobs: 'Jobs',
 	network: 'Network',
 	variables: 'Variables',
-	toolkit: '🛠 Toolkit',
+	toolkit: 'Toolkit',
+};
+
+// Lucide icon names for each panel tab (imported by DockZoneTabs)
+export const PANEL_ICONS: Record<PanelId, string> = {
+	inspector:  'search',
+	debugger:   'bug',
+	code:       'file-code',
+	data:       'database',
+	jobs:       'cpu',
+	network:    'globe',
+	variables:  'braces',
+	toolkit:    'wrench',
 };
 
 const STORAGE_KEY = 'ironbullet_dock_layout_v2';
