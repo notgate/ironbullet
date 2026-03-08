@@ -718,8 +718,23 @@ pub(super) fn inspect_browser_open(
             .join(format!("ib-chrome-{}", uuid::Uuid::new_v4()));
         let tmp_profile_task = tmp_profile.clone();
 
+        // Clone js_tx before moving into task so we can send a startup diagnostic
+        let js_pre = js_tx.clone();
+        let _ = js_pre.try_send({
+            let resp = IpcResponse::ok("inspector_browser_event", serde_json::json!({"type":"diagnostic","message":"inspect_browser_open handler entered, spawning capture task"}));
+            format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default())
+        });
+
         let capture_task = handle.spawn(async move {
             let tmp_profile = tmp_profile_task;
+
+            fn emit_sync(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
+                let resp = IpcResponse::ok("inspector_browser_event", payload);
+                let _ = tx.try_send(format!("window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()));
+            }
+
+            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"capture task started"}));
 
             // Abort any prior capture session and clean up its stale Chrome
             // profile before launching. The old profile dir is locked by the
@@ -731,6 +746,8 @@ pub(super) fn inspect_browser_open(
                 if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
                 s.browser_capture_profile.take()
             };
+
+            emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"prior session cleaned up"}));
             if let Some(old_dir) = stale_profile {
                 // Brief delay so Chrome has time to release file locks after abort.
                 tokio::time::sleep(std::time::Duration::from_millis(800)).await;
@@ -745,12 +762,6 @@ pub(super) fn inspect_browser_open(
             } else {
                 format!("https://{}", raw_url)
             };
-
-            fn emit_sync(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
-                let resp = IpcResponse::ok("inspector_browser_event", payload);
-                let _ = tx.try_send(format!("window.__ipc_callback({})",
-                    serde_json::to_string(&resp).unwrap_or_default()));
-            }
 
             // Pre-flight: resolve the Chrome executable before building config so
             // we can give an actionable error immediately instead of hanging 20s.
