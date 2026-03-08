@@ -28,13 +28,13 @@ export interface PanelConfig {
 }
 
 export const PANEL_LABELS: Record<PanelId, string> = {
-	inspector: 'Inspect',
-	debugger: 'Debugger',
-	code: 'Code View',
-	data: 'Data / Proxy',
-	jobs: 'Jobs',
-	network: 'Network',
-	variables: 'Variables',
+	inspector: '🔍 Inspect',
+	debugger: '🐛 Debugger',
+	code: '📄 Code View',
+	data: '📦 Data / Proxy',
+	jobs: '⚙️ Jobs',
+	network: '🌐 Network',
+	variables: '📋 Variables',
 	toolkit: '🛠 Toolkit',
 };
 
