@@ -751,8 +751,13 @@ pub(super) fn inspect_browser_open(
             if let Some(old_dir) = stale_profile {
                 emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"sleeping 800ms for stale profile cleanup"}));
                 tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-                let _ = tokio::fs::remove_dir_all(&old_dir).await;
-                emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"stale profile deleted"}));
+                // Use a timeout — on Windows, remove_dir_all can hang if Chrome
+                // left file locks behind. Give it 3s max then skip.
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(3),
+                    tokio::fs::remove_dir_all(&old_dir),
+                ).await;
+                emit_sync(&js, serde_json::json!({"type":"diagnostic","message":"stale profile cleaned"}));
             }
 
             let raw_url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();

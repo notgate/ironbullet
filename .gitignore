@@ -6,3 +6,13 @@ gui/.svelte-kit/
 sidecar/go.sum
 
 sidecar/reqflow-sidecar
+
+# User data / test files
+configs/*.rfx
+configs/wordlist/
+data/*.txt
+data/tb_*
+data/test_*
+data/testsite_*
+results/
+UI_DEBUG_REPORT.md

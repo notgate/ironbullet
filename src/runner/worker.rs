@@ -283,7 +283,9 @@ pub(crate) async fn run_worker(
                     });
                 }
             }
-            _ => {
+            BotStatus::None => {
+                // No KeyCheck block ran or no condition matched — treat as Fail.
+                // This prevents 0/0/0 counters when a config has no outcome blocks.
                 if result.is_err() {
                     stats.errors.fetch_add(1, Ordering::Relaxed);
                     let err_msg = result.err().map(|e| e.to_string());
@@ -313,11 +315,13 @@ pub(crate) async fn run_worker(
                         });
                     }
                 } else {
+                    // Result succeeded but no KeyCheck matched — count as Fail
+                    stats.fails.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut feed) = result_feed.try_lock() {
                         if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
                         feed.push_back(ResultEntry {
                             data_line: data_line.clone(),
-                            status: "NONE".into(),
+                            status: "FAIL".into(),
                             proxy: proxy.clone(),
                             captures: Default::default(),
                             error: None,

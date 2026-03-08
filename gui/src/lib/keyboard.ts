@@ -53,7 +53,7 @@ export function createKeydownHandler(
 			e.preventDefault();
 			selectAllBlocks();
 		}
-		else if (e.ctrlKey && e.key === 'c' && app.selectedBlockIds.length > 0) {
+		else if (e.ctrlKey && e.key === 'c' && app.selectedBlockIds.length > 0 && !window.getSelection()?.toString()) {
 			e.preventDefault();
 			const selected = app.pipeline.blocks.filter(b => app.selectedBlockIds.includes(b.id));
 			setClipboard(JSON.parse(JSON.stringify(selected)));

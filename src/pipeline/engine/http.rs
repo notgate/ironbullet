@@ -152,11 +152,20 @@ impl ExecutionContext {
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
                 sidecar_tx.send((sidecar_req, resp_tx)).await
                     .map_err(|_| crate::error::AppError::Sidecar(
-                        "Failed to send request to sidecar".into()
+                        "Sidecar channel closed — is reqflow-sidecar running next to the executable?".into()
                     ))?;
-                resp_rx.await
+                // Wrap with a timeout matching the block's own timeout_ms so a crashed
+                // or unresponsive sidecar fails fast instead of hanging indefinitely.
+                let timeout_dur = std::time::Duration::from_millis(
+                    (settings.timeout_ms as u64).max(5_000)
+                );
+                tokio::time::timeout(timeout_dur, resp_rx)
+                    .await
                     .map_err(|_| crate::error::AppError::Sidecar(
-                        "Sidecar response channel closed".into()
+                        "Sidecar request timed out — reqflow-sidecar may have crashed or is not responding".into()
+                    ))?
+                    .map_err(|_| crate::error::AppError::Sidecar(
+                        "Sidecar response channel closed — reqflow-sidecar process may have exited".into()
                     ))?
             }
         };

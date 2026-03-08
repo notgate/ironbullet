@@ -420,9 +420,13 @@ pub fn handle_ipc_cmd(
                 .to_string();
             if !url.is_empty() {
                 #[cfg(target_os = "windows")]
-                let _ = std::process::Command::new("cmd")
-                    .args(["/c", "start", "", &url])
-                    .spawn();
+                {
+                    use std::os::windows::process::CommandExt;
+                    let _ = std::process::Command::new("cmd")
+                        .args(["/c", "start", "", &url])
+                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                        .spawn();
+                }
                 #[cfg(target_os = "macos")]
                 let _ = std::process::Command::new("open").arg(&url).spawn();
                 #[cfg(target_os = "linux")]
@@ -475,9 +479,16 @@ fn find_chrome_executable() -> Option<std::path::PathBuf> {
             let p = std::path::Path::new(path);
             if p.exists() { return Some(p.to_path_buf()); }
         }
-        // PATH fallback on Windows
+        // PATH fallback on Windows — use CREATE_NO_WINDOW to suppress console flash
         for name in &["chrome.exe", "chromium.exe"] {
-            if let Ok(out) = std::process::Command::new("where").arg(name).output() {
+            #[cfg(target_os = "windows")]
+            let result = {
+                use std::os::windows::process::CommandExt;
+                std::process::Command::new("where").arg(name).creation_flags(0x08000000).output()
+            };
+            #[cfg(not(target_os = "windows"))]
+            let result = std::process::Command::new("where").arg(name).output();
+            if let Ok(out) = result {
                 if out.status.success() {
                     let s = String::from_utf8_lossy(&out.stdout);
                     if let Some(first) = s.lines().next() {
