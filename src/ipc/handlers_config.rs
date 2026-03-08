@@ -65,30 +65,37 @@ pub(super) fn save_config(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let mut s = state.lock().await;
-            use ironbullet::plugin::manager::PluginManager;
-            // Merge incoming fields into existing config
-            if let Some(v) = data.get("zoom").and_then(|v| v.as_u64()) { s.config.zoom = v as u32; }
-            if let Some(v) = data.get("font_size").and_then(|v| v.as_u64()) { s.config.font_size = v as u32; }
-            if let Some(v) = data.get("font_family").and_then(|v| v.as_str()) { s.config.font_family = v.to_string(); }
-            if let Some(v) = data.get("font_weight").and_then(|v| v.as_str()) { s.config.font_weight = v.to_string(); }
-            if let Some(v) = data.get("default_threads").and_then(|v| v.as_u64()) { s.config.default_threads = v as u32; }
-            if let Some(v) = data.get("left_panel_width").and_then(|v| v.as_u64()) { s.config.left_panel_width = v as u32; }
-            if let Some(v) = data.get("bottom_panel_height").and_then(|v| v.as_u64()) { s.config.bottom_panel_height = v as u32; }
-            if let Some(v) = data.get("show_block_palette").and_then(|v| v.as_bool()) { s.config.show_block_palette = v; }
-            if let Some(v) = data.get("collections_path").and_then(|v| v.as_str()) { s.config.collections_path = v.to_string(); }
-            if let Some(v) = data.get("default_wordlist_path").and_then(|v| v.as_str()) { s.config.default_wordlist_path = v.to_string(); }
-            if let Some(v) = data.get("default_proxy_path").and_then(|v| v.as_str()) { s.config.default_proxy_path = v.to_string(); }
-            if let Some(v) = data.get("plugins_path").and_then(|v| v.as_str()) {
-                s.config.plugins_path = v.to_string();
-                let mut pm = PluginManager::new();
-                pm.scan_directory(v);
-                s.plugin_manager = Arc::new(pm);
-            }
-            if let Some(v) = data.get("chrome_executable_path").and_then(|v| v.as_str()) {
-                s.config.chrome_executable_path = v.to_string();
-            }
-            config::save_config(&s.config);
+            // Acquire lock, mutate config, clone it, then release lock BEFORE
+            // writing to disk. This prevents blocking other tasks (e.g. browser
+            // capture) that need the lock while we do slow disk I/O.
+            let cfg_snapshot = {
+                let mut s = state.lock().await;
+                use ironbullet::plugin::manager::PluginManager;
+                if let Some(v) = data.get("zoom").and_then(|v| v.as_u64()) { s.config.zoom = v as u32; }
+                if let Some(v) = data.get("font_size").and_then(|v| v.as_u64()) { s.config.font_size = v as u32; }
+                if let Some(v) = data.get("font_family").and_then(|v| v.as_str()) { s.config.font_family = v.to_string(); }
+                if let Some(v) = data.get("font_weight").and_then(|v| v.as_str()) { s.config.font_weight = v.to_string(); }
+                if let Some(v) = data.get("default_threads").and_then(|v| v.as_u64()) { s.config.default_threads = v as u32; }
+                if let Some(v) = data.get("left_panel_width").and_then(|v| v.as_u64()) { s.config.left_panel_width = v as u32; }
+                if let Some(v) = data.get("bottom_panel_height").and_then(|v| v.as_u64()) { s.config.bottom_panel_height = v as u32; }
+                if let Some(v) = data.get("show_block_palette").and_then(|v| v.as_bool()) { s.config.show_block_palette = v; }
+                if let Some(v) = data.get("collections_path").and_then(|v| v.as_str()) { s.config.collections_path = v.to_string(); }
+                if let Some(v) = data.get("default_wordlist_path").and_then(|v| v.as_str()) { s.config.default_wordlist_path = v.to_string(); }
+                if let Some(v) = data.get("default_proxy_path").and_then(|v| v.as_str()) { s.config.default_proxy_path = v.to_string(); }
+                if let Some(v) = data.get("plugins_path").and_then(|v| v.as_str()) {
+                    s.config.plugins_path = v.to_string();
+                    let mut pm = PluginManager::new();
+                    pm.scan_directory(v);
+                    s.plugin_manager = Arc::new(pm);
+                }
+                if let Some(v) = data.get("chrome_executable_path").and_then(|v| v.as_str()) {
+                    s.config.chrome_executable_path = v.to_string();
+                }
+                s.config.clone()
+                // lock released here
+            };
+            // Write to disk outside the lock
+            config::save_config(&cfg_snapshot);
             let resp = IpcResponse::ok("config_saved", serde_json::json!({}));
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
         });
