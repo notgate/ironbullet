@@ -169,9 +169,10 @@
 			if (ev.type === 'error' || ev.type === 'opened' || ev.type === 'closed') {
 				if (loadTimerId !== null) { clearTimeout(loadTimerId); loadTimerId = null; }
 			}
-			if (ev.type === 'error')  { browserError = ev.message ?? 'Unknown error'; browserOpen = false; browserLoading = false; return; }
-			if (ev.type === 'opened') { browserOpen = true; browserLoading = false; return; }
-			if (ev.type === 'closed') { browserOpen = false; browserLoading = false; return; }
+			if (ev.type === 'error')      { browserError = ev.message ?? 'Unknown error'; browserOpen = false; browserLoading = false; return; }
+			if (ev.type === 'opened')     { browserOpen = true; browserLoading = false; return; }
+			if (ev.type === 'closed')     { browserOpen = false; browserLoading = false; return; }
+			if (ev.type === 'diagnostic') { console.log('[inspector diagnostic]', ev.message); return; }
 
 			if (ev.type === 'request') {
 				if (capturedRequests.some(r => r.id === ev.id)) return;

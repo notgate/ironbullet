@@ -830,12 +830,16 @@ pub(super) fn inspect_browser_open(
                 Err(e) => {
                     emit_sync(&js, serde_json::json!({
                         "type": "error",
-                        "message": format!("Failed to spawn Chrome: {}", e)
+                        "message": format!("Failed to spawn Chrome process: {}\n\nChrome path: {:?}\n\nMake sure Chrome is installed and the path is set correctly in Settings → Paths.", e, chrome_exe)
                     }));
                     return;
                 }
             };
-            eprintln!("[inspector] Chrome spawned, pid={:?}, polling CDP on port {}", chrome_child.id(), cdp_port);
+            // Send diagnostic to frontend — shows in browser console AND as error if something goes wrong
+            emit_sync(&js, serde_json::json!({
+                "type": "diagnostic",
+                "message": format!("Chrome spawned (pid={:?}), polling CDP on port {}", chrome_child.id(), cdp_port)
+            }));
 
             // Poll /json/version until Chrome is ready (up to 15s)
             let version_url = format!("http://127.0.0.1:{}/json/version", cdp_port);
@@ -858,17 +862,22 @@ pub(super) fn inspect_browser_open(
                     match http_client.get(&version_url).send().await {
                         Ok(resp) => {
                             if let Ok(json) = resp.json::<serde_json::Value>().await {
-                                eprintln!("[inspector] CDP /json/version response: {}", json);
                                 if let Some(ws) = json.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) {
-                                    eprintln!("[inspector] Got WS URL: {}", ws);
                                     found = Some(ws.to_string());
                                     break;
                                 }
                             }
                         }
-                        Err(e) => {
-                            eprintln!("[inspector] CDP poll error (retrying): {}", e);
-                        }
+                        Err(_) => { /* Chrome not ready yet, keep polling */ }
+                    }
+
+                    // Every 3 seconds emit a diagnostic so the user sees progress
+                    let elapsed = tokio::time::Instant::now().duration_since(deadline - std::time::Duration::from_secs(15));
+                    if elapsed.as_millis() % 3000 < 250 {
+                        emit_sync(&js, serde_json::json!({
+                            "type": "diagnostic",
+                            "message": format!("Waiting for Chrome CDP on port {} ({:.0}s elapsed)...", cdp_port, elapsed.as_secs_f32())
+                        }));
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 }
