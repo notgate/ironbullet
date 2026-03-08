@@ -792,15 +792,29 @@ pub(super) fn inspect_browser_open(
                 }
             };
 
-            let (browser, mut handler) = match tokio::time::timeout(
+            // Browser::launch does blocking I/O internally (CDP port bind + process spawn).
+            // Wrapping in spawn_blocking ensures tokio::time::timeout can actually cancel it
+            // instead of hanging indefinitely when Chrome fails to start on Windows.
+            let launch_result = tokio::time::timeout(
                 std::time::Duration::from_secs(20),
-                Browser::launch(config),
-            ).await {
-                Ok(Ok(pair)) => pair,
-                Ok(Err(e)) => {
+                tokio::task::spawn_blocking(move || {
+                    tokio::runtime::Handle::current().block_on(Browser::launch(config))
+                }),
+            ).await;
+
+            let (browser, mut handler) = match launch_result {
+                Ok(Ok(Ok(pair))) => pair,
+                Ok(Ok(Err(e))) => {
                     emit_sync(&js, serde_json::json!({
                         "type": "error",
                         "message": format!("Chrome failed to start: {}", e)
+                    }));
+                    return;
+                }
+                Ok(Err(e)) => {
+                    emit_sync(&js, serde_json::json!({
+                        "type": "error",
+                        "message": format!("Browser launch task failed: {}", e)
                     }));
                     return;
                 }

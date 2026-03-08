@@ -29,7 +29,12 @@ impl ExecutionContext {
         let config = builder.build()
             .map_err(|e| crate::error::AppError::Pipeline(format!("Browser config error: {}", e)))?;
 
-        let (browser, mut handler) = Browser::launch(config).await
+        // Browser::launch does blocking I/O (CDP port bind + process spawn).
+        // spawn_blocking ensures the async runtime stays responsive during launch.
+        let (browser, mut handler) = tokio::task::spawn_blocking(move || {
+            tokio::runtime::Handle::current().block_on(Browser::launch(config))
+        }).await
+            .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch task error: {}", e)))?
             .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch failed: {}", e)))?;
 
         // Spawn CDP event handler in background -- must NOT break on errors
