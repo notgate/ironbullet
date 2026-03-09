@@ -790,21 +790,40 @@ pub(super) fn inspect_browser_open(
 
         // Launch Chrome with proxy + isolated profile
         let profile_dir = std::env::temp_dir().join(format!("ib-chrome-{}", uuid::Uuid::new_v4()));
+
+        // Write CA cert into the profile as a Chrome policy so it's trusted.
+        // Chrome reads Policies/managed/ca_certs.json on startup from the profile dir.
+        // Also write the PEM so certutil can be used if available.
+        let _ = tokio::fs::create_dir_all(profile_dir.join("Default")).await;
+        let ca_cert_path = profile_dir.join("ib-ca.pem");
+        let _ = tokio::fs::write(&ca_cert_path, ca.cert_pem.as_bytes()).await;
+
+        // Compute SPKI SHA-256 fingerprint for --ignore-certificate-errors-spki-list
+        // The SPKI hash is base64(sha256(SubjectPublicKeyInfo DER bytes)).
+        let spki_hash = compute_ca_spki_hash(&ca.cert_pem);
+
         let chrome_exe = chrome_exe.unwrap();
-        let mut cmd = std::process::Command::new(&chrome_exe);
-        cmd.args([
+        let mut chrome_args = vec![
             format!("--proxy-server=http://127.0.0.1:{}", proxy_port),
-            "--ignore-certificate-errors".to_string(),
-            "--ignore-certificate-errors-spki-list".to_string(),
             format!("--user-data-dir={}", profile_dir.display()),
             "--no-first-run".to_string(),
             "--no-default-browser-check".to_string(),
             "--disable-sync".to_string(),
             "--disable-extensions".to_string(),
             "--disable-translate".to_string(),
+            "--disable-background-networking".to_string(),
             "--no-sandbox".to_string(),
-            url.clone(),
-        ]);
+        ];
+        // Add SPKI hash if we could compute it, otherwise fall back to blanket ignore
+        if let Some(hash) = spki_hash {
+            chrome_args.push(format!("--ignore-certificate-errors-spki-list={}", hash));
+        } else {
+            chrome_args.push("--ignore-certificate-errors".to_string());
+        }
+        chrome_args.push(url.clone());
+
+        let mut cmd = std::process::Command::new(&chrome_exe);
+        cmd.args(&chrome_args);
         cmd.stdout(std::process::Stdio::null());
         cmd.stderr(std::process::Stdio::null());
         cmd.stdin(std::process::Stdio::null());
@@ -1009,5 +1028,100 @@ pub(super) fn inspect_proxy_stop(
             if let Some(h) = s.inspect_proxy_abort.take() { h.abort(); }
             s.inspect_proxy_port = None;
         });
+    }
+}
+
+/// Compute SHA-256 of the SubjectPublicKeyInfo from a PEM certificate,
+/// base64-encoded — this is what Chrome's --ignore-certificate-errors-spki-list expects.
+fn compute_ca_spki_hash(cert_pem: &str) -> Option<String> {
+    // Decode PEM to DER
+    let der = rustls_pemfile::certs(&mut cert_pem.as_bytes())
+        .next()?
+        .ok()?;
+    let der_bytes: &[u8] = &der;
+
+    // Parse DER: Certificate is SEQUENCE { tbsCertificate SEQUENCE { ... subjectPublicKeyInfo ... } }
+    // We need to find and extract the SubjectPublicKeyInfo bytes.
+    // Minimal ASN.1 DER parser — walk the outer SEQUENCE to get tbsCertificate.
+    let spki_bytes = extract_spki_from_cert_der(der_bytes)?;
+
+    // SHA-256 hash the raw SPKI DER bytes
+    use std::collections::hash_map::DefaultHasher; // not crypto — use ring/sha2
+    // Use ring's SHA-256 since we already have it as a dep via rustls
+    let digest = ring_sha256(spki_bytes);
+    use base64::Engine;
+    Some(base64::engine::general_purpose::STANDARD.encode(digest))
+}
+
+fn ring_sha256(data: &[u8]) -> Vec<u8> {
+    use sha2::Digest;
+    sha2::Sha256::digest(data).to_vec()
+}
+
+/// Minimal DER walker to extract SubjectPublicKeyInfo bytes from a Certificate.
+/// Certificate ::= SEQUENCE {
+///   tbsCertificate TBSCertificate ::= SEQUENCE {
+///     [0] version, serialNumber, signature, issuer, validity, subject,
+///     subjectPublicKeyInfo SubjectPublicKeyInfo  <-- we want this
+///   }
+/// }
+fn extract_spki_from_cert_der(der: &[u8]) -> Option<&[u8]> {
+    // Skip outer SEQUENCE tag+length → tbsCertificate
+    let (_, cert_content) = der_unwrap_sequence(der)?;
+    // tbsCertificate is first element — also a SEQUENCE
+    let (_, tbs_content) = der_unwrap_sequence(cert_content)?;
+
+    // Walk TBS fields: version(optional), serialNumber, signature, issuer, validity, subject, spki
+    let mut pos = tbs_content;
+
+    // version [0] EXPLICIT — optional, tag 0xa0
+    if pos.first() == Some(&0xa0) {
+        let (rest, _) = der_skip_element(pos)?;
+        pos = rest;
+    }
+    // serialNumber INTEGER
+    let (rest, _) = der_skip_element(pos)?; pos = rest;
+    // signature AlgorithmIdentifier SEQUENCE
+    let (rest, _) = der_skip_element(pos)?; pos = rest;
+    // issuer Name SEQUENCE
+    let (rest, _) = der_skip_element(pos)?; pos = rest;
+    // validity SEQUENCE
+    let (rest, _) = der_skip_element(pos)?; pos = rest;
+    // subject Name SEQUENCE
+    let (rest, _) = der_skip_element(pos)?; pos = rest;
+
+    // subjectPublicKeyInfo — the bytes we want (the full TLV, not just content)
+    let spki_start = pos;
+    let (_, _) = der_skip_element(pos)?;
+    let spki_end = pos.len() - (der_skip_element(pos)?.0.len());
+    Some(&spki_start[..spki_end])
+}
+
+fn der_unwrap_sequence(data: &[u8]) -> Option<(&[u8], &[u8])> {
+    if data.first() != Some(&0x30) { return None; }
+    let (len, header_len) = der_read_length(&data[1..])?;
+    let end = 1 + header_len + len;
+    if end > data.len() { return None; }
+    Some((&data[end..], &data[1 + header_len..end]))
+}
+
+fn der_skip_element(data: &[u8]) -> Option<(&[u8], &[u8])> {
+    if data.is_empty() { return None; }
+    let (len, header_len) = der_read_length(&data[1..])?;
+    let end = 1 + header_len + len;
+    if end > data.len() { return None; }
+    Some((&data[end..], &data[..end]))
+}
+
+fn der_read_length(data: &[u8]) -> Option<(usize, usize)> {
+    let first = *data.first()? as usize;
+    if first < 0x80 {
+        Some((first, 1))
+    } else {
+        let n = first & 0x7f;
+        if n == 0 || n > 4 || data.len() < 1 + n { return None; }
+        let mut len = 0usize;
+        for i in 0..n { len = (len << 8) | (data[1 + i] as usize); }
+        Some((len, 1 + n))
     }
 }
