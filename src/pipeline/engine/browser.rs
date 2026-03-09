@@ -11,9 +11,25 @@ impl ExecutionContext {
         if !settings.headless {
             builder = builder.with_head();
         }
-        if !settings.proxy.is_empty() {
-            let proxy = self.variables.interpolate(&settings.proxy);
-            builder = builder.arg(format!("--proxy-server={}", proxy));
+        // Use explicit proxy from block settings, fall back to the session proxy
+        // assigned by the runner (ctx.proxy) so BrowserOpen inherits proxy rotation.
+        let effective_proxy = if !settings.proxy.is_empty() {
+            let p = self.variables.interpolate(&settings.proxy);
+            if p.is_empty() { self.proxy.clone() } else { Some(p) }
+        } else {
+            self.proxy.clone()
+        };
+        if let Some(ref proxy_str) = effective_proxy {
+            if !proxy_str.is_empty() {
+                // Chrome expects --proxy-server=scheme://host:port
+                // If the proxy already has a scheme, pass as-is; otherwise prefix http://
+                let chrome_proxy = if proxy_str.contains("://") {
+                    proxy_str.clone()
+                } else {
+                    format!("http://{}", proxy_str)
+                };
+                builder = builder.arg(format!("--proxy-server={}", chrome_proxy));
+            }
         }
         if !settings.extra_args.is_empty() {
             for arg in settings.extra_args.split_whitespace() {
