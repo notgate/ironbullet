@@ -143,20 +143,12 @@ pub(super) fn update_pipeline(
             s.pipeline_path = file_path.filter(|s| !s.is_empty());
             if let Ok(pipeline) = serde_json::from_value::<Pipeline>(data) {
                 s.pipeline = pipeline;
-                // Merge pipeline's proxy groups INTO the global config store — never
-                // overwrite with an empty list. Switching to a tab that has no proxy
-                // groups should not wipe the globally saved groups.
-                let pipeline_groups = s.pipeline.proxy_settings.proxy_groups.clone();
-                for group in pipeline_groups {
-                    if !s.config.proxy_groups.iter().any(|g| g.name == group.name) {
-                        s.config.proxy_groups.push(group);
-                    } else {
-                        // Update existing entry (sources may have changed)
-                        if let Some(existing) = s.config.proxy_groups.iter_mut().find(|g| g.name == group.name) {
-                            *existing = group;
-                        }
-                    }
-                }
+                // The pipeline is the source of truth for proxy groups.
+                // Replace the global store with exactly what the active pipeline has.
+                // This ensures deletions propagate — if a user removes a group in the
+                // UI and we only merge (add/update), the deleted group would persist
+                // in GuiConfig and reappear after a restart.
+                s.config.proxy_groups = s.pipeline.proxy_settings.proxy_groups.clone();
                 config::save_config(&s.config);
             }
             let resp = IpcResponse::ok("pipeline_updated", serde_json::json!({}));

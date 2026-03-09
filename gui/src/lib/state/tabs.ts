@@ -69,6 +69,9 @@ export function createNewTab() {
 	const name = nextNewConfigName();
 	const pip = defaultPipeline();
 	pip.name = name;
+	// Inherit proxy groups from the current pipeline so new tabs don't
+	// wipe the global group list when syncPipelineToBackend fires.
+	pip.proxy_settings.proxy_groups = JSON.parse(JSON.stringify(app.pipeline.proxy_settings.proxy_groups ?? []));
 	const tab: ConfigTab = {
 		id,
 		name,
