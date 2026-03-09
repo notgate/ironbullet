@@ -6,6 +6,7 @@ mod handlers_job;
 mod handlers_plugin;
 mod handlers_runner;
 mod handlers_update;
+pub mod browser_proxy;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -79,6 +80,8 @@ pub struct AppState {
     pub inspect_proxy_abort: Option<tokio::task::AbortHandle>,
     /// Port the proxy capture server is listening on.
     pub inspect_proxy_port: Option<u16>,
+    /// Ephemeral MITM CA — generated once per process, reused for all sessions.
+    pub mitm_ca: Option<Arc<crate::ipc::browser_proxy::MitmCa>>,
 }
 
 impl AppState {
@@ -109,6 +112,7 @@ impl AppState {
             browser_capture_profile: None,
             inspect_proxy_abort: None,
             inspect_proxy_port: None,
+            mitm_ca: None,
         }
     }
 }

@@ -38,6 +38,8 @@ scraper = "0.22"
 sxd-document = "0.3"
 sxd-xpath = "0.4"
 tokio-rustls = "0.26"
+rcgen = { version = "0.13", features = ["pem"] }
+rustls-pemfile = "2"
 rustls = { version = "0.23", features = ["ring"] }
 webpki-roots = "0.26"
 bcrypt = "0.16"

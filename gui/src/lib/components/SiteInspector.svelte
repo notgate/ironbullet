@@ -30,10 +30,17 @@
 	interface CapturedRequest {
 		id: string; url: string; method: string; resource_type: string;
 		headers: Record<string, string>; post_data: string | null;
-		// populated by response_meta / response_body events
+		session_id?: string; // MITM tunnel ID — used for tab isolation
+		// populated by response events
 		resp_status?: number; resp_status_text?: string; resp_mime?: string;
 		resp_headers?: Record<string, string>; resp_body?: string;
 	}
+
+	// Tab/session isolation — each CONNECT tunnel = one "tab session"
+	interface TabSession { id: string; label: string; color: string; requestCount: number; }
+	const SESSION_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+	let tabSessions      = $state<TabSession[]>([]);
+	let activeSessionId  = $state<string | null>(null); // null = show all
 
 	// filter / search — capturedRequests persisted in localStorage so popping
 	// the panel out to an external window (which remounts the component) doesn't
@@ -136,6 +143,8 @@
 	}
 
 	const filteredRequests = $derived(capturedRequests.filter(r => {
+		// Tab isolation filter
+		if (activeSessionId && r.session_id && r.session_id !== activeSessionId) return false;
 		if (typeFilter !== 'all') {
 			const g = typeGroup(r.resource_type);
 			if (typeFilter === 'other') { if (g !== 'other') return false; }
@@ -202,18 +211,40 @@
 		});
 	});
 
-	// Proxy capture event listener
+	// Proxy capture event listener (also handles browser mode capture via MITM proxy)
 	$effect(() => {
 		onResponse('inspector_proxy_event', (data: unknown) => {
 			const ev = data as any;
-			if (ev.type === 'error')  { proxyError = ev.message ?? 'Unknown error'; proxyActive = false; return; }
-			if (ev.type === 'ready')  { proxyActive = true; proxyError = ''; return; }
+			// In browser mode: proxy events are the capture source; route errors to browserError
+			const isBrowserMode = mode === 'browser';
+			if (ev.type === 'error') {
+				if (isBrowserMode) { browserError = ev.message ?? 'Unknown error'; }
+				else { proxyError = ev.message ?? 'Unknown error'; proxyActive = false; }
+				return;
+			}
+			if (ev.type === 'ready')   { proxyActive = true; proxyError = ''; return; }
+			if (ev.type === 'stopped') { proxyActive = false; return; }
 			if (ev.type === 'request') {
 				if (capturedRequests.some(r => r.id === ev.id)) return;
+				// Track tab sessions by session_id
+				if (ev.session_id) {
+					const existing = tabSessions.find(s => s.id === ev.session_id);
+					if (!existing) {
+						const color = SESSION_COLORS[tabSessions.length % SESSION_COLORS.length];
+						// Label with hostname for readability
+						let label = 'Tab ' + (tabSessions.length + 1);
+						try { label = new URL(ev.url).hostname || label; } catch {}
+						tabSessions = [...tabSessions, { id: ev.session_id, label, color, requestCount: 1 }];
+					} else {
+						tabSessions = tabSessions.map(s => s.id === ev.session_id
+							? { ...s, requestCount: s.requestCount + 1 } : s);
+					}
+				}
 				const next = [...capturedRequests, {
 					id: ev.id, url: ev.url, method: ev.method,
 					resource_type: ev.resource_type ?? 'fetch',
 					headers: ev.headers ?? {}, post_data: ev.post_data ?? null,
+					session_id: ev.session_id ?? undefined,
 				}];
 				capturedRequests = next;
 				if (!selectedReqId) { selectedReqId = ev.id; applySelReq = new Set(Object.keys(ev.headers ?? {})); }
@@ -265,6 +296,7 @@
 		launchPending = true;
 		browserError = '';
 		capturedRequests = [];
+		tabSessions = []; activeSessionId = null;
 		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
 		selectedReqId = null; applyPanelOpen = false;
 		browserLoading = true;
@@ -577,6 +609,27 @@
 			onclick={() => { capturedRequests = []; selectedReqId = null; }}>Clear</button>
 		<span class="text-[9px] text-muted-foreground/50 shrink-0 tabular-nums">{filteredRequests.length}/{capturedRequests.length}</span>
 	</div>
+
+	<!-- Tab isolation strip (browser mode only, when sessions exist) -->
+	{#if (mode === 'browser' || mode === 'proxy') && tabSessions.length > 0}
+	<div class="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0 bg-background/20 overflow-x-auto">
+		<span class="text-[9px] text-muted-foreground shrink-0 mr-1">Tabs:</span>
+		<button
+			class="px-2 py-0.5 rounded text-[9px] transition-colors shrink-0 {activeSessionId === null ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'}"
+			onclick={() => activeSessionId = null}
+		>All ({capturedRequests.length})</button>
+		{#each tabSessions as session}
+			<button
+				class="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] transition-colors shrink-0 {activeSessionId === session.id ? 'ring-1 ring-offset-1 font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'}"
+				style="--tab-color: {session.color}; {activeSessionId === session.id ? `background: ${session.color}22; color: ${session.color}; ring-color: ${session.color}` : ''}"
+				onclick={() => activeSessionId = activeSessionId === session.id ? null : session.id}
+			>
+				<span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: {session.color}"></span>
+				{session.label} <span class="opacity-60">({session.requestCount})</span>
+			</button>
+		{/each}
+	</div>
+	{/if}
 
 	<!-- Filter bar: search + type buttons -->
 	<div class="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0 bg-background/30 flex-wrap">

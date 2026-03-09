@@ -687,523 +687,241 @@ pub(super) fn site_inspect(
     }
 }
 
-// ── Browser capture (Inspector panel) ──────────────────────────────────────────
+// ── Browser capture — MITM proxy approach ──────────────────────────────────
+// Launches Chrome with --proxy-server pointing at our local MITM proxy.
+// All HTTP and HTTPS traffic is captured and emitted as inspector_proxy_event.
+// Tab isolation: each CONNECT tunnel gets a unique session_id; the frontend
+// groups requests by session_id and lets the user label/filter per tab.
 
 pub(super) fn inspect_browser_open(
     state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
-    use chromiumoxide::browser::Browser;
-    use chromiumoxide::cdp::browser_protocol::network::{
-        EnableParams, EventRequestWillBeSent, EventResponseReceived,
-        EventLoadingFinished, GetRequestPostDataParams, GetResponseBodyParams,
-    };
-    use futures::StreamExt;
-
-    // Read chrome_exe path synchronously with try_lock — avoids an await inside
-    // the async task that can deadlock if another handler holds the mutex.
-    // Falls back to None if the lock is contended; find_chrome_executable() below handles that.
-    let chrome_exe_from_config: Option<std::path::PathBuf> = state.try_lock()
-        .map(|s| {
-            let p = s.config.chrome_executable_path.clone();
-            if !p.is_empty() { let pb = std::path::PathBuf::from(&p); if pb.exists() { Some(pb) } else { None } } else { None }
-        })
-        .ok()
-        .flatten();
+    use crate::ipc::browser_proxy::MitmCa;
 
     let rt = tokio::runtime::Handle::try_current();
     if rt.is_err() {
         eval_js(format!("window.__ipc_callback({})",
             serde_json::to_string(&IpcResponse::ok("inspector_browser_event",
-                serde_json::json!({ "type": "error", "message": "Internal error: no tokio runtime — please report this bug" })
+                serde_json::json!({ "type": "error", "message": "Internal error: no tokio runtime" })
             )).unwrap_or_default()
         ));
         return;
     }
-    if let Ok(handle) = rt {
-        let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(1024);
-        handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
+    let Ok(handle) = rt else { return };
 
-        let js = js_tx.clone();
+    let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(1024);
+    handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
+    let js = js_tx.clone();
 
-        // Generate the profile dir UUID here so it can be stored in AppState
-        // (for cleanup on next launch) AND passed into the async task.
-        // UUID-per-launch prevents Chrome profile-dir locking when a prior
-        // Chrome process was orphaned by a timed-out launch — a URL-derived
-        // fixed name would be locked by the zombie, causing infinite failures.
-        let tmp_profile = std::env::temp_dir()
-            .join(format!("ib-chrome-{}", uuid::Uuid::new_v4()));
-        let tmp_profile_task = tmp_profile.clone();
+    fn emit_browser(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
+        let resp = IpcResponse::ok("inspector_browser_event", payload);
+        let _ = tx.try_send(format!("window.__ipc_callback({})",
+            serde_json::to_string(&resp).unwrap_or_default()));
+    }
+    fn emit_proxy(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
+        let resp = IpcResponse::ok("inspector_proxy_event", payload);
+        let _ = tx.try_send(format!("window.__ipc_callback({})",
+            serde_json::to_string(&resp).unwrap_or_default()));
+    }
 
-        let state_for_abort = state.clone();
-        let capture_task = handle.spawn(async move {
-            let tmp_profile = tmp_profile_task;
-            let chrome_exe_cfg = chrome_exe_from_config;
+    let chrome_exe = {
+        let from_cfg = state.try_lock()
+            .map(|s| {
+                let p = s.config.chrome_executable_path.clone();
+                if !p.is_empty() { let pb = std::path::PathBuf::from(&p); if pb.exists() { Some(pb) } else { None } } else { None }
+            }).ok().flatten();
+        from_cfg.or_else(|| super::find_chrome_executable())
+    };
 
-            fn emit_sync(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
-                let resp = IpcResponse::ok("inspector_browser_event", payload);
-                let _ = tx.try_send(format!("window.__ipc_callback({})",
-                    serde_json::to_string(&resp).unwrap_or_default()));
-            }
+    if chrome_exe.is_none() {
+        emit_browser(&js, serde_json::json!({
+            "type": "error",
+            "message": "Chrome not found. Set the path in Settings → Paths."
+        }));
+        return;
+    }
 
-            // Abort any prior capture session and clean up its stale Chrome
-            // profile before launching. The old profile dir is locked by the
-            // previous Chrome process if it didn't exit cleanly (e.g. launch
-            // timeout). Removing it prevents the next launch from failing with
-            // a "profile in use" error.
-            let stale_profile = {
-                let mut s = state.lock().await;
-                if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
-                s.browser_capture_profile.take()
-            };
+    let raw_url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    if raw_url.is_empty() {
+        emit_browser(&js, serde_json::json!({ "type": "error", "message": "No URL provided." }));
+        return;
+    }
+    let url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
+        raw_url
+    } else {
+        format!("https://{}", raw_url)
+    };
 
-            if let Some(old_dir) = stale_profile {
-                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-                // Use a timeout — on Windows, remove_dir_all can hang if Chrome
-                // left file locks behind. Give it 3s max then skip.
-                let _ = tokio::time::timeout(
-                    std::time::Duration::from_secs(3),
-                    tokio::fs::remove_dir_all(&old_dir),
-                ).await;
-            }
-
-            let raw_url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-            emit_sync(&js, serde_json::json!({ "type": "status", "message": format!("Task started, url={:?}", raw_url) }));
-            if raw_url.is_empty() {
-                emit_sync(&js, serde_json::json!({ "type": "error", "message": "No URL provided — enter a URL in the address bar" }));
-                return;
-            }
-            let url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
-                raw_url
-            } else {
-                format!("https://{}", raw_url)
-            };
-
-            // chrome_exe was read synchronously at handler entry (no mutex await needed)
-            let chrome_exe = chrome_exe_cfg.or_else(|| super::find_chrome_executable());
-            emit_sync(&js, serde_json::json!({ "type": "status", "message": format!("Chrome path: {:?}", chrome_exe) }));
-
-            if chrome_exe.is_none() {
-                emit_sync(&js, serde_json::json!({
-                    "type": "error",
-                    "message": "Google Chrome or Chromium is not installed or not found.\n\nPlease set the Chrome executable path in Settings → Paths, or install Chrome from https://www.google.com/chrome/"
-                }));
-                return;
-            }
-
-            // ── Chrome launch via manual spawn + CDP HTTP poll ──────────────────
-            // Browser::launch reads Chrome's stderr for the WS URL, which is
-            // unreliable on Windows (Chrome may not flush stderr, or may write
-            // to stdout instead). We instead:
-            //   1. Pick a free port
-            //   2. Spawn Chrome via std::process::Command (synchronous, reliable)
-            //   3. Poll http://localhost:{port}/json/version until Chrome responds
-            //   4. Connect via Browser::connect(ws_url) — pure async, no blocking
-            //
-            // This mirrors how Playwright launches Chrome and is far more reliable
-            // across platforms.
-
-            // Pick a free port by binding to :0 and reading the assigned port.
-            let cdp_port = {
-                match std::net::TcpListener::bind("127.0.0.1:0") {
-                    Ok(l) => l.local_addr().map(|a| a.port()).unwrap_or(9222),
-                    Err(_) => 9222,
-                }
-            };
-
-            let chrome_exe = chrome_exe.unwrap(); // already checked above
-            let profile_dir = tmp_profile.clone();
-            let mut chrome_args = vec![
-                format!("--remote-debugging-port={}", cdp_port),
-                format!("--user-data-dir={}", profile_dir.display()),
-                "--no-first-run".to_string(),
-                "--no-default-browser-check".to_string(),
-                "--disable-sync".to_string(),
-                "--disable-translate".to_string(),
-                "--disable-extensions".to_string(),
-                "--disable-component-extensions-with-background-pages".to_string(),
-                "--disable-background-networking".to_string(),
-                "--disable-backgrounding-occluded-windows".to_string(),
-                "--disable-device-discovery-notifications".to_string(),
-                "--disable-client-side-phishing-detection".to_string(),
-                "--no-sandbox".to_string(),
-            ];
-            // Do NOT pass the URL as a CLI arg — Chrome would start loading it
-            // immediately, before our CDP listeners are attached. Instead we
-            // navigate via page.goto() after listeners are in place.
-
-            let mut cmd = std::process::Command::new(&chrome_exe);
-            cmd.args(&chrome_args);
-
-            // Redirect stdout/stderr to null — prevents Chrome from blocking on
-            // pipe buffers filling up (especially on Windows)
-            cmd.stdout(std::process::Stdio::null());
-            cmd.stderr(std::process::Stdio::null());
-            cmd.stdin(std::process::Stdio::null());
-
-            eprintln!("[inspector] spawning Chrome: {:?} with args: {:?}", chrome_exe, chrome_args);
-
-            // Keep chrome_child alive for the duration of the capture session.
-            // Using a non-underscore name ensures Rust doesn't drop it immediately.
-            let mut chrome_child = match cmd.spawn() {
-                Ok(child) => child,
-                Err(e) => {
-                    emit_sync(&js, serde_json::json!({
-                        "type": "error",
-                        "message": format!("Failed to spawn Chrome process: {}\n\nChrome path: {:?}\n\nMake sure Chrome is installed and the path is set correctly in Settings → Paths.", e, chrome_exe)
-                    }));
-                    return;
-                }
-            };
-            emit_sync(&js, serde_json::json!({
-                "type": "status",
-                "message": format!("Chrome started, connecting on port {}...", cdp_port)
-            }));
-
-            // Poll /json/version until Chrome is ready (up to 15s)
-            let version_url = format!("http://127.0.0.1:{}/json/version", cdp_port);
-            let http_client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(2))
-                .build()
-                .unwrap_or_default();
-
-            let ws_url: String = {
-                let mut found = None;
-                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
-                loop {
-                    if tokio::time::Instant::now() > deadline {
-                        emit_sync(&js, serde_json::json!({
-                            "type": "error",
-                            "message": "Chrome started but did not open its debug port within 15 seconds."
-                        }));
-                        return;
-                    }
-                    match http_client.get(&version_url).send().await {
-                        Ok(resp) => {
-                            if let Ok(json) = resp.json::<serde_json::Value>().await {
-                                if let Some(ws) = json.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) {
-                                    found = Some(ws.to_string());
-                                    break;
-                                }
-                            }
-                        }
-                        Err(_) => { /* Chrome not ready yet, keep polling */ }
-                    }
-
-                    // Every 3 seconds emit a diagnostic so the user sees progress
-                    let elapsed = tokio::time::Instant::now().duration_since(deadline - std::time::Duration::from_secs(15));
-                    if elapsed.as_millis() % 3000 < 250 {
-                        emit_sync(&js, serde_json::json!({
-                            "type": "diagnostic",
-                            "message": format!("Waiting for Chrome CDP on port {} ({:.0}s elapsed)...", cdp_port, elapsed.as_secs_f32())
-                        }));
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-                }
-                match found {
-                    Some(ws) => ws,
-                    None => {
-                        emit_sync(&js, serde_json::json!({ "type": "error", "message": "Chrome debug port ready but no WS URL returned." }));
+    let state_clone = state.clone();
+    let task = handle.spawn(async move {
+        // Get or create the MITM CA
+        let ca = {
+            let mut s = state_clone.lock().await;
+            if s.mitm_ca.is_none() {
+                match MitmCa::generate() {
+                    Ok(ca) => { s.mitm_ca = Some(std::sync::Arc::new(ca)); }
+                    Err(e) => {
+                        emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("Failed to generate MITM CA: {e}") }));
                         return;
                     }
                 }
-            };
-
-            // Connect to already-running Chrome via WS URL — pure async, no blocking
-            let connect_result = tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                Browser::connect(ws_url),
-            ).await;
-
-            let (browser, mut handler) = match connect_result {
-                Ok(Ok(pair)) => pair,
-                Ok(Err(e)) => {
-                    emit_sync(&js, serde_json::json!({
-                        "type": "error",
-                        "message": format!("CDP connect failed: {}", e)
-                    }));
-                    return;
-                }
-                Err(_) => {
-                    emit_sync(&js, serde_json::json!({
-                        "type": "error",
-                        "message": "CDP websocket connect timed out (10s)."
-                    }));
-                    return;
-                }
-            };
-            emit_sync(&js, serde_json::json!({ "type": "status", "message": "CDP connected, spawning handler..." }));
-
-            // Spawn CDP handler; send a signal when Chrome's connection closes so
-            // the event loop below can break immediately instead of hanging.
-            let (died_tx, mut died_rx) = tokio::sync::oneshot::channel::<()>();
-            tokio::spawn(async move {
-                while handler.next().await.is_some() {}
-                let _ = died_tx.send(());
-            });
-
-            // Chrome launched to about:blank — grab the default page.
-            // Give Chrome a moment to register the initial tab with CDP.
-            emit_sync(&js, serde_json::json!({ "type": "status", "message": "Waiting for Chrome page..." }));
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            let page = match tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                browser.pages(),
-            ).await {
-                Ok(Ok(mut pages)) if !pages.is_empty() => {
-                    emit_sync(&js, serde_json::json!({ "type": "status", "message": format!("Got {} page(s) from Chrome", pages.len() + 1) }));
-                    pages.remove(0)
-                },
-                Ok(Ok(_)) => {
-                    // No pages returned — try new_page
-                    emit_sync(&js, serde_json::json!({ "type": "status", "message": "No existing pages, opening new tab..." }));
-                    match tokio::time::timeout(
-                        std::time::Duration::from_secs(10),
-                        browser.new_page("about:blank"),
-                    ).await {
-                        Ok(Ok(p)) => p,
-                        Ok(Err(e)) => {
-                            emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Page open failed: {}", e) }));
-                            return;
-                        }
-                        Err(_) => {
-                            emit_sync(&js, serde_json::json!({ "type": "error", "message": "Chrome page open timed out (10s)" }));
-                            return;
-                        }
-                    }
-                },
-                Ok(Err(e)) => {
-                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("browser.pages() error: {e}") }));
-                    return;
-                }
-                Err(_) => {
-                    emit_sync(&js, serde_json::json!({ "type": "error", "message": "browser.pages() timed out (10s)" }));
-                    return;
-                }
-            };
-
-            // Enable CDP Network domain with generous buffers.
-            emit_sync(&js, serde_json::json!({ "type": "status", "message": "Enabling CDP Network domain..." }));
-            match tokio::time::timeout(std::time::Duration::from_secs(10), page.execute(EnableParams {
-                max_total_buffer_size:    Some(100 * 1024 * 1024),
-                max_resource_buffer_size: Some(5   * 1024 * 1024),
-                max_post_data_size:       Some(5   * 1024 * 1024),
-                ..Default::default()
-            })).await {
-                Ok(Ok(_)) => {}
-                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Network.enable failed: {e}") })); return; }
-                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "Network.enable timed out (10s)" })); return; }
             }
+            s.mitm_ca.clone().unwrap()
+        };
 
-            // Register all listeners BEFORE navigating so no requests are missed.
-            emit_sync(&js, serde_json::json!({ "type": "status", "message": "Registering event listeners..." }));
-            let mut ev_req = match tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                page.event_listener::<EventRequestWillBeSent>(),
-            ).await {
-                Ok(Ok(e)) => e,
-                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("RequestWillBeSent listener failed: {e}") })); return; }
-                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "RequestWillBeSent listener timed out" })); return; }
-            };
-            let mut ev_resp = match tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                page.event_listener::<EventResponseReceived>(),
-            ).await {
-                Ok(Ok(e)) => e,
-                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("ResponseReceived listener failed: {e}") })); return; }
-                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "ResponseReceived listener timed out" })); return; }
-            };
-            let mut ev_done = match tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                page.event_listener::<EventLoadingFinished>(),
-            ).await {
-                Ok(Ok(e)) => e,
-                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("LoadingFinished listener failed: {e}") })); return; }
-                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "LoadingFinished listener timed out" })); return; }
-            };
+        // Pick a free port for the MITM proxy
+        let proxy_port = match std::net::TcpListener::bind("127.0.0.1:0") {
+            Ok(l) => l.local_addr().map(|a| a.port()).unwrap_or(8877),
+            Err(_) => 8877,
+        };
 
-            // All setup done — tell the frontend Chrome is ready.
-            emit_sync(&js, serde_json::json!({ "type": "opened", "url": url.clone() }));
+        // Start the proxy listener
+        let listener = match tokio::net::TcpListener::bind(("127.0.0.1", proxy_port)).await {
+            Ok(l) => l,
+            Err(e) => {
+                emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("Proxy bind failed: {e}") }));
+                return;
+            }
+        };
 
-            // Navigate to the target URL now that listeners are in place.
-            emit_sync(&js, serde_json::json!({ "type": "status", "message": format!("Navigating to {}...", url) }));
-            tokio::time::timeout(std::time::Duration::from_secs(15), page.goto(&url)).await.ok();
+        emit_browser(&js, serde_json::json!({ "type": "status", "message": format!("Proxy started on port {}, launching Chrome...", proxy_port) }));
 
-            let page_req  = page.clone();
-            let page_body = page.clone();
+        // Launch Chrome with proxy + isolated profile
+        let profile_dir = std::env::temp_dir().join(format!("ib-chrome-{}", uuid::Uuid::new_v4()));
+        let chrome_exe = chrome_exe.unwrap();
+        let mut cmd = std::process::Command::new(&chrome_exe);
+        cmd.args([
+            format!("--proxy-server=http://127.0.0.1:{}", proxy_port),
+            "--ignore-certificate-errors".to_string(),
+            "--ignore-certificate-errors-spki-list".to_string(),
+            format!("--user-data-dir={}", profile_dir.display()),
+            "--no-first-run".to_string(),
+            "--no-default-browser-check".to_string(),
+            "--disable-sync".to_string(),
+            "--disable-extensions".to_string(),
+            "--disable-translate".to_string(),
+            "--no-sandbox".to_string(),
+            url.clone(),
+        ]);
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        cmd.stdin(std::process::Stdio::null());
 
+        let mut chrome_child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("Failed to launch Chrome: {e}") }));
+                return;
+            }
+        };
+
+        // Store profile for cleanup and port for status
+        {
+            let mut s = state_clone.lock().await;
+            s.browser_capture_profile = Some(profile_dir.clone());
+            s.inspect_proxy_port = Some(proxy_port);
+        }
+
+        // Tell frontend Chrome is up — switches from loading state to capture view
+        emit_browser(&js, serde_json::json!({ "type": "opened", "url": url }));
+        emit_proxy(&js, serde_json::json!({ "type": "ready", "port": proxy_port }));
+
+        // Accept connections and spawn per-connection MITM handlers
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        let js_accept = js.clone();
+        let ca_accept = ca.clone();
+        let accept_task = tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    Some(event) = ev_req.next() => {
-                        let req = &event.request;
-                        let headers: std::collections::HashMap<String, String> =
-                            req.headers.inner().as_object()
-                                .map(|obj| obj.iter()
-                                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                                    .collect())
-                                .unwrap_or_default();
-
-                        let post_data: Option<String> = if req.has_post_data.unwrap_or(false) {
-                            page_req.execute(GetRequestPostDataParams { request_id: event.request_id.clone() })
-                                .await.ok().map(|r| r.result.post_data)
-                        } else { None };
-
-                        let resource_type = event.r#type.as_ref()
-                            .map(|t| format!("{t:?}"))
-                            .unwrap_or_else(|| "Other".to_string());
-
-                        emit_sync(&js, serde_json::json!({
-                            "type":          "request",
-                            "id":            event.request_id.inner().clone(),
-                            "url":           req.url,
-                            "method":        req.method,
-                            "headers":       headers,
-                            "post_data":     post_data,
-                            "resource_type": resource_type,
-                        }));
-                    }
-                    Some(event) = ev_resp.next() => {
-                        let resp = &event.response;
-                        let headers: std::collections::HashMap<String, String> =
-                            resp.headers.inner().as_object()
-                                .map(|obj| obj.iter()
-                                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                                    .collect())
-                                .unwrap_or_default();
-
-                        emit_sync(&js, serde_json::json!({
-                            "type":        "response_meta",
-                            "id":          event.request_id.inner().clone(),
-                            "status":      resp.status,
-                            "status_text": resp.status_text,
-                            "mime_type":   resp.mime_type,
-                            "headers":     headers,
-                        }));
-                    }
-                    Some(event) = ev_done.next() => {
-                        // Fetch response body in a separate task so we don't block
-                        // the event loop while waiting for CDP to return the body.
-                        // This prevents missing requests on pages with many resources.
-                        let within_limit = event.encoded_data_length < 0.0
-                            || event.encoded_data_length < 4_194_304.0;
-                        if within_limit {
-                            let page_body2 = page_body.clone();
-                            let js2 = js.clone();
-                            let req_id = event.request_id.clone();
-                            tokio::spawn(async move {
-                                if let Ok(r) = page_body2
-                                    .execute(GetResponseBodyParams { request_id: req_id.clone() })
-                                    .await
-                                {
-                                    let body_text = if r.result.base64_encoded {
-                                        #[allow(unused_imports)]
-                                        use std::io::Read;
-                                        match base64::Engine::decode(
-                                            &base64::engine::general_purpose::STANDARD,
-                                            r.result.body.trim(),
-                                        ) {
-                                            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                                            Err(_) => r.result.body,
-                                        }
-                                    } else {
-                                        r.result.body
-                                    };
-                                    if !body_text.is_empty() {
-                                        emit_sync(&js2, serde_json::json!({
-                                            "type": "response_body",
-                                            "id":   req_id.inner().clone(),
-                                            "body": body_text,
-                                        }));
-                                    }
-                                }
-                            });
+                    accept = listener.accept() => {
+                        match accept {
+                            Ok((stream, _)) => {
+                                let ca2 = ca_accept.clone();
+                                let js2 = js_accept.clone();
+                                let session_id = uuid::Uuid::new_v4().to_string();
+                                tokio::spawn(async move {
+                                    crate::ipc::browser_proxy::handle_connection(stream, ca2, js2, session_id).await;
+                                });
+                            }
+                            Err(_) => break,
                         }
                     }
-                    // Chrome process closed — CDP handler task exited and fired
-                    // this signal. Break immediately so we don't hang forever
-                    // waiting for stream events that will never arrive.
-                    _ = &mut died_rx => break,
-                    else => break,
+                    _ = &mut shutdown_rx => break,
                 }
             }
-
-            emit_sync(&js, serde_json::json!({ "type": "closed" }));
-
-            // Clean up Chrome process when capture session ends
-            let _ = chrome_child.kill();
         });
 
-        let abort = capture_task.abort_handle();
-        handle.spawn(async move {
-            let mut s = state_for_abort.lock().await;
-            s.browser_capture_abort = Some(abort);
-            // Store the profile path so the NEXT launch can clean it up.
-            s.browser_capture_profile = Some(tmp_profile);
-        });
-    }
+        // Wait for Chrome to exit
+        tokio::task::spawn_blocking(move || { let _ = chrome_child.wait(); }).await.ok();
+
+        // Chrome exited — shut down proxy and clean up
+        accept_task.abort();
+        let _ = shutdown_tx.send(());
+        {
+            let mut s = state_clone.lock().await;
+            s.inspect_proxy_port = None;
+            if let Some(p) = s.browser_capture_profile.take() {
+                tokio::spawn(async move {
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(3),
+                        tokio::fs::remove_dir_all(p),
+                    ).await;
+                });
+            }
+        }
+        emit_browser(&js, serde_json::json!({ "type": "closed" }));
+        emit_proxy(&js, serde_json::json!({ "type": "stopped" }));
+    });
+
+    let abort = task.abort_handle();
+    let state2 = state.clone();
+    handle.spawn(async move {
+        let mut s = state2.lock().await;
+        if let Some(old) = s.browser_capture_abort.take() { old.abort(); }
+        s.browser_capture_abort = Some(abort);
+    });
 }
 
 pub(super) fn inspect_browser_close(
     state: Arc<Mutex<AppState>>,
     _eval_js: impl Fn(String) + Send + 'static,
 ) {
-    // The frontend already updates browserOpen/browserLoading synchronously in
-    // closeBrowser() before this IPC even arrives. Emitting a "closed" event here
-    // would hit the *next* session's listener (registered moments later) and
-    // incorrectly reset its loading state. Just abort the task and clean up.
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let profile = {
-                let mut s = state.lock().await;
-                if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
-                s.browser_capture_profile.take()
-            };
-            // Give Chrome a moment to release file locks, then remove its profile dir.
-            if let Some(dir) = profile {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                let _ = tokio::fs::remove_dir_all(&dir).await;
+            let mut s = state.lock().await;
+            if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
+            s.inspect_proxy_port = None;
+            if let Some(p) = s.browser_capture_profile.take() {
+                tokio::spawn(async move {
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(3),
+                        tokio::fs::remove_dir_all(p),
+                    ).await;
+                });
             }
         });
     }
 }
 
-// ── Local HTTP Proxy Capture (Inspector panel alternative) ────────────────────
-//
-// Binds a TCP listener on a user-specified port (default 8877).
-// The user configures their browser proxy to 127.0.0.1:<port>.
-// Supports:
-//   - Plain HTTP: read the full request, forward to the real server, capture
-//     both request and response, emit inspector_proxy_event to the frontend.
-//   - HTTPS (CONNECT tunnel): respond 200, then relay raw bytes bidirectionally
-//     so the browser's TLS works end-to-end. We emit a minimal capture event
-//     showing the CONNECT target host + URL; we cannot decrypt HTTPS without
-//     a MitM CA (not implemented).
-//
-// Each accepted connection runs in its own tokio task. The listener task holds
-// an AbortHandle stored in AppState so the frontend can stop the proxy cleanly.
+// ── Standalone proxy (manual mode — user points their own browser at it) ────
 
 pub(super) fn inspect_proxy_start(
     state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
-    #[allow(unused_imports)]
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    #[allow(unused_imports)]
-    use tokio::net::{TcpListener, TcpStream};
+    use crate::ipc::browser_proxy::MitmCa;
 
     let rt = tokio::runtime::Handle::try_current();
     let Ok(handle) = rt else { return };
 
-    let port = data.get("port")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(8877) as u16;
+    let port = data.get("port").and_then(|v| v.as_u64()).unwrap_or(8877) as u16;
 
     let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(512);
     handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
-
     let js = js_tx.clone();
 
     fn emit(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
@@ -1213,23 +931,32 @@ pub(super) fn inspect_proxy_start(
     }
 
     let state2 = state.clone();
-    let js2 = js.clone();
-
     let task = handle.spawn(async move {
-        // Abort any previous proxy
         {
             let mut s = state2.lock().await;
             if let Some(h) = s.inspect_proxy_abort.take() { h.abort(); }
             s.inspect_proxy_port = None;
         }
 
-        let listener = match TcpListener::bind(("127.0.0.1", port)).await {
+        // Get or create CA
+        let ca = {
+            let mut s = state2.lock().await;
+            if s.mitm_ca.is_none() {
+                match MitmCa::generate() {
+                    Ok(ca) => { s.mitm_ca = Some(std::sync::Arc::new(ca)); }
+                    Err(e) => {
+                        emit(&js, serde_json::json!({ "type": "error", "message": format!("CA error: {e}") }));
+                        return;
+                    }
+                }
+            }
+            s.mitm_ca.clone().unwrap()
+        };
+
+        let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(l) => l,
             Err(e) => {
-                emit(&js2, serde_json::json!({
-                    "type": "error",
-                    "message": format!("Failed to bind proxy on port {}: {}", port, e)
-                }));
+                emit(&js, serde_json::json!({ "type": "error", "message": format!("Bind failed on port {port}: {e}") }));
                 return;
             }
         };
@@ -1239,215 +966,36 @@ pub(super) fn inspect_proxy_start(
             s.inspect_proxy_port = Some(port);
         }
 
-        emit(&js2, serde_json::json!({
+        // Also emit CA cert PEM so frontend can offer download
+        let cert_pem = ca.cert_pem.clone();
+        emit(&js, serde_json::json!({
             "type": "ready",
             "port": port,
-            "message": format!("Proxy listening on 127.0.0.1:{}", port)
+            "ca_cert_pem": cert_pem,
+            "message": format!("MITM proxy on 127.0.0.1:{port}. Install the CA cert to decrypt HTTPS.")
         }));
 
         loop {
-            let (stream, _peer) = match listener.accept().await {
-                Ok(v) => v,
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    let ca2 = ca.clone();
+                    let js2 = js.clone();
+                    let session_id = uuid::Uuid::new_v4().to_string();
+                    tokio::spawn(async move {
+                        crate::ipc::browser_proxy::handle_connection(stream, ca2, js2, session_id).await;
+                    });
+                }
                 Err(_) => break,
-            };
-            let js_conn = js2.clone();
-            tokio::spawn(async move {
-                let _ = handle_proxy_connection(stream, js_conn).await;
-            });
+            }
         }
     });
 
     let abort = task.abort_handle();
     let state3 = state.clone();
-    tokio::runtime::Handle::try_current().ok().map(|h| h.spawn(async move {
+    handle.spawn(async move {
         let mut s = state3.lock().await;
         s.inspect_proxy_abort = Some(abort);
-    }));
-}
-
-async fn handle_proxy_connection(
-    mut stream: tokio::net::TcpStream,
-    js: tokio::sync::mpsc::Sender<String>,
-) -> std::io::Result<()> {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    fn emit_conn(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
-        let resp = IpcResponse::ok("inspector_proxy_event", payload);
-        let _ = tx.try_send(format!("window.__ipc_callback({})",
-            serde_json::to_string(&resp).unwrap_or_default()));
-    }
-
-    // Read request header (stop at \r\n\r\n, max 64KB)
-    let mut buf = Vec::with_capacity(8192);
-    loop {
-        let mut byte = [0u8; 1];
-        let n = stream.read(&mut byte).await?;
-        if n == 0 { return Ok(()); }
-        buf.push(byte[0]);
-        if buf.len() >= 4 && &buf[buf.len()-4..] == b"\r\n\r\n" { break; }
-        if buf.len() > 65536 { return Ok(()); }
-    }
-
-    let header_str = String::from_utf8_lossy(&buf);
-    let first_line = header_str.lines().next().unwrap_or("").to_string();
-    let parts: Vec<&str> = first_line.splitn(3, ' ').collect();
-    if parts.len() < 2 { return Ok(()); }
-
-    let method = parts[0];
-    let target = parts[1];
-
-    if method == "CONNECT" {
-        // HTTPS tunnel — respond 200, relay bytes, emit minimal event
-        stream.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await?;
-        emit_conn(&js, serde_json::json!({
-            "type": "request",
-            "id": uuid::Uuid::new_v4().to_string(),
-            "method": "CONNECT",
-            "url": format!("https://{}", target),
-            "host": target,
-            "resource_type": "tunnel",
-            "headers": {},
-            "note": "HTTPS tunnel (encrypted — cannot inspect body)"
-        }));
-        // Relay raw bytes bidirectionally
-        let host = target.to_string();
-        if let Ok(mut upstream) = tokio::net::TcpStream::connect(&host).await {
-            let (mut cr, mut cw) = stream.split();
-            let (mut ur, mut uw) = upstream.split();
-            tokio::select! {
-                _ = tokio::io::copy(&mut cr, &mut uw) => {}
-                _ = tokio::io::copy(&mut ur, &mut cw) => {}
-            }
-        }
-        return Ok(());
-    }
-
-    // Plain HTTP — parse headers, read body if present, forward, capture response
-    let mut headers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    let mut content_length: usize = 0;
-    for line in header_str.lines().skip(1) {
-        if line.is_empty() { break; }
-        if let Some(colon) = line.find(':') {
-            let k = line[..colon].trim().to_lowercase();
-            let v = line[colon+1..].trim().to_string();
-            if k == "content-length" {
-                content_length = v.parse().unwrap_or(0);
-            }
-            headers.insert(k, v);
-        }
-    }
-
-    // Read body
-    let mut body_bytes = vec![0u8; content_length.min(1024 * 1024)];
-    if content_length > 0 {
-        let _ = stream.read_exact(&mut body_bytes).await;
-    }
-    let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-
-    // Determine upstream host + port
-    let host_hdr = headers.get("host").cloned().unwrap_or_default();
-    let (upstream_host, upstream_port) = if host_hdr.contains(':') {
-        let mut it = host_hdr.rsplitn(2, ':');
-        let p: u16 = it.next().unwrap_or("80").parse().unwrap_or(80);
-        (it.next().unwrap_or(&host_hdr).to_string(), p)
-    } else {
-        (host_hdr.clone(), 80u16)
-    };
-
-    let req_id = uuid::Uuid::new_v4().to_string();
-    emit_conn(&js, serde_json::json!({
-        "type": "request",
-        "id": req_id,
-        "method": method,
-        "url": if target.starts_with("http") { target.to_string() } else { format!("http://{}{}", host_hdr, target) },
-        "host": host_hdr,
-        "resource_type": "fetch",
-        "headers": headers,
-        "post_data": if body_str.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(body_str.clone()) }
-    }));
-
-    // Forward to upstream
-    let upstream_addr = format!("{}:{}", upstream_host, upstream_port);
-    let mut upstream = match tokio::net::TcpStream::connect(&upstream_addr).await {
-        Ok(u) => u,
-        Err(e) => {
-            let err_resp = format!("HTTP/1.1 502 Bad Gateway\r\nContent-Length: {}\r\n\r\n{}", e.to_string().len(), e);
-            let _ = stream.write_all(err_resp.as_bytes()).await;
-            return Ok(());
-        }
-    };
-
-    // Forward request (rebuild it)
-    upstream.write_all(&buf).await?;
-    if !body_bytes.is_empty() {
-        upstream.write_all(&body_bytes).await?;
-    }
-
-    // Read response header from upstream
-    let mut resp_buf = Vec::with_capacity(8192);
-    loop {
-        let mut byte = [0u8; 1];
-        let n = upstream.read(&mut byte).await?;
-        if n == 0 { break; }
-        resp_buf.push(byte[0]);
-        if resp_buf.len() >= 4 && &resp_buf[resp_buf.len()-4..] == b"\r\n\r\n" { break; }
-        if resp_buf.len() > 65536 { break; }
-    }
-
-    let resp_header_str = String::from_utf8_lossy(&resp_buf);
-    let resp_first = resp_header_str.lines().next().unwrap_or("");
-    let resp_parts: Vec<&str> = resp_first.splitn(3, ' ').collect();
-    let resp_status: u16 = resp_parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-    let resp_status_text = resp_parts.get(2).unwrap_or(&"").to_string();
-
-    let mut resp_headers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    let mut resp_cl: usize = 0;
-    let mut chunked = false;
-    for line in resp_header_str.lines().skip(1) {
-        if line.is_empty() { break; }
-        if let Some(colon) = line.find(':') {
-            let k = line[..colon].trim().to_lowercase();
-            let v = line[colon+1..].trim().to_string();
-            if k == "content-length" { resp_cl = v.parse().unwrap_or(0); }
-            if k == "transfer-encoding" && v.contains("chunked") { chunked = true; }
-            resp_headers.insert(k, v);
-        }
-    }
-
-    // Read response body (cap at 2MB for capture)
-    let mut resp_body_bytes = Vec::new();
-    if resp_cl > 0 {
-        resp_body_bytes.resize(resp_cl.min(2 * 1024 * 1024), 0);
-        let _ = upstream.read_exact(&mut resp_body_bytes).await;
-    } else if chunked {
-        // Simple chunked read — read until 0-size chunk
-        let mut chunk_buf = vec![0u8; 65536];
-        loop {
-            let n = upstream.read(&mut chunk_buf).await.unwrap_or(0);
-            if n == 0 { break; }
-            resp_body_bytes.extend_from_slice(&chunk_buf[..n]);
-            if resp_body_bytes.len() > 2 * 1024 * 1024 { break; }
-        }
-    }
-
-    // Forward response back to client
-    stream.write_all(&resp_buf).await?;
-    stream.write_all(&resp_body_bytes).await?;
-
-    let resp_body_str = String::from_utf8_lossy(&resp_body_bytes);
-    let mime = resp_headers.get("content-type").cloned().unwrap_or_default();
-
-    emit_conn(&js, serde_json::json!({
-        "type": "response",
-        "id": req_id,
-        "resp_status": resp_status,
-        "resp_status_text": resp_status_text,
-        "resp_mime": mime,
-        "resp_headers": resp_headers,
-        "resp_body": resp_body_str.chars().take(65536).collect::<String>()
-    }));
-
-    Ok(())
+    });
 }
 
 pub(super) fn inspect_proxy_stop(
