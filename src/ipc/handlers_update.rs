@@ -68,17 +68,36 @@ pub fn check_for_updates(
         let release_notes = body["body"].as_str().unwrap_or("");
         let published_at = body["published_at"].as_str().unwrap_or("");
 
-        // Find the Windows binary asset
+        // Find the platform-appropriate asset
+        // On Windows: prefer a zip containing "windows", fallback to bare .exe
+        // On Linux: prefer a zip containing "linux"
+        #[cfg(target_os = "windows")]
+        let platform_hint = "windows";
+        #[cfg(not(target_os = "windows"))]
+        let platform_hint = "linux";
+
         let download_url = body["assets"]
             .as_array()
             .and_then(|assets| {
+                // First pass: zip containing platform hint
                 assets.iter().find_map(|a| {
-                    let name = a["name"].as_str().unwrap_or("");
-                    if name.ends_with(".exe") || name.contains("windows") {
+                    let name = a["name"].as_str().unwrap_or("").to_lowercase();
+                    if name.contains(platform_hint) && name.ends_with(".zip") {
                         a["browser_download_url"].as_str().map(|s| s.to_string())
                     } else {
                         None
                     }
+                })
+                .or_else(|| {
+                    // Second pass: bare .exe fallback (Windows only)
+                    assets.iter().find_map(|a| {
+                        let name = a["name"].as_str().unwrap_or("");
+                        if name.ends_with(".exe") {
+                            a["browser_download_url"].as_str().map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    })
                 })
             })
             .unwrap_or_default();
@@ -234,8 +253,82 @@ pub fn download_update(
             serde_json::to_string(&progress).unwrap()
         ));
 
-        // On Windows: rename current exe to .old, rename update to current name
-        // The .old file can be cleaned up on next launch
+        // If the download is a zip, extract the exe from it
+        let exe_to_install = if url.ends_with(".zip") {
+            let zip_data = match std::fs::read(&update_path) {
+                Ok(d) => d,
+                Err(e) => {
+                    let resp = IpcResponse::err("update_download_result", format!("Cannot read zip: {}", e));
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                    return;
+                }
+            };
+
+            let cursor = std::io::Cursor::new(zip_data);
+            let mut archive = match zip::ZipArchive::new(cursor) {
+                Ok(a) => a,
+                Err(e) => {
+                    let resp = IpcResponse::err("update_download_result", format!("Cannot open zip: {}", e));
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                    return;
+                }
+            };
+
+            // Find the main executable in the zip (the one matching our binary name, not sidecar)
+            let exe_name = current_exe.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("ironbullet.exe")
+                .to_string();
+
+            let exe_idx = (0..archive.len()).find(|&i| {
+                archive.by_index(i).ok()
+                    .map(|f| {
+                        let name = f.name().to_lowercase();
+                        let fname = std::path::Path::new(&name)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("")
+                            .to_string();
+                        fname == exe_name.to_lowercase() || 
+                        (fname.ends_with(".exe") && !fname.contains("sidecar"))
+                    })
+                    .unwrap_or(false)
+            });
+
+            let idx = match exe_idx {
+                Some(i) => i,
+                None => {
+                    let resp = IpcResponse::err("update_download_result", "No executable found in zip".into());
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                    return;
+                }
+            };
+
+            let extracted_path = update_path.with_extension("extracted.exe");
+            {
+                let mut zip_file = archive.by_index(idx).unwrap();
+                let mut out = match std::fs::File::create(&extracted_path) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        let resp = IpcResponse::err("update_download_result", format!("Cannot create extracted file: {}", e));
+                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                        return;
+                    }
+                };
+                use std::io::copy;
+                if let Err(e) = copy(&mut zip_file, &mut out) {
+                    let resp = IpcResponse::err("update_download_result", format!("Extraction failed: {}", e));
+                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                    return;
+                }
+            }
+            let _ = std::fs::remove_file(&update_path);
+            extracted_path
+        } else {
+            update_path
+        };
+
+        // Rename current exe to .old, install new one
         if backup_path.exists() {
             let _ = std::fs::remove_file(&backup_path);
         }
@@ -252,7 +345,7 @@ pub fn download_update(
             return;
         }
 
-        if let Err(e) = std::fs::rename(&update_path, &current_exe) {
+        if let Err(e) = std::fs::rename(&exe_to_install, &current_exe) {
             // Restore backup
             let _ = std::fs::rename(&backup_path, &current_exe);
             let resp = IpcResponse::err("update_download_result", format!("Cannot install update: {}", e));
