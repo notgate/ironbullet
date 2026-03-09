@@ -21,11 +21,19 @@ export function savePipeline(opts: { forceDialog?: boolean } = {}) {
 	});
 }
 
+// Commands that must be allowed through even from panel windows.
+// These are panel-local actions that don't cause cross-window broadcast issues.
+const PANEL_ALLOWED_CMDS = new Set([
+	'inspect_browser_open',
+	'inspect_browser_close',
+]);
+
 export function send(cmd: string, data: Record<string, unknown> = {}) {
 	// In native panel windows this webview is receive-only.
 	// Sending IPC from panel windows causes Rust to broadcast responses to ALL
 	// webviews — including the main window — re-triggering startup dialogs.
-	if (typeof window !== 'undefined' && (window as any).__ibIsPanelMode) return;
+	// Exception: panel-local commands (browser capture) must still be sent.
+	if (typeof window !== 'undefined' && (window as any).__ibIsPanelMode && !PANEL_ALLOWED_CMDS.has(cmd)) return;
 
 	const payload: Record<string, unknown> = { ...data, _tab_id: app.activeTabId };
 	if (MUTATION_CMDS.has(cmd)) {
