@@ -17,6 +17,11 @@
 	import Chrome from '@lucide/svelte/icons/chrome';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Terminal from '@lucide/svelte/icons/terminal';
+	import Download from '@lucide/svelte/icons/download';
+	import ZoomIn from '@lucide/svelte/icons/zoom-in';
+	import ZoomOut from '@lucide/svelte/icons/zoom-out';
+	import Filter from '@lucide/svelte/icons/filter';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
 
 	// ── Mode ───────────────────────────────────────────────────────────────────
 	let mode = $state<'manual' | 'browser' | 'proxy'>('manual');
@@ -163,6 +168,114 @@
 	let applyFrom        = $state<'request' | 'response'>('request');
 	let applyPanelOpen   = $state(false);
 
+	// ── UX enhancements ────────────────────────────────────────────────────────
+
+	// Text zoom (persisted)
+	let textZoom = $state<number>((() => { try { return Number(localStorage.getItem('ib_inspector_zoom')) || 1; } catch { return 1; } })());
+	$effect(() => { try { localStorage.setItem('ib_inspector_zoom', String(textZoom)); } catch {} });
+	function zoomIn()  { textZoom = Math.min(2,   Math.round((textZoom + 0.1) * 10) / 10); }
+	function zoomOut() { textZoom = Math.max(0.6, Math.round((textZoom - 0.1) * 10) / 10); }
+
+	// Tracking/noise filter — hides requests matching common tracker/analytics domains
+	let hideTrackers = $state<boolean>((() => { try { return localStorage.getItem('ib_inspector_hide_trackers') === '1'; } catch { return false; } })());
+	$effect(() => { try { localStorage.setItem('ib_inspector_hide_trackers', hideTrackers ? '1' : '0'); } catch {} });
+
+	const TRACKER_DOMAINS = new Set([
+		'google-analytics.com','googletagmanager.com','doubleclick.net','googlesyndication.com',
+		'googleadservices.com','adservice.google.com','analytics.google.com',
+		'facebook.net','connect.facebook.net','facebook.com/tr',
+		'hotjar.com','clarity.ms','fullstory.com','logrocket.com',
+		'segment.com','amplitude.com','mixpanel.com','heap.io',
+		'sentry.io','datadog-browser-agent.com','newrelic.com','bugsnag.com',
+		'cdn.cookielaw.org','optanon.blob.core.windows.net','cookiepro.com',
+		'onetrust.com','quantserve.com','scorecardresearch.com',
+		'akamaihd.net','akstat.io','akam.net',
+		'nr-data.net','insights.io','tealiumiq.com',
+	]);
+
+	function isTracker(url: string): boolean {
+		try {
+			const host = new URL(url).hostname.replace(/^www\./, '');
+			return [...TRACKER_DOMAINS].some(t => host === t || host.endsWith('.' + t));
+		} catch { return false; }
+	}
+
+	// Clear with save confirmation
+	let clearConfirmOpen = $state(false);
+
+	function promptClear() { clearConfirmOpen = true; }
+
+	function executeClear(save: boolean) {
+		clearConfirmOpen = false;
+		if (save) exportTranscript('json', true);
+		capturedRequests = [];
+		domainGroups = []; activeDomain = null;
+		selectedReqId = null;
+		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
+	}
+
+	// Export transcript
+	function exportTranscript(fmt: 'json' | 'har' | 'txt', silent = false) {
+		const reqs = activeDomain
+			? capturedRequests.filter(r => registrableDomain(r.url) === activeDomain)
+			: capturedRequests;
+		let content = '';
+		let filename = '';
+		const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+		if (fmt === 'json') {
+			content = JSON.stringify(reqs, null, 2);
+			filename = `inspector-${ts}.json`;
+		} else if (fmt === 'har') {
+			const entries = reqs.map(r => ({
+				startedDateTime: new Date().toISOString(),
+				request: {
+					method: r.method, url: r.url,
+					headers: Object.entries(r.headers ?? {}).map(([n, v]) => ({ name: n, value: v })),
+					postData: r.post_data ? { mimeType: r.headers?.['content-type'] ?? '', text: r.post_data } : undefined,
+					queryString: [], cookies: [], httpVersion: 'HTTP/1.1', headersSize: -1, bodySize: -1,
+				},
+				response: {
+					status: r.resp_status ?? 0, statusText: r.resp_status_text ?? '',
+					headers: Object.entries(r.resp_headers ?? {}).map(([n, v]) => ({ name: n, value: v })),
+					content: { size: r.resp_body?.length ?? 0, mimeType: r.resp_mime ?? '', text: r.resp_body ?? '' },
+					cookies: [], redirectURL: '', httpVersion: 'HTTP/1.1', headersSize: -1, bodySize: -1,
+				},
+				cache: {}, timings: { send: 0, wait: 0, receive: 0 },
+			}));
+			content = JSON.stringify({ log: { version: '1.2', creator: { name: 'IronBullet', version: '0.3.6' }, entries } }, null, 2);
+			filename = `inspector-${ts}.har`;
+		} else {
+			content = reqs.map(r =>
+				`${r.method} ${r.url} → ${r.resp_status ?? '?'} ${r.resp_mime ?? ''}\n` +
+				Object.entries(r.headers ?? {}).map(([k,v]) => `  ${k}: ${v}`).join('\n')
+			).join('\n\n');
+			filename = `inspector-${ts}.txt`;
+		}
+
+		if (silent) {
+			// Save via IPC to network/ folder
+			send('save_inspector_transcript', { filename, content });
+			return;
+		}
+		// Browser download
+		const blob = new Blob([content], { type: 'application/octet-stream' });
+		const a = document.createElement('a');
+		a.href = URL.createObjectURL(blob);
+		a.download = filename;
+		a.click();
+		URL.revokeObjectURL(a.href);
+	}
+
+	// Copy URL helper
+	let copiedUrl = $state(false);
+	function copyUrl() {
+		if (!selectedReq) return;
+		navigator.clipboard.writeText(selectedReq.url);
+		copiedUrl = true;
+		setTimeout(() => copiedUrl = false, 1500);
+	}
+
 	// splitter
 	let splitWidth       = $state(272); // left list px
 
@@ -183,6 +296,8 @@
 	}
 
 	const filteredRequests = $derived(capturedRequests.filter(r => {
+		// Tracker filter
+		if (hideTrackers && isTracker(r.url)) return false;
 		// Domain filter
 		if (activeDomain && registrableDomain(r.url) !== activeDomain) return false;
 		if (typeFilter !== 'all') {
@@ -371,7 +486,25 @@
 		if (!selectedReq) return;
 		const src = applyFrom === 'request' ? selectedReq.headers : (selectedReq.resp_headers ?? {});
 		const sel = applyFrom === 'request' ? applySelReq : applySelResp;
-		const selected = Object.entries(src).filter(([k]) => sel.has(k));
+		const selectedHeaders = Object.entries(src).filter(([k]) => sel.has(k));
+
+		// Find target block — prefer the selected block in the main window.
+		// In panel mode, app.selectedBlockId may be stale, so we send via IPC
+		// which the main window handles directly on its live pipeline state.
+		const isPanelMode = typeof window !== 'undefined' && (window as any).__ibIsPanelMode;
+		if (isPanelMode) {
+			// Cross-window apply: broadcast to main window via IPC
+			send('inspector_apply_to_block', {
+				block_id:   app.selectedBlockId ?? null,
+				headers:    selectedHeaders,
+				url:        selectedReq!.url,
+				body:       applyFrom === 'request' ? (selectedReq!.post_data ?? null) : null,
+				apply_url:  true,
+				apply_body: applyFrom === 'request' && !!selectedReq!.post_data,
+			});
+			applyPanelOpen = false;
+			return;
+		}
 
 		const targetBlock = app.pipeline.blocks.find(
 			b => b.id === app.selectedBlockId && b.settings.type === 'HttpRequest'
@@ -381,16 +514,16 @@
 			browserError = 'Select an HTTP Request block first'; return;
 		}
 		const existing: [string, string][] = [...(targetBlock.settings.headers ?? [])];
-		for (const [key, value] of selected) {
+		for (const [key, value] of selectedHeaders) {
 			const idx = existing.findIndex(([k]) => k.toLowerCase() === key.toLowerCase());
 			if (idx >= 0) existing[idx] = [existing[idx][0], value];
 			else existing.push([key, value]);
 		}
-		const needsUrl = !targetBlock.settings.url?.trim();
 		app.pipeline.blocks = app.pipeline.blocks.map(b => b.id !== targetBlock.id ? b : {
 			...b, settings: {
-				...b.settings, headers: existing,
-				...(needsUrl ? { url: selectedReq!.url } : {}),
+				...b.settings,
+				headers: existing,
+				url:     selectedReq!.url,
 				...(selectedReq!.post_data && applyFrom === 'request' ? { body: selectedReq!.post_data } : {}),
 			}
 		});
@@ -644,10 +777,50 @@
 				<MonitorPlay size={11} />Open Browser
 			</button>
 		{/if}
-		<button class="skeu-btn text-[10px] text-muted-foreground shrink-0"
-			onclick={() => { capturedRequests = []; domainGroups = []; activeDomain = null; selectedReqId = null; }}>Clear</button>
+		<!-- Tracker filter toggle -->
+		<button
+			class="skeu-btn flex items-center gap-1 text-[10px] shrink-0 {hideTrackers ? 'text-primary' : 'text-muted-foreground'}"
+			title={hideTrackers ? 'Showing: no trackers/analytics' : 'Show all requests'}
+			onclick={() => hideTrackers = !hideTrackers}
+		><EyeOff size={10} />{hideTrackers ? 'Filtered' : 'Filter'}</button>
+
+		<!-- Zoom controls -->
+		<div class="flex items-center shrink-0">
+			<button class="skeu-btn p-1 text-muted-foreground" onclick={zoomOut} title="Zoom out"><ZoomOut size={10} /></button>
+			<span class="text-[9px] text-muted-foreground/60 w-6 text-center tabular-nums">{Math.round(textZoom * 100)}%</span>
+			<button class="skeu-btn p-1 text-muted-foreground" onclick={zoomIn}  title="Zoom in"><ZoomIn size={10} /></button>
+		</div>
+
+		<!-- Export -->
+		<div class="relative group shrink-0">
+			<button class="skeu-btn flex items-center gap-1 text-[10px] text-muted-foreground" title="Export transcript">
+				<Download size={10} />Export
+			</button>
+			<div class="absolute right-0 top-full mt-0.5 bg-popover border border-border rounded shadow-lg z-50 min-w-[110px] hidden group-focus-within:block group-hover:block">
+				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={() => exportTranscript('json')}>JSON</button>
+				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={() => exportTranscript('har')}>HAR</button>
+				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={() => exportTranscript('txt')}>Plain text</button>
+			</div>
+		</div>
+
+		<button class="skeu-btn text-[10px] text-muted-foreground shrink-0" onclick={promptClear}>Clear</button>
 		<span class="text-[9px] text-muted-foreground/50 shrink-0 tabular-nums">{filteredRequests.length}/{capturedRequests.length}</span>
 	</div>
+
+	<!-- Clear confirmation dialog -->
+	{#if clearConfirmOpen}
+	<div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+		<div class="bg-popover border border-border rounded-lg shadow-xl px-5 py-4 flex flex-col gap-3 w-[280px]">
+			<p class="text-[11px] font-semibold">Clear captured requests?</p>
+			<p class="text-[10px] text-muted-foreground">Save a copy to the <code>network/</code> folder first?</p>
+			<div class="flex gap-2 justify-end">
+				<button class="skeu-btn text-[10px] text-muted-foreground" onclick={() => clearConfirmOpen = false}>Cancel</button>
+				<button class="skeu-btn text-[10px]" onclick={() => executeClear(false)}>Clear</button>
+				<button class="skeu-btn text-[10px] bg-primary text-primary-foreground" onclick={() => executeClear(true)}>Save &amp; Clear</button>
+			</div>
+		</div>
+	</div>
+	{/if}
 
 	<!-- Domain filter strip (browser/proxy mode, when domains exist) -->
 	{#if (mode === 'browser' || mode === 'proxy') && domainGroups.length > 0}
@@ -809,7 +982,7 @@
 		></div>
 
 		<!-- RIGHT: detail pane -->
-		<div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+		<div class="flex-1 flex flex-col min-w-0 overflow-hidden" style="font-size:{textZoom}em">
 			{#if selectedReq}
 				<!-- Request summary bar -->
 				<div class="flex items-center gap-2 px-2 py-0.5 border-b border-border bg-background/60 shrink-0 min-w-0">
@@ -818,6 +991,11 @@
 						<span class="font-mono font-bold text-[10px] {statusColor(selectedReq.resp_status)} shrink-0">{selectedReq.resp_status}</span>
 					{/if}
 					<span class="font-mono text-primary truncate flex-1 min-w-0 text-[9px]" title={selectedReq.url}>{selectedReq.url}</span>
+					<button
+						class="skeu-btn p-0.5 shrink-0 {copiedUrl ? 'text-green-400' : 'text-muted-foreground hover:text-foreground'}"
+						title="Copy URL"
+						onclick={copyUrl}
+					>{#if copiedUrl}<Check size={10} />{:else}<Copy size={10} />{/if}</button>
 					<span class="text-[8px] text-muted-foreground/50 shrink-0">{selectedReq.resp_mime ?? ''}</span>
 					<button
 						class="skeu-btn flex items-center gap-1 text-[10px] text-primary shrink-0"
@@ -1001,7 +1179,7 @@
 				<Play size={11} />Start Proxy
 			</button>
 		{/if}
-		<button class="skeu-btn text-[10px] text-muted-foreground ml-auto shrink-0" onclick={() => { capturedRequests = []; domainGroups = []; activeDomain = null; selectedReqId = null; try { localStorage.removeItem('ib_inspector_captures'); } catch {} }}>
+		<button class="skeu-btn text-[10px] text-muted-foreground ml-auto shrink-0" onclick={promptClear}>
 			<Trash2 size={10} />Clear
 		</button>
 	</div>
