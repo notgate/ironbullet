@@ -36,11 +36,23 @@
 		resp_headers?: Record<string, string>; resp_body?: string;
 	}
 
-	// Tab/session isolation — each CONNECT tunnel = one "tab session"
-	interface TabSession { id: string; label: string; color: string; requestCount: number; }
-	const SESSION_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
-	let tabSessions      = $state<TabSession[]>([]);
-	let activeSessionId  = $state<string | null>(null); // null = show all
+	// Domain grouping — group requests by registrable domain (eTLD+1)
+	// Much more useful than per-CONNECT-tunnel grouping since one browser tab
+	// opens dozens of CONNECT tunnels (one per origin per connection).
+	interface DomainGroup { domain: string; color: string; requestCount: number; }
+	const DOMAIN_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4'];
+	let domainGroups     = $state<DomainGroup[]>([]);
+	let activeDomain     = $state<string | null>(null); // null = show all
+
+	function registrableDomain(url: string): string {
+		try {
+			const host = new URL(url).hostname;
+			// Strip leading www.
+			const parts = host.replace(/^www\./, '').split('.');
+			// Return last 2 parts (handles .com, .co.uk approximation)
+			return parts.length >= 2 ? parts.slice(-2).join('.') : host;
+		} catch { return url; }
+	}
 
 	// filter / search — capturedRequests persisted in localStorage so popping
 	// the panel out to an external window (which remounts the component) doesn't
@@ -93,6 +105,34 @@
 			browserError = 'Chrome still not detected. Restart IronBullet after installing.';
 		}
 	});
+	// Virtual scroll state
+	let listEl       = $state<HTMLElement | null>(null);
+	let visibleStart = $state(0);
+	let visibleEnd   = $state(50);
+	const ROW_H_CONST = 22;
+
+	function onListScroll() {
+		if (!listEl) return;
+		const scrollTop = listEl.scrollTop;
+		const viewH     = listEl.clientHeight;
+		visibleStart = Math.floor(scrollTop / ROW_H_CONST);
+		visibleEnd   = Math.ceil((scrollTop + viewH) / ROW_H_CONST);
+	}
+
+	// Auto-scroll to bottom when new requests arrive (if already near bottom)
+	$effect(() => {
+		const _ = capturedRequests.length; // depend on length
+		if (!listEl) return;
+		const { scrollTop, scrollHeight, clientHeight } = listEl;
+		const nearBottom = scrollHeight - scrollTop - clientHeight < ROW_H_CONST * 5;
+		if (nearBottom) {
+			// Use requestAnimationFrame to let DOM update first
+			requestAnimationFrame(() => {
+				if (listEl) listEl.scrollTop = listEl.scrollHeight;
+			});
+		}
+	});
+
 	let capturedRequests = $state<CapturedRequest[]>((() => { try { const r = localStorage.getItem('ib_inspector_captures'); return r ? JSON.parse(r) as CapturedRequest[] : []; } catch { return []; } })());
 	let selectedReqId    = $state<string | null>((() => { try { return localStorage.getItem('ib_inspector_sel') || null; } catch { return null; } })());
 	let searchQuery      = $state('');
@@ -143,8 +183,8 @@
 	}
 
 	const filteredRequests = $derived(capturedRequests.filter(r => {
-		// Tab isolation filter
-		if (activeSessionId && r.session_id && r.session_id !== activeSessionId) return false;
+		// Domain filter
+		if (activeDomain && registrableDomain(r.url) !== activeDomain) return false;
 		if (typeFilter !== 'all') {
 			const g = typeGroup(r.resource_type);
 			if (typeFilter === 'other') { if (g !== 'other') return false; }
@@ -226,29 +266,27 @@
 			if (ev.type === 'stopped') { proxyActive = false; return; }
 			if (ev.type === 'request') {
 				if (capturedRequests.some(r => r.id === ev.id)) return;
-				// Track tab sessions by session_id
-				if (ev.session_id) {
-					const existing = tabSessions.find(s => s.id === ev.session_id);
-					if (!existing) {
-						const color = SESSION_COLORS[tabSessions.length % SESSION_COLORS.length];
-						// Label with hostname for readability
-						let label = 'Tab ' + (tabSessions.length + 1);
-						try { label = new URL(ev.url).hostname || label; } catch {}
-						tabSessions = [...tabSessions, { id: ev.session_id, label, color, requestCount: 1 }];
-					} else {
-						tabSessions = tabSessions.map(s => s.id === ev.session_id
-							? { ...s, requestCount: s.requestCount + 1 } : s);
-					}
+				// Track by registrable domain
+				const domain = registrableDomain(ev.url);
+				const existingDomain = domainGroups.find(d => d.domain === domain);
+				if (!existingDomain) {
+					const color = DOMAIN_COLORS[domainGroups.length % DOMAIN_COLORS.length];
+					domainGroups = [...domainGroups, { domain, color, requestCount: 1 }];
+				} else {
+					// Mutate count in-place to avoid triggering full array re-render
+					existingDomain.requestCount++;
+					domainGroups = domainGroups; // trigger reactivity
 				}
-				const next = [...capturedRequests, {
+				// Batch: append to array directly, only persist every 20 requests to reduce localStorage writes
+				capturedRequests.push({
 					id: ev.id, url: ev.url, method: ev.method,
 					resource_type: ev.resource_type ?? 'fetch',
 					headers: ev.headers ?? {}, post_data: ev.post_data ?? null,
 					session_id: ev.session_id ?? undefined,
-				}];
-				capturedRequests = next;
+				});
+				capturedRequests = capturedRequests; // trigger reactivity
 				if (!selectedReqId) { selectedReqId = ev.id; applySelReq = new Set(Object.keys(ev.headers ?? {})); }
-				persistCaptures(next);
+				if (capturedRequests.length % 20 === 0) persistCaptures(capturedRequests);
 			} else if (ev.type === 'response') {
 				const next = capturedRequests.map(r => r.id !== ev.id ? r : {
 					...r,
@@ -264,6 +302,7 @@
 	function startProxy() {
 		proxyError = '';
 		capturedRequests = [];
+		domainGroups = []; activeDomain = null;
 		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
 		selectedReqId = null; applyPanelOpen = false;
 		send('inspect_proxy_start', { port: proxyPort });
@@ -296,7 +335,7 @@
 		launchPending = true;
 		browserError = '';
 		capturedRequests = [];
-		tabSessions = []; activeSessionId = null;
+		domainGroups = []; activeDomain = null;
 		try { localStorage.removeItem('ib_inspector_captures'); localStorage.removeItem('ib_inspector_sel'); } catch {}
 		selectedReqId = null; applyPanelOpen = false;
 		browserLoading = true;
@@ -606,26 +645,26 @@
 			</button>
 		{/if}
 		<button class="skeu-btn text-[10px] text-muted-foreground shrink-0"
-			onclick={() => { capturedRequests = []; selectedReqId = null; }}>Clear</button>
+			onclick={() => { capturedRequests = []; domainGroups = []; activeDomain = null; selectedReqId = null; }}>Clear</button>
 		<span class="text-[9px] text-muted-foreground/50 shrink-0 tabular-nums">{filteredRequests.length}/{capturedRequests.length}</span>
 	</div>
 
-	<!-- Tab isolation strip (browser mode only, when sessions exist) -->
-	{#if (mode === 'browser' || mode === 'proxy') && tabSessions.length > 0}
+	<!-- Domain filter strip (browser/proxy mode, when domains exist) -->
+	{#if (mode === 'browser' || mode === 'proxy') && domainGroups.length > 0}
 	<div class="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0 bg-background/20 overflow-x-auto">
-		<span class="text-[9px] text-muted-foreground shrink-0 mr-1">Tabs:</span>
+		<span class="text-[9px] text-muted-foreground shrink-0 mr-1">Domain:</span>
 		<button
-			class="px-2 py-0.5 rounded text-[9px] transition-colors shrink-0 {activeSessionId === null ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'}"
-			onclick={() => activeSessionId = null}
+			class="px-2 py-0.5 rounded text-[9px] transition-colors shrink-0 {activeDomain === null ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'}"
+			onclick={() => activeDomain = null}
 		>All ({capturedRequests.length})</button>
-		{#each tabSessions as session}
+		{#each domainGroups as grp}
 			<button
-				class="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] transition-colors shrink-0 {activeSessionId === session.id ? 'ring-1 ring-offset-1 font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'}"
-				style="--tab-color: {session.color}; {activeSessionId === session.id ? `background: ${session.color}22; color: ${session.color}; ring-color: ${session.color}` : ''}"
-				onclick={() => activeSessionId = activeSessionId === session.id ? null : session.id}
+				class="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] transition-colors shrink-0 {activeDomain === grp.domain ? 'font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'}"
+				style={activeDomain === grp.domain ? `background:${grp.color}22;color:${grp.color}` : ''}
+				onclick={() => activeDomain = activeDomain === grp.domain ? null : grp.domain}
 			>
-				<span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: {session.color}"></span>
-				{session.label} <span class="opacity-60">({session.requestCount})</span>
+				<span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:{grp.color}"></span>
+				{grp.domain} <span class="opacity-60">({grp.requestCount})</span>
 			</button>
 		{/each}
 	</div>
@@ -729,27 +768,38 @@
 				style="grid-template-columns: 36px 28px 1fr 32px">
 				<span>Meth</span><span>Type</span><span>Path</span><span class="text-right">St</span>
 			</div>
-			<div class="flex-1 overflow-y-auto">
-				{#if filteredRequests.length === 0}
-					<div class="p-3 text-[9px] text-muted-foreground/40 italic text-center">
+			<!-- Virtual scroll request list — only renders visible rows -->
+			{#if filteredRequests.length === 0}
+				<div class="flex-1 flex items-center justify-center">
+					<p class="p-3 text-[9px] text-muted-foreground/40 italic text-center">
 						{browserOpen ? 'Waiting for requests…' : capturedRequests.length ? 'No matches' : 'No requests captured'}
+					</p>
+				</div>
+			{:else}
+				<div
+					class="flex-1 overflow-y-auto"
+					bind:this={listEl}
+					onscroll={onListScroll}
+				>
+					<div style="height:{filteredRequests.length * ROW_H_CONST}px;position:relative;">
+						{#each filteredRequests.slice(Math.max(0, visibleStart - 8), Math.min(filteredRequests.length, visibleEnd + 8)) as req, i (req.id)}
+							{@const absIdx = Math.max(0, visibleStart - 8) + i}
+							{@const isSelected = selectedReqId === req.id}
+							{@const domColor = domainGroups.find(d => d.domain === registrableDomain(req.url))?.color}
+							<button
+								class="w-full text-left px-1 border-b border-border/20 hover:bg-accent/20 grid items-center gap-1 absolute left-0 right-0 {isSelected ? 'bg-primary/10 border-l-2 border-l-primary' : ''}"
+								style="grid-template-columns:36px 28px 1fr 32px;top:{absIdx * ROW_H_CONST}px;height:{ROW_H_CONST}px"
+								onclick={() => selectReq(req.id)}
+							>
+								<span class="font-mono font-bold text-[9px] {methodColor(req.method)} truncate">{req.method}</span>
+								<span class="inline-flex items-center justify-center text-[7px] leading-none h-[13px] px-1 rounded font-medium shrink-0 {typeBadgeClass(req.resource_type)}">{req.resource_type.slice(0,4)}</span>
+								<span class="font-mono text-[9px] truncate leading-tight" style={domColor ? `color:${domColor}cc` : ''}>{shortUrl(req.url)}</span>
+								<span class="text-right font-mono text-[9px] tabular-nums {statusColor(req.resp_status)}">{req.resp_status ?? '—'}</span>
+							</button>
+						{/each}
 					</div>
-				{:else}
-					{#each filteredRequests as req}
-						{@const isSelected = selectedReqId === req.id}
-						<button
-							class="w-full text-left px-1 py-[3px] border-b border-border/20 hover:bg-accent/20 transition-colors grid items-center gap-1 {isSelected ? 'bg-primary/10 border-l-2 border-l-primary' : ''}"
-							style="grid-template-columns: 36px 28px 1fr 32px"
-							onclick={() => selectReq(req.id)}
-						>
-							<span class="font-mono font-bold text-[9px] {methodColor(req.method)} truncate">{req.method}</span>
-							<span class="inline-flex items-center justify-center text-[7px] leading-none h-[13px] px-1 rounded font-medium shrink-0 {typeBadgeClass(req.resource_type)}">{req.resource_type.slice(0,4)}</span>
-							<span class="font-mono text-[9px] text-foreground/75 truncate leading-tight">{shortUrl(req.url)}</span>
-							<span class="text-right font-mono text-[9px] tabular-nums {statusColor(req.resp_status)}">{req.resp_status ?? '—'}</span>
-						</button>
-					{/each}
-				{/if}
-			</div>
+				</div>
+			{/if}
 		</div>
 
 		<!-- Drag splitter -->
@@ -951,7 +1001,7 @@
 				<Play size={11} />Start Proxy
 			</button>
 		{/if}
-		<button class="skeu-btn text-[10px] text-muted-foreground ml-auto shrink-0" onclick={() => { capturedRequests = []; selectedReqId = null; try { localStorage.removeItem('ib_inspector_captures'); } catch {} }}>
+		<button class="skeu-btn text-[10px] text-muted-foreground ml-auto shrink-0" onclick={() => { capturedRequests = []; domainGroups = []; activeDomain = null; selectedReqId = null; try { localStorage.removeItem('ib_inspector_captures'); } catch {} }}>
 			<Trash2 size={10} />Clear
 		</button>
 	</div>
