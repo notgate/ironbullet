@@ -111,18 +111,40 @@ impl ExecutionContext {
             }
         }
 
+        let nav_timeout = std::time::Duration::from_millis(settings.timeout_ms.max(5000));
+
         let page = if let Some(ref existing) = self.page.0 {
-            existing.goto(&url).await
+            // Existing page: navigate with timeout so a stalled page doesn't block forever
+            tokio::time::timeout(nav_timeout, existing.goto(&url))
+                .await
+                .map_err(|_| crate::error::AppError::Pipeline("Navigate timed out".to_string()))?
                 .map_err(|e| crate::error::AppError::Pipeline(format!("Navigate failed: {}", e)))?;
             existing.clone()
         } else {
-            browser.new_page(&url).await
-                .map_err(|e| crate::error::AppError::Pipeline(format!("New page failed: {}", e)))?
+            // New page: create blank page first, then navigate with timeout.
+            // new_page(url) blocks until the initial navigation completes — on pages
+            // with persistent JS (waiting rooms, keep-alives) it never returns.
+            // Instead: open blank page, then goto() with our own timeout.
+            let p = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                browser.new_page("about:blank"),
+            )
+            .await
+            .map_err(|_| crate::error::AppError::Pipeline("Browser new page timed out".to_string()))?
+            .map_err(|e| crate::error::AppError::Pipeline(format!("New page failed: {}", e)))?;
+
+            // Navigate to target URL; ignore navigation errors (e.g. waiting rooms that
+            // never fire a load event) — we'll read whatever content the page has.
+            let _ = tokio::time::timeout(nav_timeout, p.goto(&url)).await;
+            p
         };
 
-        // Wait for page to load, respecting the configured timeout
-        let timeout = std::time::Duration::from_millis(settings.timeout_ms.max(5000));
-        let _ = tokio::time::timeout(timeout, page.wait_for_navigation()).await;
+        // Additional wait: give the page a moment to settle after navigation.
+        // Ignore the result — we proceed regardless of whether it completes.
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_millis(2000),
+            page.wait_for_navigation(),
+        ).await;
         let nav_elapsed = nav_start.elapsed().as_millis() as u64;
 
         // Store page content in variables
