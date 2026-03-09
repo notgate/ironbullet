@@ -5,16 +5,67 @@ use super::*;
 
 impl ExecutionContext {
     pub(super) async fn execute_browser_open(&mut self, settings: &BrowserOpenSettings) -> crate::error::Result<()> {
-        use chromiumoxide::browser::{Browser, BrowserConfig};
+        use chromiumoxide::browser::Browser;
 
-        let mut builder = BrowserConfig::builder();
+        // ----------------------------------------------------------------
+        // Browser::launch uses ws_url_from_output() which reads Chrome's
+        // stderr pipe waiting for "listening on ws://..." — Chrome on Windows
+        // does NOT write this to stderr, so it hangs forever.
+        //
+        // Instead: manually spawn Chrome with --remote-debugging-port, poll
+        // /json/version over HTTP until it's ready, then connect via
+        // Browser::connect(). This is the same approach used by Site Inspector
+        // and avoids all stderr-reading issues.
+        // ----------------------------------------------------------------
+
+        // Pick a random-ish port in the ephemeral range
+        let cdp_port: u16 = 9222 + (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos() % 1000) as u16;
+
+        // Resolve Chrome executable
+        let chrome_exe = self.chrome_executable_path.clone()
+            .or_else(find_chrome_exe)
+            .ok_or_else(|| crate::error::AppError::Pipeline(
+                "Chrome not found. Set chrome path in Settings → Paths.".to_string()
+            ))?;
+
+        // Build args
+        let mut chrome_args: Vec<String> = vec![
+            format!("--remote-debugging-port={}", cdp_port),
+            "--remote-debugging-address=127.0.0.1".to_string(),
+            "--disable-background-networking".to_string(),
+            "--disable-background-timer-throttling".to_string(),
+            "--disable-backgrounding-occluded-windows".to_string(),
+            "--disable-breakpad".to_string(),
+            "--disable-client-side-phishing-detection".to_string(),
+            "--disable-component-extensions-with-background-pages".to_string(),
+            "--disable-default-apps".to_string(),
+            "--disable-dev-shm-usage".to_string(),
+            "--disable-hang-monitor".to_string(),
+            "--disable-ipc-flooding-protection".to_string(),
+            "--disable-popup-blocking".to_string(),
+            "--disable-prompt-on-repost".to_string(),
+            "--disable-renderer-backgrounding".to_string(),
+            "--disable-sync".to_string(),
+            "--metrics-recording-only".to_string(),
+            "--no-first-run".to_string(),
+            "--no-default-browser-check".to_string(),
+            "--password-store=basic".to_string(),
+            "--use-mock-keychain".to_string(),
+            "--no-sandbox".to_string(),
+            "--disable-setuid-sandbox".to_string(),
+            format!("--user-data-dir={}", std::env::temp_dir().join(format!("ib-chrome-{}", cdp_port)).display()),
+        ];
+
         if settings.headless {
-            builder = builder.new_headless_mode();
-        } else {
-            builder = builder.with_head();
+            chrome_args.push("--headless=new".to_string());
+            chrome_args.push("--hide-scrollbars".to_string());
+            chrome_args.push("--mute-audio".to_string());
         }
-        // Use explicit proxy from block settings, fall back to the session proxy
-        // assigned by the runner (ctx.proxy) so BrowserOpen inherits proxy rotation.
+
+        // Proxy
         let effective_proxy = if !settings.proxy.is_empty() {
             let p = self.variables.interpolate(&settings.proxy);
             if p.is_empty() { self.proxy.clone() } else { Some(p) }
@@ -23,49 +74,78 @@ impl ExecutionContext {
         };
         if let Some(ref proxy_str) = effective_proxy {
             if !proxy_str.is_empty() {
-                // Chrome expects --proxy-server=scheme://host:port
-                // If the proxy already has a scheme, pass as-is; otherwise prefix http://
                 let chrome_proxy = if proxy_str.contains("://") {
                     proxy_str.clone()
                 } else {
                     format!("http://{}", proxy_str)
                 };
-                builder = builder.arg(format!("--proxy-server={}", chrome_proxy));
-            }
-        }
-        if !settings.extra_args.is_empty() {
-            for arg in settings.extra_args.split_whitespace() {
-                builder = builder.arg(arg);
+                chrome_args.push(format!("--proxy-server={}", chrome_proxy));
             }
         }
 
-        // Resolve Chrome executable: prefer user-configured path → auto-discovery.
-        if let Some(ref exe) = self.chrome_executable_path {
-            builder = builder.chrome_executable(exe);
+        // Extra args from settings
+        for arg in settings.extra_args.split_whitespace() {
+            if !arg.is_empty() {
+                chrome_args.push(arg.to_string());
+            }
         }
 
-        let config = builder.build()
-            .map_err(|e| crate::error::AppError::Pipeline(format!("Browser config error: {}", e)))?;
+        // Spawn Chrome process
+        let mut cmd = std::process::Command::new(&chrome_exe);
+        cmd.args(&chrome_args);
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        cmd.stdin(std::process::Stdio::null());
+        // Suppress console window on Windows (CREATE_NO_WINDOW = 0x08000000)
+        #[cfg(all(target_os = "windows", not(target_env = "gnu")))]
+        { use std::os::windows::process::CommandExt; cmd.creation_flags(0x08000000); }
 
-        // Browser::launch performs blocking syscalls (process spawn + TCP connect).
-        // Use spawn_blocking so it runs on a dedicated thread pool thread without
-        // blocking the Tokio executor, while still being able to drive the async
-        // Browser::launch future via a nested block_on on that thread.
-        let (browser, mut handler) = tokio::task::spawn_blocking(move || {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| crate::error::AppError::Pipeline(format!("Browser runtime error: {}", e)))
-                .and_then(|rt| {
-                    rt.block_on(Browser::launch(config))
-                        .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch failed: {}", e)))
-                })
-        })
+        let _chrome_child = cmd.spawn()
+            .map_err(|e| crate::error::AppError::Pipeline(
+                format!("Failed to spawn Chrome: {}\nPath: {:?}", e, chrome_exe)
+            ))?;
+
+        // Store child so it's dropped (and Chrome killed) when ExecutionContext drops
+        self.chrome_child = Some(_chrome_child);
+
+        // Poll /json/version until Chrome is ready (up to 15s)
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap_or_default();
+        let version_url = format!("http://127.0.0.1:{}/json/version", cdp_port);
+        let ws_url = {
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
+            loop {
+                if tokio::time::Instant::now() > deadline {
+                    return Err(crate::error::AppError::Pipeline(
+                        "Chrome started but did not open its debug port within 15 seconds.".to_string()
+                    ));
+                }
+                match http_client.get(&version_url).send().await {
+                    Ok(resp) => {
+                        if let Ok(json) = resp.json::<serde_json::Value>().await {
+                            if let Some(ws) = json.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) {
+                                break ws.to_string();
+                            }
+                        }
+                    }
+                    Err(_) => {}
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        };
+
+        // Connect to running Chrome via CDP WebSocket — no stderr reading, no hang
+        let (browser, mut handler) = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            Browser::connect(&ws_url),
+        )
         .await
-        .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch task panicked: {}", e)))??;
+        .map_err(|_| crate::error::AppError::Pipeline("Browser::connect timed out".to_string()))?
+        .map_err(|e| crate::error::AppError::Pipeline(format!("Browser connect failed: {}", e)))?;
 
-        // Spawn CDP event handler in background -- must NOT break on errors
-        // or all future browser commands fail with "oneshot cancelled"
+        // Drive CDP events in background — must stay alive for all browser commands to work
         tokio::spawn(async move {
             while handler.next().await.is_some() {}
         });
@@ -343,5 +423,57 @@ impl ExecutionContext {
 
         self.variables.set_user(&settings.output_var, value, settings.capture);
         Ok(())
+    }
+}
+
+/// Locate the Chrome/Chromium executable on the current platform.
+/// Returns None if Chrome is not found.
+fn find_chrome_exe() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut paths: Vec<String> = Vec::new();
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            paths.push(format!(r"{}\Google\Chrome\Application\chrome.exe", local));
+            paths.push(format!(r"{}\Chromium\Application\chrome.exe", local));
+        }
+        let fixed: &[&str] = &[
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files\Chromium\Application\chrome.exe",
+        ];
+        for p in fixed.iter().copied().chain(paths.iter().map(|s| s.as_str())) {
+            let path = std::path::Path::new(p);
+            if path.exists() { return Some(path.to_path_buf()); }
+        }
+        // where.exe fallback
+        for name in &["chrome.exe", "chromium.exe"] {
+            let mut where_cmd = std::process::Command::new("where");
+            where_cmd.arg(name);
+            #[cfg(not(target_env = "gnu"))]
+            { use std::os::windows::process::CommandExt; where_cmd.creation_flags(0x08000000); }
+            if let Ok(out) = where_cmd.output() {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout);
+                    if let Some(first) = s.lines().next() {
+                        let p = std::path::PathBuf::from(first.trim());
+                        if p.exists() { return Some(p); }
+                    }
+                }
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        for name in &["google-chrome", "chromium-browser", "chromium", "google-chrome-stable"] {
+            if let Ok(out) = std::process::Command::new("which").arg(name).output() {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout);
+                    let p = std::path::PathBuf::from(s.trim());
+                    if p.exists() { return Some(p); }
+                }
+            }
+        }
+        None
     }
 }

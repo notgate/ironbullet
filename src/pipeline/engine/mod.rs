@@ -87,6 +87,11 @@ pub struct ExecutionContext {
     /// Set from GuiConfig.chrome_executable_path at job start time.
     #[serde(skip)]
     pub chrome_executable_path: Option<std::path::PathBuf>,
+    /// Handle to the Chrome child process spawned by BrowserOpen.
+    /// Kept alive so Chrome stays running while the pipeline runs;
+    /// dropped (and Chrome killed) when ExecutionContext is dropped.
+    #[serde(skip)]
+    pub chrome_child: Option<std::process::Child>,
     /// Reusable reqwest client for RustTLS requests — persists cookie jar between
     /// HTTP blocks within a single pipeline execution so multi-step login flows work.
     /// Reset for every new ExecutionContext (i.e. every credential checked).
@@ -167,6 +172,7 @@ impl ExecutionContext {
             override_http2fp: None,
             plugin_manager: None,
             chrome_executable_path: None,
+            chrome_child: None,
             rustls_client: None,
             #[cfg(any(unix, target_os = "windows"))]
             wreq_client: None,

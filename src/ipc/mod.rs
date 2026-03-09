@@ -457,7 +457,7 @@ pub fn handle_ipc_cmd(
 /// Checks fixed known install paths first (handles cases where the binary
 /// is not on PATH — e.g. Windows user-level installs, Linux snap/flatpak),
 /// then falls back to PATH-based search via `which`/`where`.
-fn find_chrome_executable() -> Option<std::path::PathBuf> {
+pub fn find_chrome_executable() -> Option<std::path::PathBuf> {
     // ── Windows: admin-level and user-level install paths ────────────────
     #[cfg(target_os = "windows")]
     {
