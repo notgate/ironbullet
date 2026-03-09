@@ -8,7 +8,9 @@ impl ExecutionContext {
         use chromiumoxide::browser::{Browser, BrowserConfig};
 
         let mut builder = BrowserConfig::builder();
-        if !settings.headless {
+        if settings.headless {
+            builder = builder.new_headless_mode();
+        } else {
             builder = builder.with_head();
         }
         // Use explicit proxy from block settings, fall back to the session proxy
@@ -45,18 +47,22 @@ impl ExecutionContext {
         let config = builder.build()
             .map_err(|e| crate::error::AppError::Pipeline(format!("Browser config error: {}", e)))?;
 
-        // Browser::launch performs blocking syscalls (process spawn + TCP connect)
-        // that never yield to Tokio. Run it on a dedicated OS thread with its own
-        // runtime so the caller's async context stays unblocked.
-        let (launch_tx, launch_rx) = tokio::sync::oneshot::channel();
-        std::thread::spawn(move || {
-            if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
-                let _ = launch_tx.send(rt.block_on(Browser::launch(config)));
-            }
-        });
-        let (browser, mut handler) = launch_rx.await
-            .map_err(|_| crate::error::AppError::Pipeline("Browser launch thread died".to_string()))?
-            .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch failed: {}", e)))?;
+        // Browser::launch performs blocking syscalls (process spawn + TCP connect).
+        // Use spawn_blocking so it runs on a dedicated thread pool thread without
+        // blocking the Tokio executor, while still being able to drive the async
+        // Browser::launch future via a nested block_on on that thread.
+        let (browser, mut handler) = tokio::task::spawn_blocking(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| crate::error::AppError::Pipeline(format!("Browser runtime error: {}", e)))
+                .and_then(|rt| {
+                    rt.block_on(Browser::launch(config))
+                        .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch failed: {}", e)))
+                })
+        })
+        .await
+        .map_err(|e| crate::error::AppError::Pipeline(format!("Browser launch task panicked: {}", e)))??;
 
         // Spawn CDP event handler in background -- must NOT break on errors
         // or all future browser commands fail with "oneshot cancelled"
@@ -114,8 +120,9 @@ impl ExecutionContext {
                 .map_err(|e| crate::error::AppError::Pipeline(format!("New page failed: {}", e)))?
         };
 
-        // Wait for page to load
-        let _ = page.wait_for_navigation().await;
+        // Wait for page to load, respecting the configured timeout
+        let timeout = std::time::Duration::from_millis(settings.timeout_ms.max(5000));
+        let _ = tokio::time::timeout(timeout, page.wait_for_navigation()).await;
         let nav_elapsed = nav_start.elapsed().as_millis() as u64;
 
         // Store page content in variables
