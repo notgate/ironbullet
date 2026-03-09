@@ -135,12 +135,15 @@ async fn handle_connect(
             "post_data":     if body_str.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(body_str) }
         }));
 
-        // Connect to real upstream over TLS
+        // Connect to real upstream over TLS (fresh connection per request — simple and correct)
         let upstream_addr = format!("{}:{}", hostname, port);
         let upstream_tcp = match TcpStream::connect(&upstream_addr).await {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("[mitm] upstream connect failed {upstream_addr}: {e}");
+                // Send 502 back to Chrome so it doesn't just hang
+                let client_writer = client_reader.get_mut();
+                let _ = client_writer.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
                 break;
             }
         };
@@ -152,28 +155,47 @@ async fn handle_connect(
         };
         let upstream_tls = match connector.connect(server_name, upstream_tcp).await {
             Ok(s) => s,
-            Err(e) => { eprintln!("[mitm] upstream TLS failed {hostname}: {e}"); break; }
+            Err(e) => {
+                eprintln!("[mitm] upstream TLS failed {hostname}: {e}");
+                let client_writer = client_reader.get_mut();
+                let _ = client_writer.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
+                break;
+            }
         };
-        let mut upstream_writer = tokio::io::BufWriter::new(upstream_tls);
+        let mut upstream_rw = tokio::io::BufStream::new(upstream_tls);
 
         // Forward request to upstream
-        upstream_writer.write_all(raw_headers.as_bytes()).await.ok();
-        if !req_body.is_empty() { upstream_writer.write_all(&req_body).await.ok(); }
-        upstream_writer.flush().await.ok();
+        upstream_rw.write_all(raw_headers.as_bytes()).await.ok();
+        if !req_body.is_empty() { upstream_rw.write_all(&req_body).await.ok(); }
+        upstream_rw.flush().await.ok();
 
-        // Read upstream response
-        let mut upstream_reader = BufReader::new(upstream_writer.into_inner());
-        let (status, status_text, resp_raw_headers, resp_headers) = match read_response_head(&mut upstream_reader).await {
+        // Read upstream response headers
+        let (status, status_text, resp_raw_headers, resp_headers) = match read_response_head(&mut upstream_rw).await {
             Some(v) => v,
             None => break,
         };
-        let resp_body = read_body_from_headers(&mut upstream_reader, &resp_headers).await;
 
-        // Relay response back to Chrome
+        // Read body — for responses without content-length or chunked encoding,
+        // read until upstream closes (connection: close or EOF).
+        let has_cl = resp_headers.contains_key("content-length");
+        let is_chunked = resp_headers.get("transfer-encoding")
+            .map(|v| v.contains("chunked")).unwrap_or(false);
+        let resp_body = if has_cl || is_chunked {
+            read_body_from_headers(&mut upstream_rw, &resp_headers).await
+        } else {
+            // Read until EOF (upstream will close after response on HTTP/1.0 or Connection: close)
+            let mut buf = Vec::new();
+            let _ = upstream_rw.read_to_end(&mut buf).await;
+            buf
+        };
+
+        // Relay response back to Chrome — must flush TLS stream explicitly
         let client_writer = client_reader.get_mut();
         client_writer.write_all(resp_raw_headers.as_bytes()).await.ok();
         client_writer.write_all(&resp_body).await.ok();
-        // flush() not available on TlsStream directly but writes are flushed on drop/next write
+        // Flush the TLS write buffer so Chrome actually receives the data
+        use tokio::io::AsyncWriteExt as _;
+        client_writer.flush().await.ok();
 
         let resp_body_str = String::from_utf8_lossy(&resp_body);
         let mime = resp_headers.get("content-type").cloned().unwrap_or_default();
@@ -188,9 +210,11 @@ async fn handle_connect(
             "resp_body":        resp_body_str.chars().take(131072).collect::<String>()
         }));
 
-        // Close if upstream said so
+        // If no content-length/chunked, we read until EOF so the upstream is done.
+        // Either way, Chrome expects Connection: keep-alive handled — since we open
+        // a fresh upstream connection per request, always continue the client loop.
         let conn = resp_headers.get("connection").cloned().unwrap_or_default();
-        if conn.to_lowercase().contains("close") { break; }
+        if conn.to_lowercase().contains("close") || (!has_cl && !is_chunked) { break; }
     }
 }
 
@@ -245,10 +269,20 @@ async fn handle_http_plain(
         Some(v) => v,
         None => return,
     };
-    let resp_body = read_body_from_headers(&mut upstream_reader, &resp_headers).await;
+    let has_cl = resp_headers.contains_key("content-length");
+    let is_chunked = resp_headers.get("transfer-encoding")
+        .map(|v| v.contains("chunked")).unwrap_or(false);
+    let resp_body = if has_cl || is_chunked {
+        read_body_from_headers(&mut upstream_reader, &resp_headers).await
+    } else {
+        let mut buf = Vec::new();
+        let _ = upstream_reader.read_to_end(&mut buf).await;
+        buf
+    };
 
     writer.write_all(resp_raw.as_bytes()).await.ok();
     writer.write_all(&resp_body).await.ok();
+    writer.flush().await.ok();
 
     let mime = resp_headers.get("content-type").cloned().unwrap_or_default();
     emit(&js, serde_json::json!({
