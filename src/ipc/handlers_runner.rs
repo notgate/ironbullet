@@ -713,6 +713,14 @@ pub(super) fn inspect_browser_open(
         .flatten();
 
     let rt = tokio::runtime::Handle::try_current();
+    if rt.is_err() {
+        eval_js(format!("window.__ipc_callback({})",
+            serde_json::to_string(&IpcResponse::ok("inspector_browser_event",
+                serde_json::json!({ "type": "error", "message": "Internal error: no tokio runtime — please report this bug" })
+            )).unwrap_or_default()
+        ));
+        return;
+    }
     if let Ok(handle) = rt {
         let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(1024);
         handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
@@ -761,7 +769,11 @@ pub(super) fn inspect_browser_open(
             }
 
             let raw_url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-            if raw_url.is_empty() { return; }
+            emit_sync(&js, serde_json::json!({ "type": "status", "message": format!("Task started, url={:?}", raw_url) }));
+            if raw_url.is_empty() {
+                emit_sync(&js, serde_json::json!({ "type": "error", "message": "No URL provided — enter a URL in the address bar" }));
+                return;
+            }
             let url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
                 raw_url
             } else {
@@ -770,6 +782,7 @@ pub(super) fn inspect_browser_open(
 
             // chrome_exe was read synchronously at handler entry (no mutex await needed)
             let chrome_exe = chrome_exe_cfg.or_else(|| super::find_chrome_executable());
+            emit_sync(&js, serde_json::json!({ "type": "status", "message": format!("Chrome path: {:?}", chrome_exe) }));
 
             if chrome_exe.is_none() {
                 emit_sync(&js, serde_json::json!({
