@@ -816,8 +816,9 @@ pub(super) fn inspect_browser_open(
                 "--disable-client-side-phishing-detection".to_string(),
                 "--no-sandbox".to_string(),
             ];
-            // Navigate to the target URL directly on launch
-            chrome_args.push(url.clone());
+            // Do NOT pass the URL as a CLI arg — Chrome would start loading it
+            // immediately, before our CDP listeners are attached. Instead we
+            // navigate via page.goto() after listeners are in place.
 
             let mut cmd = std::process::Command::new(&chrome_exe);
             cmd.args(&chrome_args);
@@ -933,39 +934,29 @@ pub(super) fn inspect_browser_open(
                 let _ = died_tx.send(());
             });
 
-            // Chrome was launched with the URL as a CLI arg, so it already has an
-            // open tab. Grab that existing page instead of creating a new one —
-            // new_page("about:blank") on Windows can block or race with Chrome's
-            // initialization of the first tab.
-            let page = {
-                // Give Chrome a moment to register the initial tab with CDP
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                let pages_result = tokio::time::timeout(
-                    std::time::Duration::from_secs(10),
-                    browser.pages(),
-                ).await;
-                match pages_result {
-                    Ok(Ok(mut pages)) if !pages.is_empty() => pages.remove(0),
-                    Ok(Ok(_)) | Ok(Err(_)) => {
-                        // No existing pages — fall back to opening a new one
-                        match tokio::time::timeout(
-                            std::time::Duration::from_secs(15),
-                            browser.new_page("about:blank"),
-                        ).await {
-                            Ok(Ok(p)) => p,
-                            Ok(Err(e)) => {
-                                emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Page open failed: {}", e) }));
-                                return;
-                            }
-                            Err(_) => {
-                                emit_sync(&js, serde_json::json!({ "type": "error", "message": "Chrome page open timed out (15s)" }));
-                                return;
-                            }
+            // Chrome launched to about:blank — grab the default page.
+            // Give Chrome a moment to register the initial tab with CDP.
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            let page = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                browser.pages(),
+            ).await {
+                Ok(Ok(mut pages)) if !pages.is_empty() => pages.remove(0),
+                _ => {
+                    // Fallback: create a new page
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        browser.new_page("about:blank"),
+                    ).await {
+                        Ok(Ok(p)) => p,
+                        Ok(Err(e)) => {
+                            emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Page open failed: {}", e) }));
+                            return;
                         }
-                    }
-                    Err(_) => {
-                        emit_sync(&js, serde_json::json!({ "type": "error", "message": "Timed out getting Chrome pages (10s)" }));
-                        return;
+                        Err(_) => {
+                            emit_sync(&js, serde_json::json!({ "type": "error", "message": "Chrome page open timed out (10s)" }));
+                            return;
+                        }
                     }
                 }
             };
@@ -999,8 +990,10 @@ pub(super) fn inspect_browser_open(
                 page.event_listener::<EventLoadingFinished>(),
             ).await { Ok(Ok(e)) => e, _ => return };
 
-            // Chrome was already launched with the URL as a CLI arg — no goto needed.
-            // The page is already navigating; listeners are attached and will capture requests.
+            // Navigate to the target URL now that listeners are in place.
+            // Even though Chrome launched with the URL, we navigate again to ensure
+            // all requests are captured from the start (previous load already fired).
+            tokio::time::timeout(std::time::Duration::from_secs(15), page.goto(&url)).await.ok();
 
             let page_req  = page.clone();
             let page_body = page.clone();
