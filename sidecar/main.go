@@ -112,6 +112,10 @@ func handleRequest(req SidecarRequest) {
 		handleSetProxy(req)
 	case "set_browser":
 		handleSetBrowser(req)
+	case "start_mitm_proxy":
+		sendResponse(handleMitmProxyStart(req))
+	case "stop_mitm_proxy":
+		sendResponse(handleMitmProxyStop(req))
 	case "ping":
 		sendResponse(SidecarResponse{
 			ID:     req.ID,

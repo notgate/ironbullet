@@ -687,19 +687,16 @@ pub(super) fn site_inspect(
     }
 }
 
-// ── Browser capture — MITM proxy approach ──────────────────────────────────
-// Launches Chrome with --proxy-server pointing at our local MITM proxy.
-// All HTTP and HTTPS traffic is captured and emitted as inspector_proxy_event.
-// Tab isolation: each CONNECT tunnel gets a unique session_id; the frontend
-// groups requests by session_id and lets the user label/filter per tab.
+// ── Browser capture — Go sidecar MITM proxy ─────────────────────────────────
+// Delegates MITM proxy to the Go sidecar which uses Go's crypto/tls — far more
+// battle-tested than a hand-rolled Rust TLS MITM stack. Chrome is launched with
+// --proxy-server pointing at the sidecar proxy.
 
 pub(super) fn inspect_browser_open(
     state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
-    use crate::ipc::browser_proxy::MitmCa;
-
     let rt = tokio::runtime::Handle::try_current();
     if rt.is_err() {
         eval_js(format!("window.__ipc_callback({})",
@@ -756,81 +753,91 @@ pub(super) fn inspect_browser_open(
 
     let state_clone = state.clone();
     let task = handle.spawn(async move {
-        // Get or create the MITM CA
-        let ca = {
+        // Ensure sidecar is running
+        let sidecar_path = {
+            let s = state_clone.lock().await;
+            s.config.sidecar_path.clone()
+        };
+        let req_tx = {
             let mut s = state_clone.lock().await;
-            if s.mitm_ca.is_none() {
-                match MitmCa::generate() {
-                    Ok(ca) => { s.mitm_ca = Some(std::sync::Arc::new(ca)); }
-                    Err(e) => {
-                        emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("Failed to generate MITM CA: {e}") }));
-                        return;
-                    }
+            match s.sidecar.get_or_start(&sidecar_path).await {
+                Ok(tx) => tx,
+                Err(e) => {
+                    emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("Sidecar start failed: {e}") }));
+                    return;
                 }
             }
-            s.mitm_ca.clone().unwrap()
         };
 
-        // Pick a free port for the MITM proxy
-        let proxy_port = match std::net::TcpListener::bind("127.0.0.1:0") {
-            Ok(l) => l.local_addr().map(|a| a.port()).unwrap_or(8877),
-            Err(_) => 8877,
+        // Subscribe to proxy events BEFORE starting the proxy
+        let mut proxy_event_rx = {
+            let s = state_clone.lock().await;
+            match s.sidecar.proxy_event_tx.as_ref().map(|t| t.subscribe()) {
+                Some(rx) => rx,
+                None => {
+                    emit_browser(&js, serde_json::json!({ "type": "error", "message": "No proxy event channel" }));
+                    return;
+                }
+            }
         };
 
-        // Start the proxy listener
-        let listener = match tokio::net::TcpListener::bind(("127.0.0.1", proxy_port)).await {
-            Ok(l) => l,
-            Err(e) => {
-                emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("Proxy bind failed: {e}") }));
+        emit_browser(&js, serde_json::json!({ "type": "status", "message": "Starting MITM proxy..." }));
+
+        // Send start_mitm_proxy to sidecar
+        let req_id = uuid::Uuid::new_v4().to_string();
+        let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+        let mitm_req = ironbullet::sidecar::protocol::SidecarRequest {
+            id: req_id.clone(),
+            action: "start_mitm_proxy".to_string(),
+            session: String::new(),
+            ..Default::default()
+        };
+        if req_tx.send((mitm_req, resp_tx)).await.is_err() {
+            emit_browser(&js, serde_json::json!({ "type": "error", "message": "Sidecar channel closed" }));
+            return;
+        }
+        let mitm_resp = match tokio::time::timeout(std::time::Duration::from_secs(10), resp_rx).await {
+            Ok(Ok(r)) => r,
+            _ => {
+                emit_browser(&js, serde_json::json!({ "type": "error", "message": "Sidecar MITM start timed out" }));
                 return;
             }
         };
+        if let Some(e) = &mitm_resp.error {
+            emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("MITM proxy error: {e}") }));
+            return;
+        }
 
-        emit_browser(&js, serde_json::json!({ "type": "status", "message": format!("Proxy started on port {}, launching Chrome...", proxy_port) }));
+        // Parse port and CA cert from response
+        let mitm_info: serde_json::Value = serde_json::from_str(&mitm_resp.body).unwrap_or_default();
+        let proxy_port = mitm_info.get("port").and_then(|v| v.as_u64()).unwrap_or(8877) as u16;
+        let ca_cert_pem = mitm_info.get("ca_cert_pem").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
-        // Launch Chrome with proxy + isolated profile
+        emit_browser(&js, serde_json::json!({ "type": "status", "message": format!("Proxy on port {}, launching Chrome...", proxy_port) }));
+
+        // Install CA cert into Chrome profile
         let profile_dir = std::env::temp_dir().join(format!("ib-chrome-{}", uuid::Uuid::new_v4()));
+        let _ = tokio::fs::create_dir_all(&profile_dir).await;
+        if !ca_cert_pem.is_empty() {
+            install_ca_into_chrome_profile(&profile_dir, &ca_cert_pem).await;
+        }
 
-        // Write CA cert into the profile as a Chrome policy so it's trusted.
-        // Chrome reads Policies/managed/ca_certs.json on startup from the profile dir.
-        // Also write the PEM so certutil can be used if available.
-        let _ = tokio::fs::create_dir_all(profile_dir.join("Default")).await;
-        let ca_cert_path = profile_dir.join("ib-ca.pem");
-        let _ = tokio::fs::write(&ca_cert_path, ca.cert_pem.as_bytes()).await;
-
-        // Compute SPKI SHA-256 fingerprint for --ignore-certificate-errors-spki-list
-        // The SPKI hash is base64(sha256(SubjectPublicKeyInfo DER bytes)).
-        let spki_hash = compute_ca_spki_hash(&ca.cert_pem);
-
+        // Launch Chrome
         let chrome_exe = chrome_exe.unwrap();
-        // Install CA cert into the NSS database in the profile dir so Chrome trusts it.
-        // This is the only reliable cross-platform way to trust a custom CA.
-        install_ca_into_chrome_profile(&profile_dir, &ca.cert_pem).await;
-
-        let mut chrome_args = vec![
+        let mut cmd = std::process::Command::new(&chrome_exe);
+        cmd.args([
             format!("--proxy-server=http://127.0.0.1:{}", proxy_port),
             format!("--user-data-dir={}", profile_dir.display()),
             "--no-first-run".to_string(),
             "--no-default-browser-check".to_string(),
             "--disable-sync".to_string(),
             "--disable-extensions".to_string(),
-            "--disable-translate".to_string(),
             "--disable-background-networking".to_string(),
-            "--disable-client-side-phishing-detection".to_string(),
             "--no-sandbox".to_string(),
-            // Required for MITM cert trust in isolated profile
             "--ignore-certificate-errors".to_string(),
-            "--allow-running-insecure-content".to_string(),
-            "--test-type".to_string(), // disables cert error interstitials in test mode
-        ];
-        // Also add SPKI hash as belt-and-suspenders
-        if let Some(hash) = spki_hash {
-            chrome_args.push(format!("--ignore-certificate-errors-spki-list={}", hash));
-        }
-        chrome_args.push(url.clone());
-
-        let mut cmd = std::process::Command::new(&chrome_exe);
-        cmd.args(&chrome_args);
+            "--test-type".to_string(),
+            url.clone(),
+        ]);
         cmd.stdout(std::process::Stdio::null());
         cmd.stderr(std::process::Stdio::null());
         cmd.stdin(std::process::Stdio::null());
@@ -838,43 +845,29 @@ pub(super) fn inspect_browser_open(
         let mut chrome_child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("Failed to launch Chrome: {e}") }));
+                emit_browser(&js, serde_json::json!({ "type": "error", "message": format!("Chrome launch failed: {e}") }));
                 return;
             }
         };
 
-        // Store profile for cleanup and port for status
         {
             let mut s = state_clone.lock().await;
             s.browser_capture_profile = Some(profile_dir.clone());
             s.inspect_proxy_port = Some(proxy_port);
         }
 
-        // Tell frontend Chrome is up — switches from loading state to capture view
+        // Tell frontend Chrome is open
         emit_browser(&js, serde_json::json!({ "type": "opened", "url": url }));
-        emit_proxy(&js, serde_json::json!({ "type": "ready", "port": proxy_port }));
+        emit_proxy(&js, serde_json::json!({ "type": "ready", "port": proxy_port, "ca_cert_pem": ca_cert_pem }));
 
-        // Accept connections and spawn per-connection MITM handlers
-        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-        let js_accept = js.clone();
-        let ca_accept = ca.clone();
-        let accept_task = tokio::spawn(async move {
+        // Forward proxy events from sidecar broadcast to frontend
+        let js_events = js.clone();
+        let event_task = tokio::spawn(async move {
             loop {
-                tokio::select! {
-                    accept = listener.accept() => {
-                        match accept {
-                            Ok((stream, _)) => {
-                                let ca2 = ca_accept.clone();
-                                let js2 = js_accept.clone();
-                                let session_id = uuid::Uuid::new_v4().to_string();
-                                tokio::spawn(async move {
-                                    crate::ipc::browser_proxy::handle_connection(stream, ca2, js2, session_id).await;
-                                });
-                            }
-                            Err(_) => break,
-                        }
-                    }
-                    _ = &mut shutdown_rx => break,
+                match proxy_event_rx.recv().await {
+                    Ok(ev) => emit_proxy(&js_events, ev),
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 }
             }
         });
@@ -882,9 +875,8 @@ pub(super) fn inspect_browser_open(
         // Wait for Chrome to exit
         tokio::task::spawn_blocking(move || { let _ = chrome_child.wait(); }).await.ok();
 
-        // Chrome exited — shut down proxy and clean up
-        accept_task.abort();
-        let _ = shutdown_tx.send(());
+        // Cleanup
+        event_task.abort();
         {
             let mut s = state_clone.lock().await;
             s.inspect_proxy_port = None;
@@ -932,20 +924,14 @@ pub(super) fn inspect_browser_close(
     }
 }
 
-// ── Standalone proxy (manual mode — user points their own browser at it) ────
-
 pub(super) fn inspect_proxy_start(
     state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
-    use crate::ipc::browser_proxy::MitmCa;
-
     let rt = tokio::runtime::Handle::try_current();
     let Ok(handle) = rt else { return };
-
-    let port = data.get("port").and_then(|v| v.as_u64()).unwrap_or(8877) as u16;
-
+    let port = data.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
     let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(512);
     handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
     let js = js_tx.clone();
@@ -964,54 +950,60 @@ pub(super) fn inspect_proxy_start(
             s.inspect_proxy_port = None;
         }
 
-        // Get or create CA
-        let ca = {
+        let sidecar_path = { state2.lock().await.config.sidecar_path.clone() };
+        let req_tx = {
             let mut s = state2.lock().await;
-            if s.mitm_ca.is_none() {
-                match MitmCa::generate() {
-                    Ok(ca) => { s.mitm_ca = Some(std::sync::Arc::new(ca)); }
-                    Err(e) => {
-                        emit(&js, serde_json::json!({ "type": "error", "message": format!("CA error: {e}") }));
-                        return;
-                    }
-                }
-            }
-            s.mitm_ca.clone().unwrap()
-        };
-
-        let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
-            Ok(l) => l,
-            Err(e) => {
-                emit(&js, serde_json::json!({ "type": "error", "message": format!("Bind failed on port {port}: {e}") }));
-                return;
+            match s.sidecar.get_or_start(&sidecar_path).await {
+                Ok(tx) => tx,
+                Err(e) => { emit(&js, serde_json::json!({ "type": "error", "message": format!("Sidecar: {e}") })); return; }
             }
         };
 
-        {
-            let mut s = state2.lock().await;
-            s.inspect_proxy_port = Some(port);
+        let mut proxy_rx = {
+            let s = state2.lock().await;
+            match s.sidecar.proxy_event_tx.as_ref().map(|t| t.subscribe()) {
+                Some(rx) => rx,
+                None => { emit(&js, serde_json::json!({ "type": "error", "message": "No proxy channel" })); return; }
+            }
+        };
+
+        let req_id = uuid::Uuid::new_v4().to_string();
+        let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+        let body = if port > 0 { format!(r#"{{"port":{}}}"#, port) } else { "{}".to_string() };
+        let mitm_req = ironbullet::sidecar::protocol::SidecarRequest {
+            id: req_id,
+            action: "start_mitm_proxy".to_string(),
+            session: String::new(),
+            body: Some(body),
+            ..Default::default()
+        };
+        if req_tx.send((mitm_req, resp_tx)).await.is_err() { return; }
+        let mitm_resp = match tokio::time::timeout(std::time::Duration::from_secs(10), resp_rx).await {
+            Ok(Ok(r)) => r,
+            _ => { emit(&js, serde_json::json!({ "type": "error", "message": "MITM start timed out" })); return; }
+        };
+        if let Some(e) = &mitm_resp.error {
+            emit(&js, serde_json::json!({ "type": "error", "message": format!("{e}") }));
+            return;
         }
 
-        // Also emit CA cert PEM so frontend can offer download
-        let cert_pem = ca.cert_pem.clone();
+        let info: serde_json::Value = serde_json::from_str(&mitm_resp.body).unwrap_or_default();
+        let actual_port = info.get("port").and_then(|v| v.as_u64()).unwrap_or(8877) as u16;
+        let ca_pem = info.get("ca_cert_pem").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        { state2.lock().await.inspect_proxy_port = Some(actual_port); }
+
         emit(&js, serde_json::json!({
-            "type": "ready",
-            "port": port,
-            "ca_cert_pem": cert_pem,
-            "message": format!("MITM proxy on 127.0.0.1:{port}. Install the CA cert to decrypt HTTPS.")
+            "type": "ready", "port": actual_port, "ca_cert_pem": ca_pem,
+            "message": format!("MITM proxy on 127.0.0.1:{actual_port}. Install the CA cert to decrypt HTTPS.")
         }));
 
+        // Forward events until aborted
         loop {
-            match listener.accept().await {
-                Ok((stream, _)) => {
-                    let ca2 = ca.clone();
-                    let js2 = js.clone();
-                    let session_id = uuid::Uuid::new_v4().to_string();
-                    tokio::spawn(async move {
-                        crate::ipc::browser_proxy::handle_connection(stream, ca2, js2, session_id).await;
-                    });
-                }
-                Err(_) => break,
+            match proxy_rx.recv().await {
+                Ok(ev) => emit(&js, ev),
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
             }
         }
     });
@@ -1037,9 +1029,6 @@ pub(super) fn inspect_proxy_stop(
         });
     }
 }
-
-/// Compute SHA-256 of the SubjectPublicKeyInfo from a PEM certificate,
-/// base64-encoded — this is what Chrome's --ignore-certificate-errors-spki-list expects.
 fn compute_ca_spki_hash(cert_pem: &str) -> Option<String> {
     use sha2::Digest;
     use base64::Engine;

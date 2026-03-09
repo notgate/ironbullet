@@ -24,6 +24,8 @@ pub struct SidecarManager {
     writer_tx: Option<mpsc::Sender<String>>,
     req_tx: Option<ReqTx>,
     alive: Arc<std::sync::atomic::AtomicBool>,
+    /// Broadcast channel for PROXY_EVENT lines emitted by the sidecar's MITM proxy.
+    pub proxy_event_tx: Option<tokio::sync::broadcast::Sender<serde_json::Value>>,
 }
 
 impl SidecarManager {
@@ -34,6 +36,7 @@ impl SidecarManager {
             writer_tx: None,
             req_tx: None,
             alive: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            proxy_event_tx: None,
         }
     }
 
@@ -120,13 +123,21 @@ impl SidecarManager {
 
         self.alive.store(true, std::sync::atomic::Ordering::SeqCst);
 
+        let (proxy_tx, _) = tokio::sync::broadcast::channel::<serde_json::Value>(1024);
+        self.proxy_event_tx = Some(proxy_tx.clone());
+
         let pending = self.pending.clone();
         let alive_flag = self.alive.clone();
         tokio::spawn(async move {
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                if let Ok(resp) = serde_json::from_str::<SidecarResponse>(&line) {
+                if let Some(json_str) = line.strip_prefix("PROXY_EVENT:") {
+                    // Route proxy events to broadcast channel
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                        let _ = proxy_tx.send(val);
+                    }
+                } else if let Ok(resp) = serde_json::from_str::<SidecarResponse>(&line) {
                     if let Some((_, tx)) = pending.remove(&resp.id) {
                         let _ = tx.send(resp);
                     }
@@ -179,6 +190,7 @@ impl SidecarManager {
         }
         self.writer_tx = None;
         self.req_tx = None;
+        self.proxy_event_tx = None;
         self.alive.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
