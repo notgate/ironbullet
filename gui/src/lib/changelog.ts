@@ -10,6 +10,32 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.4.0',
+		date: '2026-03-09',
+		highlights: 'Site Inspector MITM proxy with full HTTPS interception, BrowserOpen block, headless Chrome pipeline support.',
+		sections: [
+			{
+				title: 'New Features',
+				items: [
+					'Site Inspector — full HTTPS MITM proxy via Go sidecar. Intercepts and displays all requests/responses including encrypted HTTPS traffic. Ephemeral CA generated on startup; per-hostname certs signed on demand. Request list with domain grouping, virtual scroll, zoom, copy URL, export (JSON/HAR/txt), and target domain filter.',
+					'BrowserOpen block — launch headless or headed Chrome within a pipeline. Supports NavigateTo, WaitForElement, ExecuteJs, and BrowserClose blocks. Chrome spawned and connected via CDP (no stderr parsing). Cookies automatically flow into the pipeline\'s internal jar for use by subsequent HTTP blocks.',
+					'Proxy auto-inheritance in BrowserOpen — if no proxy is configured on the block, the runner\'s active session proxy is automatically applied to Chrome.',
+				],
+			},
+			{
+				title: 'Bug Fixes',
+				items: [
+					'BrowserOpen headless mode was inverted — browser always launched headed regardless of the headless setting.',
+					'Browser launch hang on Windows — Chrome does not write the DevTools WebSocket URL to stderr on Windows; switched to polling /json/version endpoint instead of reading stderr.',
+					'NavigateTo timeout ignored — page navigation could hang indefinitely; now enforces the configured timeout.',
+					'Browser task deadlock — spawn_blocking executor disconnect caused CDP channels to die immediately after launch; fixed by running Browser::launch directly on the main async runtime.',
+					'Proxy groups disappear on new config — update_pipeline now fully replaces proxy groups instead of merging, preventing deleted groups from reappearing after restart.',
+					'New tab inherits proxy groups from current pipeline instead of starting empty, preventing group wipe on first sync.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.3.6',
 		date: '2026-03-06',
 		highlights: 'Critical KeyCheck bug fix, proxy rotation fix, proxy auth parser fix, request latency fix, output format variables, View Debug Log.',

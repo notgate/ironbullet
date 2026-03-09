@@ -243,7 +243,7 @@
 				},
 				cache: {}, timings: { send: 0, wait: 0, receive: 0 },
 			}));
-			content = JSON.stringify({ log: { version: '1.2', creator: { name: 'IronBullet', version: '0.3.6' }, entries } }, null, 2);
+			content = JSON.stringify({ log: { version: '1.2', creator: { name: 'IronBullet', version: '0.4.0' }, entries } }, null, 2);
 			filename = `inspector-${ts}.har`;
 		} else {
 			content = reqs.map(r =>
