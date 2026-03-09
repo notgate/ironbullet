@@ -920,11 +920,7 @@ pub(super) fn inspect_browser_open(
                     return;
                 }
             };
-
-            // Chrome process is up — clear the loading state in the frontend
-            // immediately so the 25s safety timer never fires. CDP network capture
-            // setup continues below; any failure after this emits an "error" event.
-            emit_sync(&js, serde_json::json!({ "type": "opened", "url": url }));
+            emit_sync(&js, serde_json::json!({ "type": "status", "message": "CDP connected, spawning handler..." }));
 
             // Spawn CDP handler; send a signal when Chrome's connection closes so
             // the event loop below can break immediately instead of hanging.
@@ -936,14 +932,19 @@ pub(super) fn inspect_browser_open(
 
             // Chrome launched to about:blank — grab the default page.
             // Give Chrome a moment to register the initial tab with CDP.
+            emit_sync(&js, serde_json::json!({ "type": "status", "message": "Waiting for Chrome page..." }));
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
             let page = match tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 browser.pages(),
             ).await {
-                Ok(Ok(mut pages)) if !pages.is_empty() => pages.remove(0),
-                _ => {
-                    // Fallback: create a new page
+                Ok(Ok(mut pages)) if !pages.is_empty() => {
+                    emit_sync(&js, serde_json::json!({ "type": "status", "message": format!("Got {} page(s) from Chrome", pages.len() + 1) }));
+                    pages.remove(0)
+                },
+                Ok(Ok(_)) => {
+                    // No pages returned — try new_page
+                    emit_sync(&js, serde_json::json!({ "type": "status", "message": "No existing pages, opening new tab..." }));
                     match tokio::time::timeout(
                         std::time::Duration::from_secs(10),
                         browser.new_page("about:blank"),
@@ -958,10 +959,19 @@ pub(super) fn inspect_browser_open(
                             return;
                         }
                     }
+                },
+                Ok(Err(e)) => {
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("browser.pages() error: {e}") }));
+                    return;
+                }
+                Err(_) => {
+                    emit_sync(&js, serde_json::json!({ "type": "error", "message": "browser.pages() timed out (10s)" }));
+                    return;
                 }
             };
 
             // Enable CDP Network domain with generous buffers.
+            emit_sync(&js, serde_json::json!({ "type": "status", "message": "Enabling CDP Network domain..." }));
             match tokio::time::timeout(std::time::Duration::from_secs(10), page.execute(EnableParams {
                 max_total_buffer_size:    Some(100 * 1024 * 1024),
                 max_resource_buffer_size: Some(5   * 1024 * 1024),
@@ -969,30 +979,42 @@ pub(super) fn inspect_browser_open(
                 ..Default::default()
             })).await {
                 Ok(Ok(_)) => {}
-                _ => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "CDP Network.enable failed or timed out" })); return; }
+                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("Network.enable failed: {e}") })); return; }
+                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "Network.enable timed out (10s)" })); return; }
             }
 
             // Register all listeners BEFORE navigating so no requests are missed.
+            emit_sync(&js, serde_json::json!({ "type": "status", "message": "Registering event listeners..." }));
             let mut ev_req = match tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 page.event_listener::<EventRequestWillBeSent>(),
             ).await {
                 Ok(Ok(e)) => e,
-                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("{e}") })); return; }
-                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "Listener setup timed out" })); return; }
+                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("RequestWillBeSent listener failed: {e}") })); return; }
+                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "RequestWillBeSent listener timed out" })); return; }
             };
             let mut ev_resp = match tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 page.event_listener::<EventResponseReceived>(),
-            ).await { Ok(Ok(e)) => e, _ => return };
+            ).await {
+                Ok(Ok(e)) => e,
+                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("ResponseReceived listener failed: {e}") })); return; }
+                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "ResponseReceived listener timed out" })); return; }
+            };
             let mut ev_done = match tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 page.event_listener::<EventLoadingFinished>(),
-            ).await { Ok(Ok(e)) => e, _ => return };
+            ).await {
+                Ok(Ok(e)) => e,
+                Ok(Err(e)) => { emit_sync(&js, serde_json::json!({ "type": "error", "message": format!("LoadingFinished listener failed: {e}") })); return; }
+                Err(_)    => { emit_sync(&js, serde_json::json!({ "type": "error", "message": "LoadingFinished listener timed out" })); return; }
+            };
+
+            // All setup done — tell the frontend Chrome is ready.
+            emit_sync(&js, serde_json::json!({ "type": "opened", "url": url.clone() }));
 
             // Navigate to the target URL now that listeners are in place.
-            // Even though Chrome launched with the URL, we navigate again to ensure
-            // all requests are captured from the start (previous load already fired).
+            emit_sync(&js, serde_json::json!({ "type": "status", "message": format!("Navigating to {}...", url) }));
             tokio::time::timeout(std::time::Duration::from_secs(15), page.goto(&url)).await.ok();
 
             let page_req  = page.clone();
