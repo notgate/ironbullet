@@ -278,11 +278,14 @@ func (p *MitmProxy) forwardRequest(conn net.Conn, req *http.Request, sessionID s
 		}
 	}
 	outReq.Header.Set("Host", req.Host)
+	// Remove Accept-Encoding so the server sends uncompressed bodies —
+	// we can't decompress brotli/gzip on the fly for capture display.
+	outReq.Header.Del("Accept-Encoding")
 
 	transport := &http.Transport{
 		TLSClientConfig:    &tls.Config{InsecureSkipVerify: false},
-		DisableCompression: true,
-		ForceAttemptHTTP2:  false, // keep HTTP/1.1 for simplicity
+		DisableCompression: true, // don't auto-decompress; we want raw bytes
+		ForceAttemptHTTP2:  false,
 	}
 	client := &http.Client{
 		Transport: transport,
@@ -301,19 +304,21 @@ func (p *MitmProxy) forwardRequest(conn net.Conn, req *http.Request, sessionID s
 	// Read response body
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
 
-	// Write response back to Chrome
+	// Write response back to Chrome.
+	// Skip Content-Encoding — we stripped Accept-Encoding so the body is
+	// uncompressed; sending a Content-Encoding: gzip header with a plain body
+	// would cause Chrome to try to decompress and fail.
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("HTTP/1.1 %d %s\r\n", resp.StatusCode, resp.Status[strings.Index(resp.Status, " ")+1:]))
 	for k, vv := range resp.Header {
-		if isHopByHop(k) {
-			continue
-		}
+		if isHopByHop(k) { continue }
+		if strings.EqualFold(k, "Content-Encoding") { continue }
+		if strings.EqualFold(k, "Content-Length") { continue } // rewrite below
 		for _, v := range vv {
 			sb.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
 		}
 	}
 	sb.WriteString(fmt.Sprintf("Content-Length: %d\r\n", len(respBody)))
-	// Always use Connection: keep-alive so Chrome reuses the tunnel
 	sb.WriteString("Connection: keep-alive\r\n")
 	sb.WriteString("\r\n")
 	conn.Write([]byte(sb.String()))

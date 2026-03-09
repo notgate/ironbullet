@@ -336,7 +336,14 @@
 				if (loadTimerId !== null) { clearTimeout(loadTimerId); loadTimerId = null; }
 			}
 			if (ev.type === 'error')      { browserError = ev.message ?? 'Unknown error'; browserOpen = false; browserLoading = false; return; }
-			if (ev.type === 'opened')     { browserOpen = true; browserLoading = false; return; }
+			if (ev.type === 'opened')     {
+				browserOpen = true; browserLoading = false;
+				// Auto-filter to the target domain — hides Chrome's own background
+				// requests (google.com, gstatic, extensions, etc.)
+				const targetDomain = registrableDomain(browserUrl);
+				if (targetDomain && targetDomain !== browserUrl) activeDomain = targetDomain;
+				return;
+			}
 			if (ev.type === 'closed')     { browserOpen = false; browserLoading = false; return; }
 			if (ev.type === 'diagnostic') { console.log('[inspector diagnostic]', ev.message); return; }
 			if (ev.type === 'status')     { browserStatusMsg = ev.message ?? ''; return; }
@@ -982,7 +989,7 @@
 		></div>
 
 		<!-- RIGHT: detail pane -->
-		<div class="flex-1 flex flex-col min-w-0 overflow-hidden" style="font-size:{textZoom}em">
+		<div class="flex-1 flex flex-col min-w-0 overflow-hidden" style="zoom:{textZoom}">
 			{#if selectedReq}
 				<!-- Request summary bar -->
 				<div class="flex items-center gap-2 px-2 py-0.5 border-b border-border bg-background/60 shrink-0 min-w-0">
