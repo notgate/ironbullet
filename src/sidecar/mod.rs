@@ -42,24 +42,43 @@ impl SidecarManager {
 
     /// Start the sidecar process. Returns a cloneable sender for sending requests.
     pub async fn start(&mut self, sidecar_path: &str) -> crate::error::Result<ReqTx> {
-        // Pre-flight: verify the sidecar file exists before spawning.
-        // This gives a clear error instead of the generic OS "not found" message.
-        let path = std::path::Path::new(sidecar_path);
-        if !path.exists() {
-            let exe_dir = std::env::current_exe()
-                .ok()
-                .and_then(|e| e.parent().map(|p| p.display().to_string()))
-                .unwrap_or_else(|| String::from("<unknown>"));
-            let sidecar_name = if cfg!(target_os = "windows") {
-                "reqflow-sidecar.exe"
+        // Resolve sidecar path relative to the exe directory if the raw path doesn't exist.
+        // Handles the common case where sidecar_path is just "reqflow-sidecar.exe" but
+        // the process CWD differs from the exe directory (common on Windows).
+        let sidecar_name = if cfg!(target_os = "windows") { "reqflow-sidecar.exe" } else { "reqflow-sidecar" };
+        let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf()));
+
+        let path = {
+            let p = std::path::PathBuf::from(sidecar_path);
+            if p.exists() {
+                p
+            } else if let Some(ref dir) = exe_dir {
+                // Try the filename part of sidecar_path next to the exe
+                let by_name = dir.join(
+                    std::path::Path::new(sidecar_path)
+                        .file_name()
+                        .unwrap_or_else(|| std::ffi::OsStr::new(sidecar_name))
+                );
+                if by_name.exists() {
+                    by_name
+                } else {
+                    // Try canonical sidecar name next to exe
+                    let canonical = dir.join(sidecar_name);
+                    if canonical.exists() { canonical } else { p }
+                }
             } else {
-                "reqflow-sidecar"
-            };
+                p
+            }
+        };
+
+        if !path.exists() {
             return Err(crate::error::AppError::Sidecar(format!(
                 "Sidecar not found at '{}'.\n\
                  Make sure {} is in the same folder as the IronBullet executable.\n\
                  Executable directory: {}",
-                sidecar_path, sidecar_name, exe_dir
+                path.display(),
+                sidecar_name,
+                exe_dir.map(|d| d.display().to_string()).unwrap_or_else(|| "<unknown>".into())
             )));
         }
 
@@ -67,7 +86,7 @@ impl SidecarManager {
         // relative paths the sidecar uses resolve correctly.
         let sidecar_dir = path.parent().unwrap_or(std::path::Path::new("."));
 
-        let mut cmd = Command::new(sidecar_path);
+        let mut cmd = Command::new(&path);
         cmd.current_dir(sidecar_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
