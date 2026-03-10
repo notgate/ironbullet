@@ -438,6 +438,11 @@ export function registerCallbacks() {
 					toast(`Plugin saved to: ${(resp.data as any).dir}`, 'success');
 				}
 				break;
+			case 'app_info':
+				if (resp.data) {
+					app.updateCurrentVersion = (resp.data as any).version || '0.1.0';
+				}
+				break;
 			case 'update_check_result':
 				app.updateChecking = false;
 				if (resp.data) {
@@ -485,6 +490,7 @@ export function registerCallbacks() {
 	};
 
 	// Request initial state
+	send('get_app_info');
 	send('get_config');
 	send('get_pipeline');
 	send('get_recent_configs');

@@ -408,6 +408,13 @@ pub fn handle_ipc_cmd(
             None
         }
 
+        "get_app_info" => {
+            let resp = handlers_update::get_app_info();
+            let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());
+            eval_js(js);
+            None
+        }
+
         "check_for_updates" => {
             handlers_update::check_for_updates(state, eval_js);
             None
@@ -446,7 +453,9 @@ pub fn handle_ipc_cmd(
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
             let resp = IpcResponse::ok("check_chrome", serde_json::json!({ "found": found, "path": path }));
-            Some(serde_json::to_string(&resp).unwrap_or_default())
+            let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());
+            eval_js(js);
+            None
         }
 
         // Inspector: apply captured request to an HTTP block from a detached panel window.

@@ -7,6 +7,13 @@ use super::{AppState, IpcResponse};
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "ZeraTS/ironbullet";
 
+/// Return current app version info (no network call)
+pub fn get_app_info() -> IpcResponse {
+    IpcResponse::ok("app_info", serde_json::json!({
+        "version": CURRENT_VERSION,
+    }))
+}
+
 /// Check GitHub for the latest release
 pub fn check_for_updates(
     _state: Arc<Mutex<AppState>>,
