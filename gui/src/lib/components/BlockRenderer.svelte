@@ -25,6 +25,11 @@
 
 	let renameValue = $state('');
 
+	// Pre-populate rename input whenever this block enters rename mode
+	$effect(() => {
+		if (isRenaming) renameValue = block.label;
+	});
+
 	// Immediate, non-blocking selection
 	function handleClick(e: MouseEvent) {
 		e.stopPropagation();
@@ -89,6 +94,12 @@
 
 	function cancelRename() {
 		app.renamingBlockId = null;
+	}
+
+	function startRename(e: MouseEvent) {
+		e.stopPropagation();
+		renameValue = block.label;
+		app.renamingBlockId = block.id;
 	}
 
 	function onRenameKeydown(e: KeyboardEvent) {
@@ -223,7 +234,7 @@
 				autofocus
 			/>
 		{:else}
-			<span class="text-xs font-medium text-foreground flex-1 truncate">{block.label}</span>
+			<span class="text-xs font-medium text-foreground flex-1 truncate" ondblclick={startRename}>{block.label}</span>
 		{/if}
 
 		<span class="text-[10px] truncate max-w-[200px] hidden lg:block {app.previewMode && previewSummary ? 'text-primary/80' : 'text-muted-foreground'}">
