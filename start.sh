@@ -43,7 +43,11 @@ fi
 if [[ $webkitgtk_found -eq 0 ]]; then
     MSG="IronBullet requires WebKitGTK but it is not installed.
 
-Install it for your distribution:
+Option 1 — Use the AppImage (no dependencies required):
+  Download ironbullet-v0.4.0-linux-x64.AppImage from the release page,
+  chmod +x it, and run it directly.
+
+Option 2 — Install WebKitGTK for your distribution:
 
   Ubuntu / Debian (22.04+):  sudo apt install libwebkit2gtk-4.1-0
   Ubuntu / Debian (20.04):   sudo apt install libwebkit2gtk-4.0-37
