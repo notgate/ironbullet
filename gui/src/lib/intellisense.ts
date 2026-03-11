@@ -334,15 +334,17 @@ export function buildSuggestions(
 		predictions = buildResponseBodyPredictions(query, responseBody);
 	}
 
-	// Filter static candidates by query
+	// Filter static candidates — case-insensitive partial match on label or insertText
 	const filtered = !q
 		? candidates.slice(0, 16)
-		: candidates.filter(s => s.label.toLowerCase().includes(q)).slice(0, 12);
+		: candidates.filter(s =>
+			s.label.toLowerCase().includes(q) ||
+			s.insertText.toLowerCase().includes(q)
+		).slice(0, 12);
 
-	// Predictions come first (they're already filtered to contain the query as prefix)
-	// then deduplicated static candidates
-	const predSet = new Set(predictions.map(p => p.insertText));
-	const deduped = filtered.filter(c => !predSet.has(c.insertText));
+	// Predictions come first; deduplicate against static set (case-insensitive)
+	const predSetLower = new Set(predictions.map(p => p.insertText.toLowerCase()));
+	const deduped = filtered.filter(c => !predSetLower.has(c.insertText.toLowerCase()));
 
 	return [...predictions, ...deduped].slice(0, 20);
 }
@@ -410,53 +412,60 @@ export function buildResponseBodyPredictions(query: string, body: string): Sugge
 	// Score map: continuation string → count
 	const scores = new Map<string, number>();
 
-	// Scan every occurrence of the query in the body
+	// Case-insensitive scan of every occurrence of the query in the body
+	const bodyLower = body.toLowerCase();
+	const queryLower = query.toLowerCase();
 	let searchFrom = 0;
 	let safetyLimit = 0;
 	while (safetyLimit++ < 500) {
-		const idx = body.indexOf(query, searchFrom);
+		const idx = bodyLower.indexOf(queryLower, searchFrom);
 		if (idx === -1) break;
 		searchFrom = idx + 1;
 
+		// Use the actual body text at this position (preserves original casing)
+		const actualMatch = body.slice(idx, idx + query.length); // same length as query
 		const rest = body.slice(idx + query.length);
 		if (!rest) continue;
 
-		// Collect completions up to ~80 chars
-		const segment = rest.slice(0, 80);
+		// Prefix to prepend — use the body's actual casing, not the typed query
+		const prefix = body.slice(idx, idx + query.length);
 
-		// 1. Next single char (useful for delimiter hunting: what char follows this text?)
+		// Collect completions up to ~120 chars
+		const segment = rest.slice(0, 120);
+
+		// 1. Next single char
 		const nextChar = segment[0];
 		if (nextChar) {
-			const k = query + nextChar;
+			const k = prefix + nextChar;
 			scores.set(k, (scores.get(k) ?? 0) + 1);
 		}
 
-		// 2. Next word boundary (space, quote, comma, bracket, newline stop the word)
-		const nextWordMatch = segment.match(/^([\w\-\.@%+]+)/);
-		if (nextWordMatch) {
-			const k = query + nextWordMatch[1];
-			scores.set(k, (scores.get(k) ?? 0) + 2); // weight word completions higher
+		// 2. Next token: stop only at hard boundaries (space, newline, close bracket/brace/quote)
+		//    This preserves hyphens, dots, colons so "ulp-join-in-rewards" stays whole.
+		const nextTokenMatch = segment.match(/^([^\s"'\r\n>{}\[\]]{1,80})/);
+		if (nextTokenMatch) {
+			const k = prefix + nextTokenMatch[1];
+			scores.set(k, (scores.get(k) ?? 0) + 3);
 		}
 
-		// 3. Next phrase: consume words up to 6 tokens or a hard delimiter.
-		// Emit cumulative prefixes so typing "Please" can suggest:
-		//   "Please check", "Please check your", "Please check your email", etc.
-		const phraseMatch = segment.match(/^([^\r\n"'<>{}\[\]]{1,80})/);
+		// 3. Cumulative space-separated phrase expansion (up to 6 space-words)
+		//    "Please" → "Please check" → "Please check your" etc.
+		const phraseMatch = segment.match(/^([^\r\n"'<>{}\[\]]{1,100})/);
 		if (phraseMatch && phraseMatch[1].trim().length > 0) {
 			const phrase = phraseMatch[1];
-			// Split on whitespace boundaries, preserving positions
 			const tokenRe = /\S+/g;
-			let tokenMatch: RegExpExecArray | null;
-			let lastEnd = 0;
 			let wordCount = 0;
+			let tokenMatch: RegExpExecArray | null;
 			while ((tokenMatch = tokenRe.exec(phrase)) !== null && wordCount < 6) {
-				lastEnd = tokenMatch.index + tokenMatch[0].length;
-				const cumulative = query + phrase.slice(0, lastEnd);
+				const lastEnd = tokenMatch.index + tokenMatch[0].length;
+				const cumulative = prefix + phrase.slice(0, lastEnd);
 				const score = Math.max(1, 6 - wordCount);
 				scores.set(cumulative, (scores.get(cumulative) ?? 0) + score);
 				wordCount++;
 			}
 		}
+		// suppress unused var warning
+		void actualMatch;
 	}
 
 	if (scores.size === 0) return [];
@@ -487,7 +496,12 @@ export function buildResponseBodyPredictions(query: string, body: string): Sugge
 export function getQueryAtCursor(value: string, cursorPos: number): { query: string; triggerStart: number } | null {
 	if (cursorPos === 0) return null;
 
-	// Walk backwards to find word start
+	// Walk backwards to find word start.
+	// Stop only at clear field separators: space, newline, tab.
+	// Everything else (hyphens, dots, colons, quotes, slashes, etc.) is
+	// treated as part of the token so that strings like
+	//   "token":"      ulp-join-in-rewards      https://example
+	// are captured in full as the query.
 	let i = cursorPos - 1;
 	while (i >= 0) {
 		const ch = value[i];
@@ -496,17 +510,16 @@ export function getQueryAtCursor(value: string, cursorPos: number): { query: str
 			const query = value.slice(i + 1, cursorPos);
 			return { query, triggerStart: i };
 		}
-		if (/[a-zA-Z0-9_.$]/.test(ch)) {
-			i--;
-		} else {
+		// Stop only on whitespace — everything else is part of the query
+		if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
 			break;
 		}
+		i--;
 	}
 
 	const wordStart = i + 1;
 	const word = value.slice(wordStart, cursorPos);
 
-	// Only trigger if we have at least 1 char or started with '<'
 	if (word.length >= 1) {
 		return { query: word, triggerStart: wordStart };
 	}
