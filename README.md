@@ -31,7 +31,7 @@ IronBullet is a desktop automation toolkit built around a visual, drag-and-drop 
 |  **MITM capture** | Built-in proxy captures browser traffic for Site Inspector — export as JSON/HAR |
 |  **Code export** | Export any pipeline as standalone Rust source code |
 |  **Plugin system** | Hot-loadable plugins extend the block palette without recompiling |
-|  **OB2 import** | Import OpenBullet 2 configs (.svb, .opk, .loliScript) |
+|  **OB2 import** | Import OpenBullet 2 / SilverBullet configs (.svb, .opk, .loliScript) |
 
 ## Installation
 
