@@ -38,7 +38,35 @@
 
 	let selectedIndex = $state(0);
 	let listEl        = $state<HTMLElement | null>(null);
-	let posStyle      = $state('');
+
+	// Live position — updated every RAF frame while visible so it never drifts
+	// even inside scrolling containers or when the window resizes.
+	let posLeft  = $state(0);
+	let posTop   = $state(0);
+	let posWidth = $state(220);
+
+	let rafId = 0;
+
+	function updatePos() {
+		if (!anchorEl) return;
+		const rect = anchorEl.getBoundingClientRect();
+		posLeft  = rect.left;
+		posTop   = rect.bottom + 4;
+		posWidth = Math.max(rect.width, 240);
+	}
+
+	$effect(() => {
+		if (!visible || !anchorEl) {
+			cancelAnimationFrame(rafId);
+			return;
+		}
+		function tick() {
+			updatePos();
+			rafId = requestAnimationFrame(tick);
+		}
+		tick();
+		return () => cancelAnimationFrame(rafId);
+	});
 
 	$effect(() => { if (suggestions) selectedIndex = 0; });
 
@@ -46,12 +74,6 @@
 		if (!listEl) return;
 		const item = listEl.children[selectedIndex] as HTMLElement | undefined;
 		item?.scrollIntoView({ block: 'nearest' });
-	});
-
-	$effect(() => {
-		if (!anchorEl || !visible) return;
-		const rect = anchorEl.getBoundingClientRect();
-		posStyle = `position:fixed;left:${rect.left}px;top:${rect.bottom + 2}px;min-width:${Math.max(rect.width, 220)}px;max-width:400px;`;
 	});
 
 	export function moveUp()   { selectedIndex = (selectedIndex - 1 + suggestions.length) % suggestions.length; }
@@ -82,17 +104,18 @@
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		role="listbox"
-		style={posStyle}
-		class="z-[9999] rounded border border-border bg-popover shadow-xl overflow-hidden flex flex-col"
+		style="position: fixed; left: {posLeft}px; top: {posTop}px; min-width: {posWidth}px; max-width: 420px;"
+		class="z-[9999] rounded border border-border bg-popover shadow-2xl overflow-hidden flex flex-col
+		       intellisense-popup"
 		onmousedown={(e) => e.preventDefault()}
 	>
-		<ul bind:this={listEl} class="overflow-y-auto max-h-[220px] py-0.5">
+		<ul bind:this={listEl} class="overflow-y-auto max-h-[240px] py-0.5">
 			{#each suggestions as item, i}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<li
 					role="option"
 					aria-selected={i === selectedIndex}
-					class="flex items-center gap-2 px-2 py-1 cursor-pointer select-none text-[11px] transition-colors
+					class="flex items-center gap-2 px-2 py-1 cursor-pointer select-none text-[11px] transition-colors duration-75
 						{i === selectedIndex ? 'bg-accent/60 text-foreground' : 'text-foreground/80 hover:bg-accent/30'}"
 					onclick={() => { selectedIndex = i; onpick(item); }}
 					onmouseenter={() => { selectedIndex = i; }}
@@ -109,8 +132,27 @@
 			{/each}
 		</ul>
 		<div class="flex items-center gap-3 px-2 py-0.5 border-t border-border bg-background/80 text-[9px] text-muted-foreground/50 select-none shrink-0">
+			<span>↑↓ navigate</span>
 			<span>Tab / Enter to insert</span>
 			<span>Esc to dismiss</span>
 		</div>
 	</div>
 {/if}
+
+<style>
+	.intellisense-popup {
+		animation: isense-in 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
+		transform-origin: top left;
+	}
+
+	@keyframes isense-in {
+		from {
+			opacity: 0;
+			transform: translateY(-4px) scaleY(0.96);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scaleY(1);
+		}
+	}
+</style>

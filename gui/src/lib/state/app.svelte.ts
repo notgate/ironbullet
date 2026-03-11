@@ -30,6 +30,8 @@ interface AppState {
 	debugResults: BlockResult[];
 	debugLog: string[];
 	networkLog: NetworkEntry[];
+	lastDebugResponseBody: string;
+	lastDebugResponseHeaders: string;
 
 	// Response viewer
 	showResponseViewer: boolean;
@@ -174,6 +176,9 @@ function createAppState(): AppState {
 	let jobHitsDb = $state<Record<string, Array<{ data_line: string; captures: Record<string, string>; proxy: string | null; received_at: string }>>>({});
 	let debugResult = $state<BlockResult | null>(null);
 	let debugResults = $state<BlockResult[]>([]);
+	// Last HTTP response body + headers string from any debug run — consumed by intellisense
+	let lastDebugResponseBody = $state<string>('');
+	let lastDebugResponseHeaders = $state<string>('');
 	let debugLog = $state<string[]>([]);
 	let networkLog = $state<NetworkEntry[]>([]);
 	let showResponseViewer = $state(false);
@@ -324,7 +329,19 @@ function createAppState(): AppState {
 		get debugResult() { return debugResult; },
 		set debugResult(v) { debugResult = v; },
 		get debugResults() { return debugResults; },
-		set debugResults(v) { debugResults = v; },
+		set debugResults(v) {
+			debugResults = v;
+			// Update last response corpus for intellisense
+			const httpResult = [...v].reverse().find(r => r.response);
+			if (httpResult?.response) {
+				lastDebugResponseBody = httpResult.response.body ?? '';
+				lastDebugResponseHeaders = Object.entries(httpResult.response.headers)
+					.map(([k, val]) => `${k}: ${val}`)
+					.join('\n');
+			}
+		},
+		get lastDebugResponseBody() { return lastDebugResponseBody; },
+		get lastDebugResponseHeaders() { return lastDebugResponseHeaders; },
 		get debugLog() { return debugLog; },
 		set debugLog(v) { debugLog = v; },
 		get networkLog() { return networkLog; },

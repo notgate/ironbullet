@@ -3,6 +3,7 @@
 	import VariableInput from '../VariableInput.svelte';
 	import SkeuSelect from '../SkeuSelect.svelte';
 	import { inputCls, labelCls, hasVars } from './shared';
+	import { app } from '$lib/state.svelte';
 
 	const PARSE_MODES = [
 		{ value: 'LR', label: 'LR — Left/Right delimiter' },
@@ -19,6 +20,27 @@
 		updateSettings: (key: string, value: unknown) => void;
 		embedBadge: import('svelte').Snippet<[string | undefined]>;
 	} = $props();
+
+	/**
+	 * Resolve which corpus to feed the intellisense based on the input_var value.
+	 * data.SOURCE / data.*.SOURCE → response body
+	 * data.HEADERS / data.*.HEADERS → response headers string
+	 * data.COOKIES / data.*.COOKIES → cookies text
+	 * default → body
+	 */
+	function corpusForInputVar(inputVar: string | undefined): string {
+		const v = (inputVar ?? '').toLowerCase();
+		if (v.includes('header')) return app.lastDebugResponseHeaders;
+		if (v.includes('cookie')) {
+			// build cookies text from last result
+			const r = [...app.debugResults].reverse().find(x => x.response);
+			if (r?.response?.cookies) {
+				return Object.entries(r.response.cookies).map(([k, val]) => `${k}=${val}`).join('\n');
+			}
+			return '';
+		}
+		return app.lastDebugResponseBody;
+	}
 </script>
 
 <!-- ===================== PARSE LR ===================== -->
@@ -33,12 +55,14 @@
 		<div class="relative">
 			<label class={labelCls}>Left delimiter</label>
 			<VariableInput value={block.settings.left} context="ldelim" class={inputCls}
+				responseBody={corpusForInputVar(block.settings.input_var)}
 				oninput={(e) => updateSettings('left', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.left)}
 		</div>
 		<div class="relative">
 			<label class={labelCls}>Right delimiter</label>
 			<VariableInput value={block.settings.right} context="rdelim" class={inputCls}
+				responseBody={corpusForInputVar(block.settings.input_var)}
 				oninput={(e) => updateSettings('right', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.right)}
 		</div>
@@ -282,12 +306,14 @@
 			<div class="relative">
 				<label class={labelCls}>Left delimiter</label>
 				<VariableInput value={block.settings.left || ''} placeholder='e.g. "token":"' context="ldelim" class={inputCls}
+					responseBody={corpusForInputVar(block.settings.input_var)}
 					oninput={(e) => updateSettings('left', (e.target as HTMLInputElement).value)} />
 				{@render embedBadge(block.settings.left)}
 			</div>
 			<div class="relative">
 				<label class={labelCls}>Right delimiter</label>
 				<VariableInput value={block.settings.right || ''} placeholder='"' context="rdelim" class={inputCls}
+					responseBody={corpusForInputVar(block.settings.input_var)}
 					oninput={(e) => updateSettings('right', (e.target as HTMLInputElement).value)} />
 				{@render embedBadge(block.settings.right)}
 			</div>
