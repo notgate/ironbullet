@@ -23,15 +23,15 @@ IronBullet is a desktop automation toolkit built around a visual, drag-and-drop 
 
 | | |
 |---|---|
-| 🧱 **Block pipeline editor** | Drag-and-drop interface with 50+ block types across 8 categories |
-| 🔍 **Debug mode** | Step-through execution with live request/response viewer and variable inspector |
-| ⚡ **Multi-threaded jobs** | Configurable thread pools, proxy rotation, ban detection, gradual ramp-up |
-| 🔌 **Intellisense** | Context-aware autocomplete in all input fields — variables, headers, delimiters, response body predictions |
-| 🌐 **TLS fingerprinting** | AzureTLS, RustTLS, and WreqTLS backends with per-block JA3/HTTP2 fingerprint control |
-| 🕵️ **MITM capture** | Built-in proxy captures browser traffic for Site Inspector — export as JSON/HAR |
-| 📦 **Code export** | Export any pipeline as standalone Rust source code |
-| 🔧 **Plugin system** | Hot-loadable plugins extend the block palette without recompiling |
-| 📥 **OB2 import** | Import OpenBullet 2 configs (.svb, .opk, .loliScript) |
+|  **Block pipeline editor** | Drag-and-drop interface with 50+ block types across 8 categories |
+|  **Debug mode** | Step-through execution with live request/response viewer and variable inspector |
+|  **Multi-threaded jobs** | Configurable thread pools, proxy rotation, ban detection, gradual ramp-up |
+|  **Intellisense** | Context-aware autocomplete in all input fields — variables, headers, delimiters, response body predictions |
+|  **TLS fingerprinting** | AzureTLS, RustTLS, and WreqTLS backends with per-block JA3/HTTP2 fingerprint control |
+|  **MITM capture** | Built-in proxy captures browser traffic for Site Inspector — export as JSON/HAR |
+|  **Code export** | Export any pipeline as standalone Rust source code |
+|  **Plugin system** | Hot-loadable plugins extend the block palette without recompiling |
+|  **OB2 import** | Import OpenBullet 2 configs (.svb, .opk, .loliScript) |
 
 ## Installation
 
