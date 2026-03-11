@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
+	import { syncPipelineToBackend } from '$lib/state/tabs';
 	import { onDestroy } from 'svelte';
 	import SkeuSelect from './SkeuSelect.svelte';
 	import type { ProxySource } from '$lib/types';
@@ -93,6 +94,7 @@
 			{ name, mode: 'Rotate', sources: [], cpm_per_proxy: 0 },
 		];
 		newGroupName = '';
+		syncPipelineToBackend();
 	}
 
 	function removeProxyGroup(index: number) {
@@ -101,18 +103,21 @@
 		if (app.pipeline.proxy_settings.active_group === removed?.name) {
 			app.pipeline.proxy_settings.active_group = '';
 		}
+		syncPipelineToBackend();
 	}
 
 	function addGroupSource(groupIdx: number, type: 'File' | 'Url' | 'Inline') {
 		const groups = [...app.pipeline.proxy_settings.proxy_groups];
 		groups[groupIdx] = { ...groups[groupIdx], sources: [...groups[groupIdx].sources, { source_type: type, value: '', refresh_interval_secs: 0, default_proxy_type: undefined }] };
 		app.pipeline.proxy_settings.proxy_groups = groups;
+		syncPipelineToBackend();
 	}
 
 	function removeGroupSource(groupIdx: number, sourceIdx: number) {
 		const groups = [...app.pipeline.proxy_settings.proxy_groups];
 		groups[groupIdx] = { ...groups[groupIdx], sources: groups[groupIdx].sources.filter((_, i) => i !== sourceIdx) };
 		app.pipeline.proxy_settings.proxy_groups = groups;
+		syncPipelineToBackend();
 	}
 
 	onDestroy(() => {});

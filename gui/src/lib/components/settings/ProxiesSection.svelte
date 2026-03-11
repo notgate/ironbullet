@@ -96,6 +96,7 @@
 		srcs[si] = { ...srcs[si], value: val };
 		groups[gi] = { ...groups[gi], sources: srcs };
 		app.pipeline.proxy_settings.proxy_groups = groups;
+		saveWithSync();
 	}
 
 	function removeGroupSource(gi: number, si: number) {
@@ -134,7 +135,7 @@
 		</div>
 		<SkeuSelect
 			value={app.pipeline.proxy_settings.proxy_mode}
-			onValueChange={(v) => { app.pipeline.proxy_settings.proxy_mode = v; }}
+			onValueChange={(v) => { app.pipeline.proxy_settings.proxy_mode = v; saveWithSync(); }}
 			options={PROXY_MODE_OPTIONS}
 			class="text-[11px] w-[120px]"
 		/>
@@ -185,7 +186,7 @@
 				<span class="text-[10px] text-muted-foreground">Active group</span>
 				<SkeuSelect
 					value={app.pipeline.proxy_settings.active_group || '(default)'}
-					onValueChange={(v) => { app.pipeline.proxy_settings.active_group = v === '(default)' ? '' : v; }}
+					onValueChange={(v) => { app.pipeline.proxy_settings.active_group = v === '(default)' ? '' : v; saveWithSync(); }}
 					options={[{ value: '(default)', label: 'Default' }, ...app.pipeline.proxy_settings.proxy_groups.map(g => ({ value: g.name, label: g.name }))]}
 					class="text-[10px] w-[140px]"
 				/>
@@ -200,7 +201,7 @@
 					<div class="flex items-center gap-1">
 						<SkeuSelect
 							value={group.mode}
-							onValueChange={(v) => { const g = [...app.pipeline.proxy_settings.proxy_groups]; g[gi] = { ...g[gi], mode: v }; app.pipeline.proxy_settings.proxy_groups = g; }}
+							onValueChange={(v) => { const g = [...app.pipeline.proxy_settings.proxy_groups]; g[gi] = { ...g[gi], mode: v }; app.pipeline.proxy_settings.proxy_groups = g; saveWithSync(); }}
 							options={PROXY_MODE_OPTIONS}
 							class="text-[9px]"
 						/>
