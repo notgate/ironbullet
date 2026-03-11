@@ -561,6 +561,7 @@ pub(super) fn site_inspect(
                     ja3: None, http2fp: None, url: None, method: None,
                     headers: None, body: None, timeout: None,
                     custom_ciphers: None, return_request_headers: None,
+                    proxy_insecure: None,
                 }, resp_tx)).await;
                 let _ = resp_rx.await;
 
@@ -586,6 +587,7 @@ pub(super) fn site_inspect(
                     ja3: None, http2fp: None,
                     custom_ciphers: None,
                     return_request_headers: Some(true), // capture what was actually sent
+                    proxy_insecure: None,
                 }, resp_tx2)).await;
 
                 let sidecar_resp = resp_rx2.await.ok();
@@ -601,6 +603,7 @@ pub(super) fn site_inspect(
                     ja3: None, http2fp: None, follow_redirects: None,
                     max_redirects: None, ssl_verify: None,
                     custom_ciphers: None, return_request_headers: None,
+                    proxy_insecure: None,
                 }, close_tx)).await;
 
                 if let Some(sr) = sidecar_resp {

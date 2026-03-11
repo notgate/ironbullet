@@ -106,19 +106,23 @@ impl ProxyPool {
                 Some(ban_time) if now.duration_since(*ban_time).as_secs() < self.ban_duration_secs => {
                     // Still banned — skip
                 }
-                _ => return Some(proxy_str),
+                _ => return Some(self.proxies[idx].to_proxy_url()),
             }
         }
 
         // All proxies banned — return the round-robin slot anyway so work continues
         // (better to hit a banned proxy than to stall all threads with None)
         let idx = start % self.proxies.len();
-        Some(self.proxies[idx].to_string())
+        Some(self.proxies[idx].to_proxy_url())
     }
 
     pub fn ban_proxy(&self, proxy: &str) {
+        // For Shadowsocks, `proxy` arrives as `socks5://127.0.0.1:<port>` (the tunnel URL).
+        // The ban map keys use the canonical `ss://...` form. Translate back if needed.
+        let key = crate::sidecar::shadowsocks_pool::canonical_for_local(proxy)
+            .unwrap_or_else(|| proxy.to_string());
         if let Ok(mut bans) = self.bans.write() {
-            bans.insert(proxy.to_string(), Instant::now());
+            bans.insert(key, Instant::now());
         }
     }
 
@@ -143,11 +147,28 @@ impl std::fmt::Display for ProxyEntry {
             ProxyType::Https       => "https://",
             ProxyType::Socks4      => "socks4://",
             ProxyType::Socks5      => "socks5://",
-            // Shadowsocks: sslocal exposes a local SOCKS5 listener.
-            // The address stored is the sslocal endpoint (e.g. 127.0.0.1:1080).
-            ProxyType::Shadowsocks => "socks5://",
+            // Shadowsocks: Display emits the raw ss:// form for logging/UI.
+            // Use `to_proxy_url()` to get the actual SOCKS5 local tunnel URL.
+            ProxyType::Shadowsocks => "ss://",
         };
         write!(f, "{}{}", prefix, self.address)
+    }
+}
+
+impl ProxyEntry {
+    /// Returns the proxy URL to pass to HTTP clients.
+    ///
+    /// For Shadowsocks entries, this spins up (or reuses) an embedded local
+    /// SOCKS5 listener and returns `socks5://127.0.0.1:<port>`.
+    /// For all other types, this is equivalent to `self.to_string()`.
+    pub fn to_proxy_url(&self) -> String {
+        match self.proxy_type {
+            ProxyType::Shadowsocks => {
+                let ss_url = format!("ss://{}", self.address);
+                crate::sidecar::shadowsocks_pool::resolve_ss_proxy(&ss_url)
+            }
+            _ => self.to_string(),
+        }
     }
 }
 

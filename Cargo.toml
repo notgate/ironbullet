@@ -58,6 +58,11 @@ resvg = "0.43"
 wreq = { version = "6.0.0-rc.28", features = ["cookies", "gzip", "deflate", "brotli", "socks"] }
 wreq-util = "3.0.0-rc.10"
 
+# Shadowsocks: embedded local SOCKS5 proxy for ss:// proxy entries.
+# Spins up a per-server local listener so ss:// lines work without any external tools.
+shadowsocks         = { version = "1.24", features = ["aead-cipher-2022"] }
+shadowsocks-service = { version = "1.24", default-features = false, features = ["local", "local-socks4"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_Console"] }
 
