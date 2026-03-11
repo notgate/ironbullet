@@ -14,6 +14,7 @@
 	import PipelineEditor from '$lib/components/PipelineEditor.svelte';
 	import BlockSettingsPanel from '$lib/components/BlockSettingsPanel.svelte';
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
+	import IntelliPopup from '$lib/components/IntelliPopup.svelte';
 	import VariableInspector from '$lib/components/VariableInspector.svelte';
 	import DebugPanel from '$lib/components/DebugPanel.svelte';
 	import CodeView from '$lib/components/CodeView.svelte';
@@ -355,6 +356,7 @@
 
 	<SettingsModal />
 	<ResponseViewer />
+	<IntelliPopup />
 	<StartupDialog />
 	<UnsavedDialog />
 	<UpdateDialog />

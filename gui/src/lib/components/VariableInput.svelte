@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
 	import SkeuSelect from './SkeuSelect.svelte';
-	import Intellisense from './Intellisense.svelte';
 	import type { SuggestionItem } from './Intellisense.svelte';
 	import type { FieldContext } from '$lib/intellisense';
 	import { buildSuggestions, getQueryAtCursor, applySuggestion } from '$lib/intellisense';
+	import { intelliPopup } from '$lib/intellisense-popup.svelte';
 	import Variable from '@lucide/svelte/icons/variable';
 	import Type from '@lucide/svelte/icons/type';
 	import Braces from '@lucide/svelte/icons/braces';
@@ -23,66 +23,69 @@
 		oninput: (e: Event) => void;
 		placeholder?: string;
 		class?: string;
-		/** Hint to the intellisense engine about what kind of field this is */
 		context?: FieldContext;
-		/** Response body from the viewer — enables LR context suggestions */
 		responseBody?: string;
 	} = $props();
 
 	let mode = $state<InputMode>('embed');
-
-	// ── Intellisense state ─────────────────────────────────────────────────
 	let inputEl = $state<HTMLInputElement | null>(null);
-	let intellisenseEl = $state<InstanceType<typeof Intellisense> | null>(null);
-	let isense_visible = $state(false);
-	let isense_suggestions = $state<SuggestionItem[]>([]);
-	let cursorPos = $state(0);
+
+	// Whether THIS input owns the currently visible popup
+	let isOwner = $state(false);
+
+	function getRect(): DOMRect | null {
+		return inputEl?.getBoundingClientRect() ?? null;
+	}
 
 	function refreshSuggestions() {
 		if (!inputEl || !app.uiPrefs.intellisenseEnabled) {
-			isense_visible = false;
+			if (isOwner) { intelliPopup.hide(); isOwner = false; }
 			return;
 		}
 		const pos = inputEl.selectionStart ?? 0;
-		cursorPos = pos;
 		const trigger = getQueryAtCursor(value ?? '', pos);
 		if (!trigger) {
-			isense_visible = false;
+			if (isOwner) { intelliPopup.hide(); isOwner = false; }
 			return;
 		}
 		const sug = buildSuggestions(context, trigger.query, app.pipeline, responseBody);
 		if (sug.length === 0) {
-			isense_visible = false;
+			if (isOwner) { intelliPopup.hide(); isOwner = false; }
 			return;
 		}
-		isense_suggestions = sug;
-		isense_visible = true;
+
+		const rect = getRect();
+		if (!rect) return;
+
+		if (isOwner && intelliPopup.visible) {
+			intelliPopup.update(sug, rect);
+		} else {
+			isOwner = true;
+			intelliPopup.show(sug, rect, handlePick, () => { isOwner = false; });
+		}
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (!isense_visible || !intellisenseEl) return;
-		if (e.key === 'ArrowDown') { e.preventDefault(); intellisenseEl.moveDown(); return; }
-		if (e.key === 'ArrowUp')   { e.preventDefault(); intellisenseEl.moveUp();   return; }
+		if (!isOwner || !intelliPopup.visible) return;
+		if (e.key === 'ArrowDown') { e.preventDefault(); intelliPopup.moveDown(); return; }
+		if (e.key === 'ArrowUp')   { e.preventDefault(); intelliPopup.moveUp();   return; }
 		if (e.key === 'Enter' || e.key === 'Tab') {
-			// Only intercept Tab/Enter when intellisense is open
 			e.preventDefault();
-			intellisenseEl.confirm();
+			intelliPopup.pick();
 			return;
 		}
-		if (e.key === 'Escape') { isense_visible = false; return; }
+		if (e.key === 'Escape') { intelliPopup.hide(); isOwner = false; return; }
 	}
 
 	function handlePick(item: SuggestionItem) {
 		const pos = inputEl?.selectionStart ?? (value?.length ?? 0);
 		const { newValue, newCursor } = applySuggestion(value ?? '', pos, item);
 
-		// Fire synthetic oninput with the new value
 		const synth = new Event('input', { bubbles: true });
 		Object.defineProperty(synth, 'target', { value: { value: newValue }, enumerable: true });
 		oninput(synth);
 
-		// Restore cursor after Svelte re-renders
-		isense_visible = false;
+		isOwner = false;
 		requestAnimationFrame(() => {
 			if (inputEl) {
 				inputEl.setSelectionRange(newCursor, newCursor);
@@ -92,8 +95,10 @@
 	}
 
 	function handleBlur() {
-		// Small delay so click-to-pick fires before blur closes the popup
-		setTimeout(() => { isense_visible = false; }, 120);
+		// Small delay so mousedown on popup item fires before blur closes it
+		setTimeout(() => {
+			if (isOwner) { intelliPopup.hide(); isOwner = false; }
+		}, 150);
 	}
 
 	// ── Variable selector (VAR mode) ───────────────────────────────────────
@@ -121,7 +126,7 @@
 		if (mode === 'raw') mode = 'embed';
 		else if (mode === 'embed') mode = 'variable';
 		else mode = 'raw';
-		isense_visible = false;
+		if (isOwner) { intelliPopup.hide(); isOwner = false; }
 	}
 
 	function getModeIcon() {
@@ -159,21 +164,12 @@
 			bind:this={inputEl}
 			type="text"
 			{value}
-			placeholder={mode === 'embed' ? (placeholder || 'Use <variable> or type to search suggestions...') : placeholder}
+			placeholder={mode === 'embed' ? (placeholder || 'Use <variable> or type for suggestions...') : placeholder}
 			class={className}
 			oninput={(e) => { oninput(e); refreshSuggestions(); }}
 			onkeydown={handleKeydown}
 			onblur={handleBlur}
 			onclick={refreshSuggestions}
-		/>
-
-		<Intellisense
-			bind:this={intellisenseEl}
-			suggestions={isense_suggestions}
-			anchorEl={inputEl}
-			visible={isense_visible}
-			onpick={handlePick}
-			onclose={() => { isense_visible = false; }}
 		/>
 	{/if}
 
