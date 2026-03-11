@@ -5,6 +5,8 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { inputCls, labelCls, hintCls, hasVars, HTTP_VERSION_OPTIONS } from './shared';
+	import { intellisense } from '$lib/intellisense-action.svelte';
+	import { app } from '$lib/state.svelte';
 
 	let { block, updateSettings, embedBadge }: {
 		block: Block;
@@ -168,6 +170,7 @@
 					placeholder="Content-Type: application/json&#10;Accept: */*&#10;Authorization: Bearer <token>"
 					bind:value={rawHeaders}
 					onblur={commitRawHeaders}
+					use:intellisense={{ context: 'generic', responseBody: app.lastDebugResponseHeaders }}
 				></textarea>
 				{@render embedBadge(rawHeaders)}
 			</div>
@@ -180,12 +183,15 @@
 						<VariableInput
 							value={header[0]}
 							placeholder="Header name"
+							context="generic"
+							responseBody={app.lastDebugResponseHeaders}
 							class="flex-1 skeu-input text-[10px] font-mono"
 							oninput={(e) => updateHeaderKey(hi, (e.target as HTMLInputElement).value)}
 						/>
 						<VariableInput
 							value={header[1]}
 							placeholder="Value"
+							context="variable"
 							class="flex-1 skeu-input text-[10px] font-mono"
 							oninput={(e) => updateHeaderValue(hi, (e.target as HTMLInputElement).value)}
 						/>
@@ -212,7 +218,9 @@
 			<div class="relative">
 				<textarea value={block.settings.body} placeholder="Request body..."
 					class="w-full skeu-input text-[11px] font-mono min-h-[100px] resize-y"
-					oninput={(e) => updateSettings('body', (e.target as HTMLTextAreaElement).value)}></textarea>
+					oninput={(e) => updateSettings('body', (e.target as HTMLTextAreaElement).value)}
+					use:intellisense={{ context: 'generic', responseBody: app.lastDebugResponseBody }}
+				></textarea>
 				{@render embedBadge(block.settings.body)}
 			</div>
 		{/if}
@@ -224,6 +232,7 @@
 				placeholder="session_id=abc123&#10;csrf_token=xyz789&#10;auth=<COOKIES>"
 				class="w-full skeu-input text-[11px] font-mono min-h-[100px] resize-y mt-1"
 				oninput={(e) => updateSettings('custom_cookies', (e.target as HTMLTextAreaElement).value)}
+				use:intellisense={{ context: 'generic', responseBody: app.lastDebugResponseHeaders }}
 			></textarea>
 			{@render embedBadge(block.settings.custom_cookies)}
 		</div>

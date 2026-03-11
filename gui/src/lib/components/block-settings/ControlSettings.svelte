@@ -2,6 +2,8 @@
 	import type { Block } from '$lib/types';
 	import SkeuSelect from '../SkeuSelect.svelte';
 	import VariableInput from '../VariableInput.svelte';
+	import { intellisense } from '$lib/intellisense-action.svelte';
+	import { app } from '$lib/state.svelte';
 	import { inputCls, labelCls, smallInputCls, hasVars, COMPARISON_OPTIONS } from './shared';
 
 	let { block, updateSettings, embedBadge }: {
@@ -100,7 +102,8 @@
 			<label class={labelCls}>Script code</label>
 			<textarea value={block.settings.code} placeholder="// JavaScript code here..."
 				class="w-full skeu-input text-[11px] font-mono min-h-[120px] resize-y mt-0.5"
-				oninput={(e) => updateSettings('code', (e.target as HTMLTextAreaElement).value)}></textarea>
+				oninput={(e) => updateSettings('code', (e.target as HTMLTextAreaElement).value)}
+				use:intellisense={{ context: 'variable', responseBody: app.lastDebugResponseBody }}></textarea>
 		</div>
 		<div class="flex gap-2">
 			<div class="flex-1">

@@ -2,6 +2,8 @@
 	import type { Block } from '$lib/types';
 	import SkeuSelect from '../SkeuSelect.svelte';
 	import VariableInput from '../VariableInput.svelte';
+	import { intellisense } from '$lib/intellisense-action.svelte';
+	import { app } from '$lib/state.svelte';
 	import { inputCls, labelCls, hasVars } from './shared';
 
 	let { block, updateSettings, embedBadge }: {

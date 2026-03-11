@@ -2,6 +2,8 @@
 	import type { Block } from '$lib/types';
 	import SkeuSelect from '../SkeuSelect.svelte';
 	import VariableInput from '../VariableInput.svelte';
+	import { intellisense } from '$lib/intellisense-action.svelte';
+	import { app } from '$lib/state.svelte';
 	import { inputCls, labelCls, hasVars } from './shared';
 
 	let { block, updateSettings, embedBadge }: {
@@ -37,7 +39,8 @@
 			<label class={labelCls}>Body template</label>
 			<textarea value={block.settings.body_template} placeholder={'{"content": "Hit: <USER>:<PASS>"}'}
 				class="w-full skeu-input text-[11px] font-mono min-h-[80px] resize-y mt-0.5"
-				oninput={(e) => updateSettings('body_template', (e.target as HTMLTextAreaElement).value)}></textarea>
+				oninput={(e) => updateSettings('body_template', (e.target as HTMLTextAreaElement).value)}
+				use:intellisense={{ context: 'generic', responseBody: app.lastDebugResponseBody }}></textarea>
 			{@render embedBadge(block.settings.body_template)}
 			<p class="text-[9px] text-muted-foreground mt-0.5">Use <code class="text-foreground/70">&lt;VAR&gt;</code> for variable interpolation</p>
 		</div>
@@ -45,7 +48,8 @@
 			<label class={labelCls}>Custom cookies</label>
 			<textarea value={block.settings.custom_cookies || ''} placeholder="session_id=abc123&#10;auth=<TOKEN>"
 				class="w-full skeu-input text-[11px] font-mono min-h-[50px] resize-y mt-0.5"
-				oninput={(e) => updateSettings('custom_cookies', (e.target as HTMLTextAreaElement).value)}></textarea>
+				oninput={(e) => updateSettings('custom_cookies', (e.target as HTMLTextAreaElement).value)}
+				use:intellisense={{ context: 'generic', responseBody: app.lastDebugResponseHeaders }}></textarea>
 			{@render embedBadge(block.settings.custom_cookies)}
 			<p class="text-[9px] text-muted-foreground mt-0.5">One per line: <code class="text-foreground/70">name=value</code>. Sent as <code class="text-foreground/70">Cookie</code> header.</p>
 		</div>
