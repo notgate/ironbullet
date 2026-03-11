@@ -46,6 +46,8 @@ export function intellisense(
 			trigger.query,
 			app.pipeline,
 			options.responseBody,
+			val,
+			pos,
 		);
 		if (sug.length === 0) {
 			if (isOwner) { intelliPopup.hide(); isOwner = false; }

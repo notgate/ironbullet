@@ -131,6 +131,199 @@ const KEYCHECK_VALUE_SNIPPETS: SuggestionItem[] = [
 	{ label: 'false', insertText: 'false', kind: 'keyword', detail: 'bool' },
 ];
 
+// ── HTTP Header banks ─────────────────────────────────────────────────────
+
+/** Comprehensive list of HTTP header names for autocomplete. */
+const HEADER_NAMES: SuggestionItem[] = [
+	// ── Standard request headers ──────────────────────────────────────────
+	{ label: 'Accept',                    insertText: 'Accept',                    kind: 'snippet', detail: 'request' },
+	{ label: 'Accept-Encoding',           insertText: 'Accept-Encoding',           kind: 'snippet', detail: 'request' },
+	{ label: 'Accept-Language',           insertText: 'Accept-Language',           kind: 'snippet', detail: 'request' },
+	{ label: 'Authorization',             insertText: 'Authorization',             kind: 'snippet', detail: 'request' },
+	{ label: 'Cache-Control',             insertText: 'Cache-Control',             kind: 'snippet', detail: 'request' },
+	{ label: 'Connection',                insertText: 'Connection',                kind: 'snippet', detail: 'request' },
+	{ label: 'Content-Encoding',          insertText: 'Content-Encoding',          kind: 'snippet', detail: 'request' },
+	{ label: 'Content-Length',            insertText: 'Content-Length',            kind: 'snippet', detail: 'request' },
+	{ label: 'Content-Type',              insertText: 'Content-Type',              kind: 'snippet', detail: 'request' },
+	{ label: 'Cookie',                    insertText: 'Cookie',                    kind: 'snippet', detail: 'request' },
+	{ label: 'DNT',                       insertText: 'DNT',                       kind: 'snippet', detail: 'privacy' },
+	{ label: 'Host',                      insertText: 'Host',                      kind: 'snippet', detail: 'request' },
+	{ label: 'If-Modified-Since',         insertText: 'If-Modified-Since',         kind: 'snippet', detail: 'request' },
+	{ label: 'If-None-Match',             insertText: 'If-None-Match',             kind: 'snippet', detail: 'request' },
+	{ label: 'Origin',                    insertText: 'Origin',                    kind: 'snippet', detail: 'request' },
+	{ label: 'Pragma',                    insertText: 'Pragma',                    kind: 'snippet', detail: 'request' },
+	{ label: 'Referer',                   insertText: 'Referer',                   kind: 'snippet', detail: 'request' },
+	{ label: 'TE',                        insertText: 'TE',                        kind: 'snippet', detail: 'request' },
+	{ label: 'Upgrade-Insecure-Requests', insertText: 'Upgrade-Insecure-Requests', kind: 'snippet', detail: 'request' },
+	{ label: 'User-Agent',                insertText: 'User-Agent',                kind: 'snippet', detail: 'request' },
+	// ── Security / CORS ───────────────────────────────────────────────────
+	{ label: 'Sec-CH-UA',                 insertText: 'Sec-CH-UA',                 kind: 'snippet', detail: 'sec-ch' },
+	{ label: 'Sec-CH-UA-Mobile',          insertText: 'Sec-CH-UA-Mobile',          kind: 'snippet', detail: 'sec-ch' },
+	{ label: 'Sec-CH-UA-Platform',        insertText: 'Sec-CH-UA-Platform',        kind: 'snippet', detail: 'sec-ch' },
+	{ label: 'Sec-Fetch-Dest',            insertText: 'Sec-Fetch-Dest',            kind: 'snippet', detail: 'sec-fetch' },
+	{ label: 'Sec-Fetch-Mode',            insertText: 'Sec-Fetch-Mode',            kind: 'snippet', detail: 'sec-fetch' },
+	{ label: 'Sec-Fetch-Site',            insertText: 'Sec-Fetch-Site',            kind: 'snippet', detail: 'sec-fetch' },
+	{ label: 'Sec-Fetch-User',            insertText: 'Sec-Fetch-User',            kind: 'snippet', detail: 'sec-fetch' },
+	{ label: 'Sec-GPC',                   insertText: 'Sec-GPC',                   kind: 'snippet', detail: 'privacy' },
+	// ── Proxy / forwarding ────────────────────────────────────────────────
+	{ label: 'CF-Connecting-IP',          insertText: 'CF-Connecting-IP',          kind: 'snippet', detail: 'cloudflare' },
+	{ label: 'CF-IPCountry',              insertText: 'CF-IPCountry',              kind: 'snippet', detail: 'cloudflare' },
+	{ label: 'True-Client-IP',            insertText: 'True-Client-IP',            kind: 'snippet', detail: 'proxy' },
+	{ label: 'X-Forwarded-For',           insertText: 'X-Forwarded-For',           kind: 'snippet', detail: 'proxy' },
+	{ label: 'X-Forwarded-Host',          insertText: 'X-Forwarded-Host',          kind: 'snippet', detail: 'proxy' },
+	{ label: 'X-Forwarded-Proto',         insertText: 'X-Forwarded-Proto',         kind: 'snippet', detail: 'proxy' },
+	{ label: 'x-forwarded-proto',         insertText: 'x-forwarded-proto',         kind: 'snippet', detail: 'proxy' },
+	{ label: 'X-Real-IP',                 insertText: 'X-Real-IP',                 kind: 'snippet', detail: 'proxy' },
+	// ── Auth / tokens ─────────────────────────────────────────────────────
+	{ label: 'X-API-Key',                 insertText: 'X-API-Key',                 kind: 'snippet', detail: 'auth' },
+	{ label: 'X-Auth-Token',              insertText: 'X-Auth-Token',              kind: 'snippet', detail: 'auth' },
+	{ label: 'X-CSRF-Token',              insertText: 'X-CSRF-Token',              kind: 'snippet', detail: 'auth' },
+	{ label: 'X-Requested-With',          insertText: 'X-Requested-With',          kind: 'snippet', detail: 'auth' },
+	// ── App-specific common headers ───────────────────────────────────────
+	{ label: 'apollographql-client-name', insertText: 'apollographql-client-name', kind: 'snippet', detail: 'graphql' },
+	{ label: 'apollographql-client-version', insertText: 'apollographql-client-version', kind: 'snippet', detail: 'graphql' },
+	{ label: 'baggage',                   insertText: 'baggage',                   kind: 'snippet', detail: 'tracing' },
+	{ label: 'sentry-trace',              insertText: 'sentry-trace',              kind: 'snippet', detail: 'tracing' },
+	{ label: 'traceparent',               insertText: 'traceparent',               kind: 'snippet', detail: 'tracing' },
+	{ label: 'X-Client-Version',          insertText: 'X-Client-Version',          kind: 'snippet', detail: 'app' },
+	{ label: 'X-Platform',                insertText: 'X-Platform',                kind: 'snippet', detail: 'app' },
+	{ label: 'X-Request-ID',              insertText: 'X-Request-ID',              kind: 'snippet', detail: 'app' },
+	{ label: 'X-Trace-ID',                insertText: 'X-Trace-ID',                kind: 'snippet', detail: 'app' },
+	{ label: 'x-ulta-client-channel',     insertText: 'x-ulta-client-channel',     kind: 'snippet', detail: 'app' },
+	{ label: 'x-ulta-client-country',     insertText: 'x-ulta-client-country',     kind: 'snippet', detail: 'app' },
+	{ label: 'x-ulta-client-locale',      insertText: 'x-ulta-client-locale',      kind: 'snippet', detail: 'app' },
+	{ label: 'x-ulta-dxl-query-id',       insertText: 'x-ulta-dxl-query-id',       kind: 'snippet', detail: 'app' },
+	{ label: 'x-ulta-graph-module-name',  insertText: 'x-ulta-graph-module-name',  kind: 'snippet', detail: 'app' },
+	{ label: 'x-ulta-graph-sub-type',     insertText: 'x-ulta-graph-sub-type',     kind: 'snippet', detail: 'app' },
+	{ label: 'x-ulta-graph-type',         insertText: 'x-ulta-graph-type',         kind: 'snippet', detail: 'app' },
+];
+
+/**
+ * Common header values keyed by header name (lowercased).
+ * Used when context = 'header_value' and we know which header we're on.
+ */
+const HEADER_VALUES: Record<string, SuggestionItem[]> = {
+	'accept': [
+		{ label: '*/*',                        insertText: '*/*',                        kind: 'snippet', detail: 'any' },
+		{ label: 'application/json',            insertText: 'application/json',            kind: 'snippet', detail: 'json' },
+		{ label: 'application/json, text/plain, */*', insertText: 'application/json, text/plain, */*', kind: 'snippet', detail: 'xhr' },
+		{ label: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', insertText: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', kind: 'snippet', detail: 'browser' },
+	],
+	'accept-encoding': [
+		{ label: 'gzip, deflate, br',           insertText: 'gzip, deflate, br',           kind: 'snippet', detail: 'standard' },
+		{ label: 'gzip, deflate, br, zstd',     insertText: 'gzip, deflate, br, zstd',     kind: 'snippet', detail: 'modern' },
+		{ label: 'gzip, deflate',               insertText: 'gzip, deflate',               kind: 'snippet', detail: 'legacy' },
+		{ label: 'identity',                    insertText: 'identity',                    kind: 'snippet', detail: 'none' },
+	],
+	'accept-language': [
+		{ label: 'en-US,en;q=0.9',              insertText: 'en-US,en;q=0.9',              kind: 'snippet', detail: 'en-US' },
+		{ label: 'en-GB,en;q=0.9',              insertText: 'en-GB,en;q=0.9',              kind: 'snippet', detail: 'en-GB' },
+		{ label: 'tr-TR,tr;q=0.8,en-US;q=0.5,en;q=0.3', insertText: 'tr-TR,tr;q=0.8,en-US;q=0.5,en;q=0.3', kind: 'snippet', detail: 'tr' },
+		{ label: 'de-DE,de;q=0.9,en;q=0.8',    insertText: 'de-DE,de;q=0.9,en;q=0.8',    kind: 'snippet', detail: 'de' },
+	],
+	'authorization': [
+		{ label: 'Bearer <TOKEN>',              insertText: 'Bearer <TOKEN>',              kind: 'snippet', detail: 'jwt' },
+		{ label: 'Basic <BASE64>',              insertText: 'Basic <BASE64>',              kind: 'snippet', detail: 'basic' },
+		{ label: 'Bearer <data.SOURCE>',        insertText: 'Bearer <data.SOURCE>',        kind: 'data',    detail: 'from response' },
+	],
+	'cache-control': [
+		{ label: 'no-cache',                    insertText: 'no-cache',                    kind: 'snippet', detail: '' },
+		{ label: 'no-store',                    insertText: 'no-store',                    kind: 'snippet', detail: '' },
+		{ label: 'max-age=0',                   insertText: 'max-age=0',                   kind: 'snippet', detail: '' },
+		{ label: 'max-age=3600',                insertText: 'max-age=3600',                kind: 'snippet', detail: '1h' },
+	],
+	'connection': [
+		{ label: 'keep-alive',                  insertText: 'keep-alive',                  kind: 'snippet', detail: '' },
+		{ label: 'close',                       insertText: 'close',                       kind: 'snippet', detail: '' },
+	],
+	'content-type': [
+		{ label: 'application/json',            insertText: 'application/json',            kind: 'snippet', detail: 'json' },
+		{ label: 'application/json; charset=utf-8', insertText: 'application/json; charset=utf-8', kind: 'snippet', detail: 'json utf8' },
+		{ label: 'application/x-www-form-urlencoded', insertText: 'application/x-www-form-urlencoded', kind: 'snippet', detail: 'form' },
+		{ label: 'multipart/form-data',         insertText: 'multipart/form-data',         kind: 'snippet', detail: 'upload' },
+		{ label: 'text/plain',                  insertText: 'text/plain',                  kind: 'snippet', detail: 'text' },
+		{ label: 'text/xml',                    insertText: 'text/xml',                    kind: 'snippet', detail: 'xml' },
+		{ label: 'application/graphql',         insertText: 'application/graphql',         kind: 'snippet', detail: 'graphql' },
+	],
+	'dnt': [
+		{ label: '1', insertText: '1', kind: 'snippet', detail: 'do not track' },
+		{ label: '0', insertText: '0', kind: 'snippet', detail: 'ok to track' },
+	],
+	'sec-fetch-dest': [
+		{ label: 'empty',    insertText: 'empty',    kind: 'snippet', detail: 'xhr/fetch' },
+		{ label: 'document', insertText: 'document', kind: 'snippet', detail: 'navigation' },
+		{ label: 'image',    insertText: 'image',    kind: 'snippet', detail: 'img' },
+		{ label: 'script',   insertText: 'script',   kind: 'snippet', detail: 'js' },
+		{ label: 'style',    insertText: 'style',    kind: 'snippet', detail: 'css' },
+	],
+	'sec-fetch-mode': [
+		{ label: 'cors',        insertText: 'cors',        kind: 'snippet', detail: '' },
+		{ label: 'navigate',    insertText: 'navigate',    kind: 'snippet', detail: '' },
+		{ label: 'no-cors',     insertText: 'no-cors',     kind: 'snippet', detail: '' },
+		{ label: 'same-origin', insertText: 'same-origin', kind: 'snippet', detail: '' },
+	],
+	'sec-fetch-site': [
+		{ label: 'cross-site',   insertText: 'cross-site',   kind: 'snippet', detail: '' },
+		{ label: 'none',         insertText: 'none',         kind: 'snippet', detail: '' },
+		{ label: 'same-origin',  insertText: 'same-origin',  kind: 'snippet', detail: '' },
+		{ label: 'same-site',    insertText: 'same-site',    kind: 'snippet', detail: '' },
+	],
+	'sec-fetch-user':   [{ label: '?1', insertText: '?1', kind: 'snippet', detail: '' }],
+	'sec-gpc':          [{ label: '1',  insertText: '1',  kind: 'snippet', detail: 'global privacy' }],
+	'upgrade-insecure-requests': [{ label: '1', insertText: '1', kind: 'snippet', detail: '' }],
+	'user-agent': [
+		{ label: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0',
+		  insertText: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0', kind: 'snippet', detail: 'Firefox Win' },
+		{ label: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+		  insertText: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', kind: 'snippet', detail: 'Chrome Win' },
+		{ label: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+		  insertText: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', kind: 'snippet', detail: 'Chrome Mac' },
+		{ label: 'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0',
+		  insertText: 'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0', kind: 'snippet', detail: 'Firefox Linux' },
+		{ label: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+		  insertText: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', kind: 'snippet', detail: 'Safari iOS' },
+	],
+	'x-forwarded-proto':  [{ label: 'https', insertText: 'https', kind: 'snippet', detail: '' }, { label: 'http', insertText: 'http', kind: 'snippet', detail: '' }],
+	'x-forwarded-for':    [{ label: '<input.USER>', insertText: '<input.USER>', kind: 'input', detail: 'spoof IP' }],
+	'x-requested-with':   [{ label: 'XMLHttpRequest', insertText: 'XMLHttpRequest', kind: 'snippet', detail: 'xhr' }],
+	'x-ulta-client-channel': [{ label: 'web', insertText: 'web', kind: 'snippet', detail: '' }, { label: 'mobile', insertText: 'mobile', kind: 'snippet', detail: '' }],
+	'apollographql-client-name': [{ label: 'ulta-graph', insertText: 'ulta-graph', kind: 'snippet', detail: '' }],
+};
+
+/**
+ * For a raw headers textarea, detect which header name is on the current line
+ * and return value suggestions for it. Falls back to all header name suggestions
+ * when cursor is at the start of a line (before the colon).
+ */
+export function buildHeaderSuggestions(
+	query: string,
+	fullText: string,
+	cursorPos: number,
+): SuggestionItem[] {
+	// Find the line the cursor is on
+	const lineStart = fullText.lastIndexOf('\n', cursorPos - 1) + 1;
+	const lineUpToCursor = fullText.slice(lineStart, cursorPos);
+	const colonIdx = lineUpToCursor.indexOf(':');
+
+	if (colonIdx !== -1) {
+		// Cursor is after a colon → suggest values for this header name
+		const headerName = lineUpToCursor.slice(0, colonIdx).trim().toLowerCase();
+		const valueCandidates = HEADER_VALUES[headerName] ?? [];
+		// Also add variable suggestions
+		const allValue = [...valueCandidates, ...DATA_VARS, ...INPUT_VARS];
+		const q = query.toLowerCase();
+		return !q
+			? allValue.slice(0, 20)
+			: allValue.filter(s => s.label.toLowerCase().includes(q) || s.insertText.toLowerCase().includes(q)).slice(0, 20);
+	} else {
+		// Before or at a colon → suggest header names
+		const q = query.toLowerCase();
+		return !q
+			? HEADER_NAMES.slice(0, 20)
+			: HEADER_NAMES.filter(s => s.label.toLowerCase().includes(q)).slice(0, 20);
+	}
+}
+
 // ── Pipeline variable extraction ───────────────────────────────────────────
 
 function extractPipelineVars(pipeline: Pipeline): SuggestionItem[] {
@@ -255,6 +448,8 @@ export type FieldContext =
 	| 'keycheck_value' // KeyCheck condition value
 	| 'ldelim'         // LR left delimiter
 	| 'rdelim'         // LR right delimiter
+	| 'header_name'    // HTTP header name field
+	| 'header_value'   // HTTP header value field (raw textarea, one header per line)
 	| 'generic';       // everything else
 
 /**
@@ -270,7 +465,39 @@ export function buildSuggestions(
 	query: string,
 	pipeline: Pipeline | null,
 	responseBody?: string,
+	/** Full text of the field + cursor position — used for header_value context */
+	fullText?: string,
+	cursorPos?: number,
 ): SuggestionItem[] {
+	// Header context: position-aware name vs value detection
+	if (ctx === 'header_value') {
+		let headerSugs: SuggestionItem[];
+
+		if (fullText !== undefined && cursorPos !== undefined) {
+			// Raw textarea: detect name vs value by colon position on current line
+			headerSugs = buildHeaderSuggestions(query, fullText, cursorPos);
+		} else if (responseBody) {
+			// KV mode: responseBody carries the header name from the sibling input
+			const valueCandidates = HEADER_VALUES[responseBody.trim().toLowerCase()] ?? [];
+			const allValue = [...valueCandidates, ...DATA_VARS, ...INPUT_VARS];
+			const q = query.toLowerCase();
+			headerSugs = !q
+				? allValue.slice(0, 20)
+				: allValue.filter(s => s.label.toLowerCase().includes(q) || s.insertText.toLowerCase().includes(q)).slice(0, 20);
+		} else {
+			headerSugs = [...DATA_VARS, ...INPUT_VARS];
+		}
+		return headerSugs.slice(0, 20);
+	}
+
+	if (ctx === 'header_name') {
+		const q = query.toLowerCase();
+		const candidates = !q
+			? HEADER_NAMES.slice(0, 20)
+			: HEADER_NAMES.filter(s => s.label.toLowerCase().includes(q)).slice(0, 20);
+		return candidates;
+	}
+
 	const pipelineVars = pipeline ? extractPipelineVars(pipeline) : [];
 	const q = query.toLowerCase();
 

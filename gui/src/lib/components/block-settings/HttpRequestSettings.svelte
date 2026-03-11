@@ -170,7 +170,7 @@
 					placeholder="Content-Type: application/json&#10;Accept: */*&#10;Authorization: Bearer <token>"
 					bind:value={rawHeaders}
 					onblur={commitRawHeaders}
-					use:intellisense={{ context: 'generic', responseBody: app.lastDebugResponseHeaders }}
+					use:intellisense={{ context: 'header_value', responseBody: app.lastDebugResponseHeaders }}
 				></textarea>
 				{@render embedBadge(rawHeaders)}
 			</div>
@@ -183,15 +183,15 @@
 						<VariableInput
 							value={header[0]}
 							placeholder="Header name"
-							context="generic"
-							responseBody={app.lastDebugResponseHeaders}
+							context="header_name"
 							class="flex-1 skeu-input text-[10px] font-mono"
 							oninput={(e) => updateHeaderKey(hi, (e.target as HTMLInputElement).value)}
 						/>
 						<VariableInput
 							value={header[1]}
 							placeholder="Value"
-							context="variable"
+							context="header_value"
+							responseBody={header[0]}
 							class="flex-1 skeu-input text-[10px] font-mono"
 							oninput={(e) => updateHeaderValue(hi, (e.target as HTMLInputElement).value)}
 						/>

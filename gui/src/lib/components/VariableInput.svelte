@@ -48,7 +48,7 @@
 			if (isOwner) { intelliPopup.hide(); isOwner = false; }
 			return;
 		}
-		const sug = buildSuggestions(context, trigger.query, app.pipeline, responseBody);
+		const sug = buildSuggestions(context, trigger.query, app.pipeline, responseBody, value ?? '', pos);
 		if (sug.length === 0) {
 			if (isOwner) { intelliPopup.hide(); isOwner = false; }
 			return;
