@@ -644,6 +644,7 @@ Error handling
 								{ value: 'https',  label: 'HTTPS'  },
 								{ value: 'socks4', label: 'SOCKS4' },
 								{ value: 'socks5', label: 'SOCKS5' },
+								{ value: 'shadowsocks', label: 'Shadowsocks (sslocal)' },
 							]}
 						/>
 						<p class="text-[9px] text-muted-foreground mt-0.5">Applied to bare <code class="font-mono">host:port</code> lines without a scheme prefix.</p>

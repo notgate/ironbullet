@@ -34,6 +34,10 @@ type SidecarRequest struct {
 	// ReturnRequestHeaders: when true, the response will include the actual request headers
 	// sent by azuretls. Used by the Site Inspector to display the full request.
 	ReturnRequestHeaders   bool       `json:"return_request_headers,omitempty"`
+	// ProxyInsecure: when true, skip TLS verification when connecting through an HTTPS proxy.
+	// AzureTLS already sets InsecureSkipVerify=true on the proxy CONNECT tunnel unconditionally
+	// (in the azuretls library source), so this field is informational only for AzureTLS.
+	ProxyInsecure          bool       `json:"proxy_insecure,omitempty"`
 }
 
 // SidecarResponse to Rust

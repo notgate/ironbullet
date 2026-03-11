@@ -50,6 +50,13 @@ pub struct HttpRequestSettings {
     /// When false, skip TLS certificate verification (for debugging / self-signed certs)
     #[serde(default = "default_ssl_verify")]
     pub ssl_verify: bool,
+    /// When true, skip TLS verification when connecting through the proxy itself.
+    /// Equivalent to `curl --proxy-insecure`. Useful for HTTPS proxies with self-signed certs.
+    /// Note: on RustTLS and WreqTLS, this setting also disables target TLS verification because
+    /// reqwest/wreq apply TLS config at the client level rather than per-connection.
+    /// AzureTLS handles proxy TLS separately and is unaffected (proxy CONNECT always skips verify).
+    #[serde(default)]
+    pub proxy_insecure: bool,
     /// Optional dash-separated IANA cipher suite IDs to override browser defaults.
     /// e.g. "4865-4866-4867-49195-49199-49196-49200-52393-52392"
     /// Leave empty to use the browser profile's built-in cipher list.
@@ -112,6 +119,7 @@ impl Default for HttpRequestSettings {
             response_var: default_response_var(),
             custom_cookies: String::new(),
             ssl_verify: true,
+            proxy_insecure: false,
             cipher_suites: String::new(),
             tls_client: TlsClient::RustTLS,
             browser_profile: String::new(),

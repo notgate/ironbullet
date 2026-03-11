@@ -94,6 +94,7 @@ impl ExecutionContext {
             max_redirects: Some(settings.max_redirects as i64),
             ssl_verify: if settings.ssl_verify { None } else { Some(false) },
             custom_ciphers: if settings.cipher_suites.is_empty() { None } else { Some(settings.cipher_suites.clone()) },
+            proxy_insecure: if settings.proxy_insecure { Some(true) } else { None },
             ..Default::default()
         };
 
@@ -106,6 +107,7 @@ impl ExecutionContext {
                 let (resp, client) = crate::sidecar::native::execute_rustls_request(
                     &sidecar_req,
                     settings.ssl_verify,
+                    settings.proxy_insecure,
                     existing,
                 ).await;
                 self.rustls_client = Some(client);
@@ -130,6 +132,7 @@ impl ExecutionContext {
                     &sidecar_req,
                     emu,
                     settings.ssl_verify,
+                    settings.proxy_insecure,
                     existing,
                 ).await;
                 self.wreq_client = Some(WreqClientSlot {

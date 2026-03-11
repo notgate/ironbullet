@@ -270,6 +270,7 @@ ironbullet accepts proxy lists in multiple formats, one proxy per line:
 http://192.168.1.1:8080
 https://proxy.example.com:3128
 socks5://192.168.1.1:1080
+ss://127.0.0.1:1080          # Shadowsocks via sslocal (SOCKS5 alias)
 
 # Format 3: Protocol URL with auth
 socks5://user:pass@192.168.1.1:1080
@@ -284,7 +285,8 @@ socks5:10.0.0.1:1080:user:pass
 <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 8px;font-weight:600">HTTP</td><td style="padding:6px 8px">Standard HTTP/1.1 proxy with CONNECT tunneling</td></tr>
 <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 8px;font-weight:600">HTTPS</td><td style="padding:6px 8px">HTTP proxy over TLS connection</td></tr>
 <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 8px;font-weight:600">SOCKS4</td><td style="padding:6px 8px">SOCKS4 protocol (no authentication support)</td></tr>
-<tr><td style="padding:6px 8px;font-weight:600">SOCKS5</td><td style="padding:6px 8px">SOCKS5 protocol with optional username/password auth</td></tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 8px;font-weight:600">SOCKS5</td><td style="padding:6px 8px">SOCKS5 protocol with optional username/password auth</td></tr>
+<tr><td style="padding:6px 8px;font-weight:600">Shadowsocks</td><td style="padding:6px 8px">Shadowsocks via sslocal — run <code>sslocal</code> locally, then point IronBullet to its SOCKS5 listener (e.g. <code>127.0.0.1:1080</code>). The <em>Shadowsocks</em> proxy type is an alias for SOCKS5 targeting the local sslocal port.</td></tr>
 </table>
 
 <h3 style="font-size:15px;font-weight:600;margin-bottom:12px">Rotation &amp; Banning</h3>

@@ -24,6 +24,11 @@ pub enum ProxyType {
     Https,
     Socks4,
     Socks5,
+    /// Shadowsocks — proxy address is the sslocal listen endpoint.
+    /// sslocal exposes a SOCKS5 interface locally, so this is emitted
+    /// as `socks5://` when building the proxy URL for HTTP clients.
+    /// Users must run `sslocal` separately configured for their SS server.
+    Shadowsocks,
 }
 
 impl ProxyPool {
@@ -61,10 +66,11 @@ impl ProxyPool {
     /// `default_type_str` is the pipeline-level proxy type string (e.g. "http").
     pub fn load_from_file(&mut self, path: &str, default_type_str: Option<&str>) -> std::io::Result<()> {
         let default_type = default_type_str.and_then(|s| match s.to_lowercase().as_str() {
-            "https"  => Some(ProxyType::Https),
-            "socks4" => Some(ProxyType::Socks4),
-            "socks5" => Some(ProxyType::Socks5),
-            _        => Some(ProxyType::Http),
+            "https"                 => Some(ProxyType::Https),
+            "socks4"                => Some(ProxyType::Socks4),
+            "socks5"                => Some(ProxyType::Socks5),
+            "shadowsocks" | "ss"    => Some(ProxyType::Shadowsocks),
+            _                       => Some(ProxyType::Http),
         });
         let content = std::fs::read_to_string(path)?;
         let new_proxies: Vec<ProxyEntry> = content.lines()
@@ -133,10 +139,13 @@ impl ProxyPool {
 impl std::fmt::Display for ProxyEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let prefix = match self.proxy_type {
-            ProxyType::Http => "http://",
-            ProxyType::Https => "https://",
-            ProxyType::Socks4 => "socks4://",
-            ProxyType::Socks5 => "socks5://",
+            ProxyType::Http        => "http://",
+            ProxyType::Https       => "https://",
+            ProxyType::Socks4      => "socks4://",
+            ProxyType::Socks5      => "socks5://",
+            // Shadowsocks: sslocal exposes a local SOCKS5 listener.
+            // The address stored is the sslocal endpoint (e.g. 127.0.0.1:1080).
+            ProxyType::Shadowsocks => "socks5://",
         };
         write!(f, "{}{}", prefix, self.address)
     }
@@ -145,13 +154,16 @@ impl std::fmt::Display for ProxyEntry {
 fn parse_proxy_line(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
     let fallback = default_type.unwrap_or(ProxyType::Http);
 
-    // ── URL-scheme prefix (http://, https://, socks4://, socks5://) ──────────
+    // ── URL-scheme prefix (http://, https://, socks4://, socks5://, ss://) ────
     // Pass through as-is: reqwest/wreq/azuretls all accept full URL proxy strings.
+    // ss:// (Shadowsocks): stored with the address intact; emitted as socks5://
+    // at use-time since sslocal exposes a local SOCKS5 interface.
     for (prefix, proxy_type) in &[
-        ("socks5://", ProxyType::Socks5),
-        ("socks4://", ProxyType::Socks4),
-        ("https://",  ProxyType::Https),
-        ("http://",   ProxyType::Http),
+        ("socks5://",      ProxyType::Socks5),
+        ("socks4://",      ProxyType::Socks4),
+        ("https://",       ProxyType::Https),
+        ("http://",        ProxyType::Http),
+        ("ss://",          ProxyType::Shadowsocks),
     ] {
         if let Some(rest) = line.strip_prefix(prefix) {
             return Some(ProxyEntry { proxy_type: *proxy_type, address: rest.to_string() });
@@ -202,11 +214,12 @@ fn parse_proxy_line(line: &str, default_type: Option<ProxyType>) -> Option<Proxy
         // type:host:port:user:pass
         5 => {
             let proxy_type = match parts[0].to_lowercase().as_str() {
-                "http"   => ProxyType::Http,
-                "https"  => ProxyType::Https,
-                "socks4" => ProxyType::Socks4,
-                "socks5" => ProxyType::Socks5,
-                _        => fallback,
+                "http"                 => ProxyType::Http,
+                "https"                => ProxyType::Https,
+                "socks4"               => ProxyType::Socks4,
+                "socks5"               => ProxyType::Socks5,
+                "shadowsocks" | "ss"   => ProxyType::Shadowsocks,
+                _                      => fallback,
             };
             Some(ProxyEntry {
                 proxy_type,

@@ -82,6 +82,7 @@ mod inner {
     pub(crate) fn build_wreq_client(
         emulation: &str,
         ssl_verify: bool,
+        proxy_insecure: bool,
         proxy_url: Option<&str>,
     ) -> Result<wreq::Client, wreq::Error> {
         let emu = parse_emulation(emulation);
@@ -94,7 +95,10 @@ mod inner {
             .pool_max_idle_per_host(4)
             .pool_idle_timeout(std::time::Duration::from_secs(30))
             .tcp_keepalive(std::time::Duration::from_secs(30));
-        if !ssl_verify {
+        // Disable cert verification when ssl_verify=false OR proxy_insecure=true.
+        // wreq applies TLS config at the client level, so proxy_insecure unavoidably
+        // also disables target TLS verification. Use AzureTLS to avoid this.
+        if !ssl_verify || proxy_insecure {
             builder = builder.cert_verification(false);
         }
         if let Some(proxy) = proxy_url {
@@ -111,11 +115,12 @@ mod inner {
         req: &SidecarRequest,
         emulation: &str,
         ssl_verify: bool,
+        proxy_insecure: bool,
         existing_client: Option<wreq::Client>,
     ) -> (SidecarResponse, wreq::Client) {
         let proxy_str = req.proxy.as_deref();
         let client = existing_client.unwrap_or_else(|| {
-            build_wreq_client(emulation, ssl_verify, proxy_str).unwrap_or_else(|e| {
+            build_wreq_client(emulation, ssl_verify, proxy_insecure, proxy_str).unwrap_or_else(|e| {
                 eprintln!("[wreq] client build error: {e}");
                 wreq::Client::new()
             })

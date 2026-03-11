@@ -310,6 +310,21 @@
 		</label>
 		<p class="text-[9px] text-muted-foreground">Uncheck for self-signed certs or TLS debugging (SEC_E_ILLEGAL_MESSAGE / handshake errors)</p>
 
+		<label class="flex items-center gap-2 text-[11px] text-foreground mt-1">
+			<input type="checkbox" checked={block.settings.proxy_insecure === true}
+				onchange={() => updateSettings('proxy_insecure', !block.settings.proxy_insecure)}
+				class="skeu-checkbox" />
+			Accept invalid proxy TLS certificate
+			{#if block.settings.proxy_insecure}
+				{#if (block.settings.tls_client || 'RustTLS') !== 'AzureTLS'}
+					<span class="text-[9px] text-orange bg-orange/10 px-1 rounded">⚠ also affects target TLS</span>
+				{:else}
+					<span class="text-[9px] text-yellow-500/80 bg-yellow-500/10 px-1 rounded">no-op on AzureTLS</span>
+				{/if}
+			{/if}
+		</label>
+		<p class="text-[9px] text-muted-foreground">For HTTPS proxies with self-signed certs (<code class="text-foreground/70">curl --proxy-insecure</code>). On RustTLS/WreqTLS this also skips target TLS verification — use AzureTLS to avoid this.</p>
+
 		<!-- WreqTLS emulation profile -->
 		{#if (block.settings.tls_client || 'RustTLS') === 'WreqTLS'}
 		<div>

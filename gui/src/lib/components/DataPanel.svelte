@@ -269,6 +269,7 @@
 										{ value: 'Https', label: 'HTTPS' },
 										{ value: 'Socks4', label: 'SOCKS4' },
 										{ value: 'Socks5', label: 'SOCKS5' },
+										{ value: 'Shadowsocks', label: 'Shadowsocks' },
 									]}
 									class="text-[9px] w-[72px] shrink-0"
 									title="Protocol type for plain ip:port lines"

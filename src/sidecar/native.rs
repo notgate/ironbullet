@@ -54,6 +54,7 @@ pub fn create_native_backend() -> mpsc::Sender<(SidecarRequest, oneshot::Sender<
 pub async fn execute_rustls_request(
     req: &SidecarRequest,
     ssl_verify: bool,
+    proxy_insecure: bool,
     existing_client: Option<reqwest::Client>,
 ) -> (SidecarResponse, reqwest::Client) {
     let id = req.id.clone();
@@ -69,7 +70,12 @@ pub async fn execute_rustls_request(
         let mut builder = reqwest::Client::builder()
             .use_rustls_tls()
             .cookie_store(true)
-            .danger_accept_invalid_certs(!ssl_verify)
+            // Accept invalid certs when: ssl_verify=false (target TLS disabled) OR
+            // proxy_insecure=true (HTTPS proxy with self-signed cert).
+            // Note: reqwest/rustls applies this at the client level — it affects
+            // both the proxy CONNECT handshake and the target TLS handshake.
+            // To skip only the proxy TLS, use AzureTLS instead.
+            .danger_accept_invalid_certs(!ssl_verify || proxy_insecure)
             // Connect timeout separate from total request timeout —
             // prevents dead hosts from hanging for OS TCP timeout (~2 min)
             .connect_timeout(Duration::from_secs(10))

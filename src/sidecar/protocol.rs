@@ -40,6 +40,11 @@ pub struct SidecarRequest {
     /// Used by the Site Inspector panel.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub return_request_headers: Option<bool>,
+    /// When true, skip TLS verification when connecting through an HTTPS proxy.
+    /// Equivalent to `curl --proxy-insecure`. AzureTLS handles this automatically;
+    /// for RustTLS/WreqTLS this also disables target TLS verification.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_insecure: Option<bool>,
 }
 
 impl SidecarRequest {
@@ -69,6 +74,7 @@ impl Default for SidecarRequest {
             ssl_verify: None,
             custom_ciphers: None,
             return_request_headers: None,
+            proxy_insecure: None,
         }
     }
 }

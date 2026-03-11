@@ -35,6 +35,7 @@
 		{ value: 'Https', label: 'HTTPS' },
 		{ value: 'Socks4', label: 'SOCKS4' },
 		{ value: 'Socks5', label: 'SOCKS5' },
+		{ value: 'Shadowsocks', label: 'Shadowsocks (via sslocal)' },
 	];
 
 	// Sync pipeline state to Rust backend THEN save to disk.

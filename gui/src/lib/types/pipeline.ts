@@ -65,7 +65,7 @@ export interface ProxyGroup {
 	cpm_per_proxy: number;
 }
 
-export type ProxySourceType_t = 'Http' | 'Https' | 'Socks4' | 'Socks5';
+export type ProxySourceType_t = 'Http' | 'Https' | 'Socks4' | 'Socks5' | 'Shadowsocks';
 
 export interface ProxySource {
 	source_type: 'File' | 'Url' | 'Inline';
