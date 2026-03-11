@@ -132,6 +132,7 @@
 		<VariableInput
 			value={block.settings.url}
 			placeholder="https://example.com/api/endpoint"
+			context="url"
 			class="flex-1 skeu-input text-[11px] font-mono"
 			oninput={(e) => updateSettings('url', (e.target as HTMLInputElement).value)}
 		/>

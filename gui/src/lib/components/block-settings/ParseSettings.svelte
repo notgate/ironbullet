@@ -26,19 +26,19 @@
 	<div class="space-y-1.5">
 		<div class="relative">
 			<label class={labelCls}>Input variable</label>
-			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" class={inputCls}
+			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" context="input_var" class={inputCls}
 				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.input_var)}
 		</div>
 		<div class="relative">
 			<label class={labelCls}>Left delimiter</label>
-			<VariableInput value={block.settings.left} class={inputCls}
+			<VariableInput value={block.settings.left} context="ldelim" class={inputCls}
 				oninput={(e) => updateSettings('left', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.left)}
 		</div>
 		<div class="relative">
 			<label class={labelCls}>Right delimiter</label>
-			<VariableInput value={block.settings.right} class={inputCls}
+			<VariableInput value={block.settings.right} context="rdelim" class={inputCls}
 				oninput={(e) => updateSettings('right', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.right)}
 		</div>
@@ -68,13 +68,13 @@
 	<div class="space-y-1.5">
 		<div class="relative">
 			<label class={labelCls}>Input variable</label>
-			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" class={inputCls}
+			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" context="input_var" class={inputCls}
 				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.input_var)}
 		</div>
 		<div class="relative">
 			<label class={labelCls}>JSON Path</label>
-			<VariableInput value={block.settings.json_path} placeholder="e.g. user.token" class={inputCls}
+			<VariableInput value={block.settings.json_path} placeholder="e.g. user.token" context="json_path" class={inputCls}
 				oninput={(e) => updateSettings('json_path', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.json_path)}
 		</div>
@@ -96,13 +96,13 @@
 	<div class="space-y-1.5">
 		<div class="relative">
 			<label class={labelCls}>Input variable</label>
-			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" class={inputCls}
+			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" context="input_var" class={inputCls}
 				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.input_var)}
 		</div>
 		<div class="relative">
 			<label class={labelCls}>Pattern</label>
-			<VariableInput value={block.settings.pattern} class={inputCls}
+			<VariableInput value={block.settings.pattern} context="regex_pattern" class={inputCls}
 				oninput={(e) => updateSettings('pattern', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.pattern)}
 		</div>
@@ -133,19 +133,19 @@
 	<div class="space-y-1.5">
 		<div class="relative">
 			<label class={labelCls}>Input variable</label>
-			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" class={inputCls}
+			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" context="input_var" class={inputCls}
 				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.input_var)}
 		</div>
 		<div class="relative">
 			<label class={labelCls}>CSS Selector</label>
-			<VariableInput value={block.settings.selector} placeholder="div.content > a" class={inputCls}
+			<VariableInput value={block.settings.selector} placeholder="div.content > a" context="css_selector" class={inputCls}
 				oninput={(e) => updateSettings('selector', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.selector)}
 		</div>
 		<div>
 			<label class={labelCls}>Attribute (empty = text content)</label>
-			<VariableInput value={block.settings.attribute} placeholder="href" class={inputCls}
+			<VariableInput value={block.settings.attribute} placeholder="href" context="css_attribute" class={inputCls}
 				oninput={(e) => updateSettings('attribute', (e.target as HTMLInputElement).value)} />
 		</div>
 		<div>
@@ -172,7 +172,7 @@
 	<div class="space-y-1.5">
 		<div class="relative">
 			<label class={labelCls}>Input variable</label>
-			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" class={inputCls}
+			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" context="input_var" class={inputCls}
 				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.input_var)}
 		</div>
@@ -228,13 +228,13 @@
 	<div class="space-y-1.5">
 		<div class="relative">
 			<label class={labelCls}>Input variable</label>
-			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" class={inputCls}
+			<VariableInput value={block.settings.input_var} placeholder="data.SOURCE" context="input_var" class={inputCls}
 				oninput={(e) => updateSettings('input_var', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.input_var)}
 		</div>
 		<div class="relative">
 			<label class={labelCls}>Lambda expression</label>
-			<VariableInput value={block.settings.lambda_expression} placeholder="x => x.split(',')[0]" class={inputCls}
+			<VariableInput value={block.settings.lambda_expression} context="lambda" placeholder="x => x.split(',')[0]" class={inputCls}
 				oninput={(e) => updateSettings('lambda_expression', (e.target as HTMLInputElement).value)} />
 			{@render embedBadge(block.settings.lambda_expression)}
 		</div>
@@ -281,13 +281,13 @@
 		{#if mode === 'LR'}
 			<div class="relative">
 				<label class={labelCls}>Left delimiter</label>
-				<VariableInput value={block.settings.left || ''} placeholder='e.g. "token":"' class={inputCls}
+				<VariableInput value={block.settings.left || ''} placeholder='e.g. "token":"' context="ldelim" class={inputCls}
 					oninput={(e) => updateSettings('left', (e.target as HTMLInputElement).value)} />
 				{@render embedBadge(block.settings.left)}
 			</div>
 			<div class="relative">
 				<label class={labelCls}>Right delimiter</label>
-				<VariableInput value={block.settings.right || ''} placeholder='"' class={inputCls}
+				<VariableInput value={block.settings.right || ''} placeholder='"' context="rdelim" class={inputCls}
 					oninput={(e) => updateSettings('right', (e.target as HTMLInputElement).value)} />
 				{@render embedBadge(block.settings.right)}
 			</div>

@@ -125,7 +125,7 @@
 					{/if}
 					<div class="flex gap-1 items-center min-w-0">
 						<div class="relative flex-1 min-w-0">
-							<VariableInput value={cond.source} placeholder="data.SOURCE" class="w-full {smallInputCls}"
+							<VariableInput value={cond.source} placeholder="data.SOURCE" context="input_var" class="w-full {smallInputCls}"
 								oninput={(e) => updateConditionField(ki, ci, 'source', (e.target as HTMLInputElement).value)} />
 							{@render embedBadge(cond.source)}
 						</div>
@@ -135,7 +135,7 @@
 							class="text-[10px] shrink-0"
 						/>
 						<div class="relative flex-1 min-w-0">
-							<VariableInput value={cond.value} placeholder="value" class="w-full {smallInputCls}"
+							<VariableInput value={cond.value} placeholder="value" context="keycheck_value" class="w-full {smallInputCls}"
 								oninput={(e) => updateConditionField(ki, ci, 'value', (e.target as HTMLInputElement).value)} />
 							{@render embedBadge(cond.value)}
 						</div>
