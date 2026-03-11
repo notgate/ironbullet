@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/preview.png" alt="IronBullet Interface" width="860" />
+<img src="https://cdn.discordapp.com/attachments/1364745764391354422/1481391455711789099/1773201844466.png?ex=69b324cd&is=69b1d34d&hm=6d2541afc49a72dcf63274b36f9d6ef91b40f9541468bdb30e47eb367e53f7a3&" alt="IronBullet Interface" width="860" />
 
 <br/>
 
