@@ -144,7 +144,7 @@ pub struct ProxySource {
     pub default_proxy_type: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ProxySourceType {
     File,
     Url,

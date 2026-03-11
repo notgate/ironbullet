@@ -269,6 +269,25 @@
 
 	// Copy URL helper
 	let copiedUrl = $state(false);
+	let exportOpen = $state(false);
+
+	function closeExportDropdown(e: MouseEvent) {
+		exportOpen = false;
+		document.removeEventListener('pointerdown', closeExportDropdown);
+	}
+	function toggleExport(e: MouseEvent) {
+		e.stopPropagation();
+		exportOpen = !exportOpen;
+		if (exportOpen) {
+			setTimeout(() => document.addEventListener('pointerdown', closeExportDropdown), 0);
+		}
+	}
+	function doExport(fmt: 'json' | 'har' | 'txt', e: MouseEvent) {
+		e.stopPropagation();
+		exportOpen = false;
+		document.removeEventListener('pointerdown', closeExportDropdown);
+		exportTranscript(fmt);
+	}
 	function copyUrl() {
 		if (!selectedReq) return;
 		navigator.clipboard.writeText(selectedReq.url);
@@ -799,15 +818,17 @@
 		</div>
 
 		<!-- Export -->
-		<div class="relative group shrink-0">
-			<button class="skeu-btn flex items-center gap-1 text-[10px] text-muted-foreground" title="Export transcript">
+		<div class="relative shrink-0">
+			<button class="skeu-btn flex items-center gap-1 text-[10px] text-muted-foreground" title="Export transcript" onclick={toggleExport}>
 				<Download size={10} />Export
 			</button>
-			<div class="absolute right-0 top-full mt-0.5 bg-popover border border-border rounded shadow-lg z-50 min-w-[110px] hidden group-focus-within:block group-hover:block">
-				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={() => exportTranscript('json')}>JSON</button>
-				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={() => exportTranscript('har')}>HAR</button>
-				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={() => exportTranscript('txt')}>Plain text</button>
+			{#if exportOpen}
+			<div class="absolute right-0 top-full mt-0.5 bg-popover border border-border rounded shadow-lg z-50 min-w-[110px]">
+				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={(e) => doExport('json', e)}>JSON</button>
+				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={(e) => doExport('har', e)}>HAR</button>
+				<button class="w-full text-left px-2.5 py-1 text-[10px] hover:bg-accent/30" onclick={(e) => doExport('txt', e)}>Plain text</button>
 			</div>
+			{/if}
 		</div>
 
 		<button class="skeu-btn text-[10px] text-muted-foreground shrink-0" onclick={promptClear}>Clear</button>

@@ -103,20 +103,50 @@ impl Default for GuiConfig {
 }
 
 pub fn config_dir() -> PathBuf {
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        let dir = PathBuf::from(appdata).join("ironbullet");
-        let _ = std::fs::create_dir_all(&dir);
-        return dir;
-    }
-    PathBuf::from(".")
+    // Windows: %APPDATA%\ironbullet
+    // Linux:   ~/.config/ironbullet
+    // macOS:   ~/Library/Application Support/ironbullet
+    let dir = if let Some(d) = dirs::config_dir() {
+        d.join("ironbullet")
+    } else if let Some(appdata) = std::env::var_os("APPDATA") {
+        PathBuf::from(appdata).join("ironbullet")
+    } else {
+        // Last resort: next to the exe
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("config")))
+            .unwrap_or_else(|| PathBuf::from("config"))
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// Default data directory for wordlists, proxies, etc.
+/// Placed alongside config dir so it survives exe replacement.
+pub fn data_dir() -> PathBuf {
+    let dir = config_dir().join("data");
+    let _ = std::fs::create_dir_all(dir.join("wordlists"));
+    let _ = std::fs::create_dir_all(dir.join("proxies"));
+    dir
 }
 
 pub fn config_path() -> PathBuf {
     config_dir().join("config.json")
 }
 
+pub fn autosave_path() -> PathBuf {
+    config_dir().join("autosave.rfx")
+}
+
 pub fn load_config() -> GuiConfig {
     let p = config_path();
+
+    // Auto-backup before loading — protects against mid-write corruption
+    if p.exists() {
+        let bak = config_dir().join("config.json.bak");
+        let _ = std::fs::copy(&p, &bak);
+    }
+
     if p.exists() {
         if let Ok(data) = std::fs::read_to_string(&p) {
             if let Ok(cfg) = serde_json::from_str::<GuiConfig>(&data) {
@@ -124,7 +154,14 @@ pub fn load_config() -> GuiConfig {
             }
         }
     }
-    GuiConfig::default()
+
+    // First launch — set default data paths and persist them
+    let mut cfg = GuiConfig::default();
+    let dd = data_dir();
+    cfg.default_wordlist_path = dd.join("wordlists").to_string_lossy().to_string();
+    cfg.default_proxy_path    = dd.join("proxies").to_string_lossy().to_string();
+    save_config(&cfg);
+    cfg
 }
 
 pub fn save_config(cfg: &GuiConfig) {

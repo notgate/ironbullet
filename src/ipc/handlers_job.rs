@@ -329,6 +329,43 @@ pub(super) fn start_job(
                 return;
             }
 
+            // ── Preflight: verify referenced files exist before starting ──
+            {
+                let mut missing: Vec<String> = Vec::new();
+                if let Some(job) = s.job_manager.get_job_mut(uuid) {
+                    // Wordlist / data source
+                    if job.data_source.source_type == ironbullet::runner::job::DataSourceType::File
+                        && !job.data_source.value.is_empty()
+                    {
+                        let p = std::path::Path::new(&job.data_source.value);
+                        if !p.exists() {
+                            missing.push(format!("Wordlist: {}", job.data_source.value));
+                        }
+                    }
+                    // Proxy file sources
+                    for src in &job.proxy_source.settings.proxy_sources {
+                        if src.source_type == ironbullet::pipeline::ProxySourceType::File
+                            && !src.value.is_empty()
+                        {
+                            let p = std::path::Path::new(&src.value);
+                            if !p.exists() {
+                                missing.push(format!("Proxy list: {}", src.value));
+                            }
+                        }
+                    }
+                }
+                if !missing.is_empty() {
+                    let msg = format!(
+                        "Cannot start job — the following files were not found:\n{}",
+                        missing.join("\n")
+                    );
+                    let resp = IpcResponse::err("job_preflight_error", msg);
+                    eval_js(format!("window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()));
+                    return;
+                }
+            }
+
             // Get or start sidecar (reuses existing process if already running)
             let sidecar_path = resolve_sidecar_path(&s.config.sidecar_path);
             let sidecar_tx = match s.sidecar.get_or_start(&sidecar_path).await {

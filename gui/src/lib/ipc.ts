@@ -316,6 +316,21 @@ export function registerCallbacks() {
 			case 'job_start_error':
 				toast(resp.error || 'Failed to start job', 'error');
 				break;
+			case 'job_preflight_error':
+				// Missing wordlist/proxy files — show prominent error before job starts
+				toast(resp.error || 'Job cannot start: missing files', 'error');
+				break;
+			case 'autosave_available':
+				// Crash recovery — offer to restore unsaved pipeline
+				if (resp.data) {
+					const autosavePath = (resp.data as any).path as string;
+					if (confirm('IronBullet found an unsaved session from a previous run.\n\nRestore it?')) {
+						send('load_pipeline', { path: autosavePath });
+					} else {
+						send('delete_autosave', {});
+					}
+				}
+				break;
 			case 'job_created':
 				if (resp.data) {
 					console.log('[IPC] job_created:', (resp.data as any)?.id ?? 'no-id');

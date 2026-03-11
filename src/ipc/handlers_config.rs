@@ -53,6 +53,15 @@ pub(super) fn get_config(
 
             let resp = IpcResponse::ok("config_loaded", data);
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+
+            // Check for autosave recovery file from a previous crash
+            let autosave = config::autosave_path();
+            if autosave.exists() {
+                let notif = IpcResponse::ok("autosave_available", serde_json::json!({
+                    "path": autosave.to_string_lossy()
+                }));
+                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&notif).unwrap_or_default()));
+            }
         });
     }
 }
@@ -150,6 +159,16 @@ pub(super) fn update_pipeline(
                 // in GuiConfig and reappear after a restart.
                 s.config.proxy_groups = s.pipeline.proxy_settings.proxy_groups.clone();
                 config::save_config(&s.config);
+
+                // Autosave pipeline for crash recovery
+                let autosave = config::autosave_path();
+                let pipeline_clone = s.pipeline.clone();
+                tokio::spawn(async move {
+                    let rfx = RfxConfig::from_pipeline(&pipeline_clone);
+                    if let Ok(json) = serde_json::to_string_pretty(&rfx) {
+                        let _ = std::fs::write(&autosave, json);
+                    }
+                });
             }
             let resp = IpcResponse::ok("pipeline_updated", serde_json::json!({}));
             eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
@@ -212,6 +231,8 @@ pub(super) fn save_pipeline(
                         }
                         s.config.last_config_path = save_path.clone();
                         config::save_config(&s.config);
+                        // Clean save succeeded — remove autosave recovery file
+                        let _ = std::fs::remove_file(config::autosave_path());
                         let resp = IpcResponse::ok("pipeline_saved", serde_json::json!({ "path": save_path }));
                         eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
                     }

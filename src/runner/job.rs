@@ -49,7 +49,7 @@ pub struct DataSource {
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DataSourceType {
     File,
     Folder,

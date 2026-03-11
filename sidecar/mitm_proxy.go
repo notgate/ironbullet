@@ -110,9 +110,32 @@ type ProxyEvent struct {
 	RespMime       string            `json:"resp_mime,omitempty"`
 	RespHeaders    map[string]string `json:"resp_headers,omitempty"`
 	RespBody       string            `json:"resp_body,omitempty"`
+	Cookies        map[string]string `json:"cookies,omitempty"`
 	Message        string            `json:"message,omitempty"`
 	Port           int               `json:"port,omitempty"`
 	CACertPEM      string            `json:"ca_cert_pem,omitempty"`
+}
+
+// parseCookies extracts name→value pairs from all Set-Cookie response headers.
+func parseCookies(h http.Header) map[string]string {
+	cookies := make(map[string]string)
+	for _, line := range h["Set-Cookie"] {
+		// Each Set-Cookie line: "name=value; Path=/; HttpOnly; ..."
+		parts := strings.SplitN(line, ";", 2)
+		if len(parts) == 0 {
+			continue
+		}
+		kv := strings.SplitN(strings.TrimSpace(parts[0]), "=", 2)
+		if len(kv) == 2 {
+			cookies[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		} else if len(kv) == 1 && kv[0] != "" {
+			cookies[strings.TrimSpace(kv[0])] = ""
+		}
+	}
+	if len(cookies) == 0 {
+		return nil
+	}
+	return cookies
 }
 
 // ── Proxy server ─────────────────────────────────────────────────────────────
@@ -336,6 +359,7 @@ func (p *MitmProxy) forwardRequest(conn net.Conn, req *http.Request, sessionID s
 		RespMime:       mime,
 		RespHeaders:    headerMap(resp.Header),
 		RespBody:       respBodyStr,
+		Cookies:        parseCookies(resp.Header),
 	})
 
 	return true

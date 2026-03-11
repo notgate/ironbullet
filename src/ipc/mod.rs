@@ -206,6 +206,10 @@ pub fn handle_ipc_cmd(
             handlers_config::load_pipeline(state, data, eval_js);
             None
         }
+        "delete_autosave" => {
+            let _ = std::fs::remove_file(config::autosave_path());
+            None
+        }
         "get_recent_configs" => {
             handlers_config::get_recent_configs(state, eval_js);
             None
