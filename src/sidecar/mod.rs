@@ -4,6 +4,7 @@ pub mod session;
 pub mod wreq_client;
 
 use std::process::Stdio;
+use dunce;
 use std::sync::Arc;
 use dashmap::DashMap;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -51,7 +52,9 @@ impl SidecarManager {
         let path = {
             let p = std::path::PathBuf::from(sidecar_path);
             if p.exists() {
-                p
+                // Strip \\?\ UNC prefix if present — CreateProcess on Windows rejects
+                // extended-length paths (os error 123: "filename syntax is incorrect").
+                dunce::simplified(&p).to_path_buf()
             } else if let Some(ref dir) = exe_dir {
                 // Try the filename part of sidecar_path next to the exe
                 let by_name = dir.join(
@@ -60,11 +63,11 @@ impl SidecarManager {
                         .unwrap_or_else(|| std::ffi::OsStr::new(sidecar_name))
                 );
                 if by_name.exists() {
-                    by_name
+                    dunce::simplified(&by_name).to_path_buf()
                 } else {
                     // Try canonical sidecar name next to exe
                     let canonical = dir.join(sidecar_name);
-                    if canonical.exists() { canonical } else { p }
+                    if canonical.exists() { dunce::simplified(&canonical).to_path_buf() } else { p }
                 }
             } else {
                 p

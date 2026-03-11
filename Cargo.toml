@@ -1,6 +1,6 @@
 [package]
 name = "ironbullet"
-version = "0.4.1"
+version = "0.4.0"
 edition = "2021"
 description = "Pipelined request automation & script builder"
 
@@ -17,6 +17,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 dashmap = "6"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
+dunce = "1"
 regex = "1"
 base64 = "0.22"
 rand = "0.8"

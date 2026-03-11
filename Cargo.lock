@@ -2379,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "ironbullet"
-version = "0.4.1"
+version = "0.4.0"
 dependencies = [
  "aes-gcm",
  "base64",
@@ -2391,6 +2391,7 @@ dependencies = [
  "csv",
  "dashmap",
  "dirs 5.0.1",
+ "dunce",
  "futures",
  "hmac",
  "image",

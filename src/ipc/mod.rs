@@ -11,6 +11,7 @@ pub mod browser_proxy;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use dunce;
 
 use ironbullet::config::{self, GuiConfig};
 use ironbullet::pipeline::Pipeline;
@@ -142,12 +143,14 @@ fn resolve_sidecar_path(configured: &str) -> String {
             // 2. exe_dir/../../sidecar/ — dev layout (target/release/ → project/sidecar/)
             let dev = dir.join("../../sidecar").join(sidecar_name);
             if dev.exists() {
-                return dev.canonicalize().unwrap_or(dev).display().to_string();
+                // Use dunce::canonicalize to avoid \\?\ UNC prefix on Windows
+                // (CreateProcess rejects UNC-prefixed paths with os error 123)
+                return dunce::canonicalize(&dev).unwrap_or(dev).display().to_string();
             }
             // 3. exe_dir/../sidecar/ — alt dev layout
             let alt = dir.join("../sidecar").join(sidecar_name);
             if alt.exists() {
-                return alt.canonicalize().unwrap_or(alt).display().to_string();
+                return dunce::canonicalize(&alt).unwrap_or(alt).display().to_string();
             }
         }
     }
