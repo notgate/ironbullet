@@ -325,11 +325,26 @@ export function buildSuggestions(
 			break;
 	}
 
-	// Filter by query
-	if (!q) return candidates.slice(0, 20);
-	return candidates
-		.filter(s => s.label.toLowerCase().includes(q))
-		.slice(0, 20);
+	// ── Response body next-word prediction ────────────────────────────────
+	// When we have a real response body and the user has typed something,
+	// prepend predictions derived from the actual response text.
+	// This covers ldelim/rdelim and any other field when responseBody is supplied.
+	let predictions: SuggestionItem[] = [];
+	if (responseBody && query.length >= 2) {
+		predictions = buildResponseBodyPredictions(query, responseBody);
+	}
+
+	// Filter static candidates by query
+	const filtered = !q
+		? candidates.slice(0, 16)
+		: candidates.filter(s => s.label.toLowerCase().includes(q)).slice(0, 12);
+
+	// Predictions come first (they're already filtered to contain the query as prefix)
+	// then deduplicated static candidates
+	const predSet = new Set(predictions.map(p => p.insertText));
+	const deduped = filtered.filter(c => !predSet.has(c.insertText));
+
+	return [...predictions, ...deduped].slice(0, 20);
 }
 
 /**
@@ -375,6 +390,90 @@ function buildLRSuggestions(side: 'left' | 'right', body?: string): SuggestionIt
 	const uniqueExtras = extras.filter(e => !baseLabels.has(e.insertText));
 
 	return [...uniqueExtras, ...base].slice(0, 20);
+}
+
+// ── Next-word / next-token prediction from response body ──────────────────
+
+/**
+ * Given the text the user has typed so far (query) and the full response body,
+ * find every occurrence of query in the body and collect what comes immediately
+ * after it — next word, next phrase up to a delimiter, and next individual char.
+ *
+ * Returns ranked SuggestionItems (most-frequent continuation first).
+ *
+ * Example: query = "Please" → body contains "Please check your" and "Please try again"
+ *   → suggests "Please check", "Please check your", "Please try", "Please try again"
+ */
+export function buildResponseBodyPredictions(query: string, body: string): SuggestionItem[] {
+	if (!body || query.length < 2) return [];
+
+	// Score map: continuation string → count
+	const scores = new Map<string, number>();
+
+	// Scan every occurrence of the query in the body
+	let searchFrom = 0;
+	let safetyLimit = 0;
+	while (safetyLimit++ < 500) {
+		const idx = body.indexOf(query, searchFrom);
+		if (idx === -1) break;
+		searchFrom = idx + 1;
+
+		const rest = body.slice(idx + query.length);
+		if (!rest) continue;
+
+		// Collect completions up to ~80 chars
+		const segment = rest.slice(0, 80);
+
+		// 1. Next single char (useful for delimiter hunting: what char follows this text?)
+		const nextChar = segment[0];
+		if (nextChar) {
+			const k = query + nextChar;
+			scores.set(k, (scores.get(k) ?? 0) + 1);
+		}
+
+		// 2. Next word boundary (space, quote, comma, bracket, newline stop the word)
+		const nextWordMatch = segment.match(/^([\w\-\.@%+]+)/);
+		if (nextWordMatch) {
+			const k = query + nextWordMatch[1];
+			scores.set(k, (scores.get(k) ?? 0) + 2); // weight word completions higher
+		}
+
+		// 3. Next phrase: consume words up to 6 tokens or a hard delimiter.
+		// Emit cumulative prefixes so typing "Please" can suggest:
+		//   "Please check", "Please check your", "Please check your email", etc.
+		const phraseMatch = segment.match(/^([^\r\n"'<>{}\[\]]{1,80})/);
+		if (phraseMatch && phraseMatch[1].trim().length > 0) {
+			const phrase = phraseMatch[1];
+			// Split on whitespace boundaries, preserving positions
+			const tokenRe = /\S+/g;
+			let tokenMatch: RegExpExecArray | null;
+			let lastEnd = 0;
+			let wordCount = 0;
+			while ((tokenMatch = tokenRe.exec(phrase)) !== null && wordCount < 6) {
+				lastEnd = tokenMatch.index + tokenMatch[0].length;
+				const cumulative = query + phrase.slice(0, lastEnd);
+				const score = Math.max(1, 6 - wordCount);
+				scores.set(cumulative, (scores.get(cumulative) ?? 0) + score);
+				wordCount++;
+			}
+		}
+	}
+
+	if (scores.size === 0) return [];
+
+	// Sort by score descending, then by length ascending (shorter = more specific suggestion first)
+	const sorted = Array.from(scores.entries())
+		.filter(([k]) => k !== query) // exclude identical to query
+		.sort(([a, sa], [b, sb]) => sb - sa || a.length - b.length)
+		.slice(0, 12);
+
+	return sorted.map(([text, count]) => ({
+		label: text,
+		insertText: text,
+		kind: 'snippet' as const,
+		detail: `×${count}`,
+		documentation: 'Predicted from response body',
+	}));
 }
 
 // ── Trigger detection ───────────────────────────────────────────────────────

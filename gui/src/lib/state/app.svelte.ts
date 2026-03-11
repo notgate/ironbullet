@@ -279,6 +279,7 @@ function createAppState(): AppState {
 		skipUnsavedDialog: false,
 		compactMode: false,
 		skipDependencyWarnings: false,
+		intellisenseEnabled: true,
 	};
 	let uiPrefs = $state<typeof _uiPrefsDefaults>({ ..._uiPrefsDefaults, ...loadUiPrefs() });
 

@@ -71,6 +71,26 @@
 		</div>
 	</div>
 
+	<!-- Intellisense -->
+	<div>
+		<p class={labelCls}>Intellisense</p>
+		<div class="mt-2 space-y-1">
+			<label class="flex items-center gap-2 text-[11px] text-foreground cursor-pointer select-none">
+				<input
+					type="checkbox"
+					checked={app.uiPrefs.intellisenseEnabled}
+					onchange={() => app.setUiPref('intellisenseEnabled', !app.uiPrefs.intellisenseEnabled)}
+					class="skeu-checkbox"
+				/>
+				<span>Enable intellisense autocomplete in block input fields</span>
+			</label>
+			<p class="text-[9px] text-muted-foreground ml-5">
+				Suggests variables, delimiter patterns, and next-word completions from live response data.
+				Disable if you prefer plain inputs with no popup.
+			</p>
+		</div>
+	</div>
+
 	<!-- Reset -->
 	<div>
 		<p class={labelCls}>Reset</p>

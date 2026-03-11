@@ -39,7 +39,10 @@
 	let cursorPos = $state(0);
 
 	function refreshSuggestions() {
-		if (!inputEl) return;
+		if (!inputEl || !app.uiPrefs.intellisenseEnabled) {
+			isense_visible = false;
+			return;
+		}
 		const pos = inputEl.selectionStart ?? 0;
 		cursorPos = pos;
 		const trigger = getQueryAtCursor(value ?? '', pos);

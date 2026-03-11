@@ -65,6 +65,7 @@
 		{ section: 'uiprefs', label: 'Skip Close Confirm', keywords: 'close app exit confirm skip dialog' },
 		{ section: 'uiprefs', label: 'Bottom Panel Tabs', keywords: 'hide show tab panel debugger network code data jobs' },
 		{ section: 'uiprefs', label: 'Compact Mode', keywords: 'compact density spacing layout ui' },
+		{ section: 'uiprefs', label: 'Intellisense', keywords: 'intellisense autocomplete suggestions popup input fields' },
 	];
 
 	function matchesSearch(label: string, keywords: string): boolean {
