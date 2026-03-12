@@ -281,18 +281,143 @@
 		if (!jsonPath) return null;
 		try {
 			const parsed = JSON.parse(body);
-			const parts = jsonPath.split('.');
-			let current: unknown = parsed;
-			for (const part of parts) {
-				if (current == null || typeof current !== 'object') return null;
-				current = (current as Record<string, unknown>)[part];
-			}
-			if (current !== undefined) {
-				const val = typeof current === 'string' ? current : JSON.stringify(current);
-				return { type: 'ParseJSON', matches: [val], positions: [] };
+			const results = evaluateJsonPath(parsed, jsonPath);
+			if (results.length > 0) {
+				return { type: 'ParseJSON', matches: results, positions: [] };
 			}
 		} catch {}
 		return null;
+	}
+
+	// ── JSONPath evaluator (mirrors Rust engine behaviour) ────────────────────
+	// Supports: dot-notation, [n] index, [*]/[] wildcard, .* wildcard,
+	// $-prefix root, and filter expressions [?(@.field op value)].
+
+	type JsonVal = unknown;
+
+	function jsonValToString(v: JsonVal): string {
+		if (v === null || v === undefined) return '';
+		if (typeof v === 'string') return v;
+		return JSON.stringify(v);
+	}
+
+	type JsonSeg =
+		| { kind: 'key'; key: string }
+		| { kind: 'index'; n: number }
+		| { kind: 'wild' }
+		| { kind: 'filter'; field: string; op: string | null; rhs: string | null };
+
+	function tokeniseJsonPath(path: string): JsonSeg[] {
+		const segs: JsonSeg[] = [];
+		let keyBuf = '';
+		let i = 0;
+
+		while (i < path.length) {
+			const ch = path[i];
+			if (ch === '.') {
+				if (keyBuf) { segs.push({ kind: 'key', key: keyBuf }); keyBuf = ''; }
+				i++;
+				if (path[i] === '*') { segs.push({ kind: 'wild' }); i++; }
+			} else if (ch === '*' && !keyBuf) {
+				segs.push({ kind: 'wild' }); i++;
+			} else if (ch === '[') {
+				if (keyBuf) { segs.push({ kind: 'key', key: keyBuf }); keyBuf = ''; }
+				i++; // skip '['
+				let inner = '';
+				while (i < path.length && path[i] !== ']') { inner += path[i++]; }
+				i++; // skip ']'
+				const trimmed = inner.trim();
+				if (trimmed === '' || trimmed === '*') {
+					segs.push({ kind: 'wild' });
+				} else if (/^\d+$/.test(trimmed)) {
+					segs.push({ kind: 'index', n: parseInt(trimmed, 10) });
+				} else if (trimmed.startsWith('?(') && trimmed.endsWith(')')) {
+					const expr = trimmed.slice(2, -1).trim();
+					const seg = parseFilterExpr(expr);
+					if (seg) segs.push(seg);
+				}
+				// skip leading dot after ']'
+				if (path[i] === '.') i++;
+			} else {
+				keyBuf += ch; i++;
+			}
+		}
+		if (keyBuf) segs.push({ kind: 'key', key: keyBuf });
+		return segs;
+	}
+
+	function parseFilterExpr(expr: string): JsonSeg | null {
+		if (!expr.startsWith('@.')) return null;
+		const rest = expr.slice(2);
+		const ops = ['>=', '<=', '!=', '==', '>', '<'];
+		for (const op of ops) {
+			const pos = rest.indexOf(op);
+			if (pos !== -1) {
+				const field = rest.slice(0, pos).trim();
+				let rhs = rest.slice(pos + op.length).trim();
+				if ((rhs.startsWith("'") && rhs.endsWith("'")) || (rhs.startsWith('"') && rhs.endsWith('"'))) {
+					rhs = rhs.slice(1, -1);
+				}
+				return { kind: 'filter', field, op, rhs };
+			}
+		}
+		// existence check
+		return { kind: 'filter', field: rest.trim(), op: null, rhs: null };
+	}
+
+	function filterMatches(node: JsonVal, seg: JsonSeg & { kind: 'filter' }): boolean {
+		if (typeof node !== 'object' || node === null || Array.isArray(node)) return false;
+		const obj = node as Record<string, JsonVal>;
+		const fieldVal = seg.field.split('.').reduce<JsonVal>((v, k) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, JsonVal>)[k] : undefined), obj);
+		if (seg.op === null) {
+			// existence
+			return fieldVal !== undefined && fieldVal !== null && fieldVal !== false;
+		}
+		const lhsStr = jsonValToString(fieldVal);
+		const rhs = seg.rhs ?? '';
+		const lhsNum = parseFloat(lhsStr), rhsNum = parseFloat(rhs);
+		const numeric = !isNaN(lhsNum) && !isNaN(rhsNum);
+		switch (seg.op) {
+			case '==': return numeric ? lhsNum === rhsNum : lhsStr === rhs;
+			case '!=': return numeric ? lhsNum !== rhsNum : lhsStr !== rhs;
+			case '>':  return numeric ? lhsNum > rhsNum : lhsStr > rhs;
+			case '<':  return numeric ? lhsNum < rhsNum : lhsStr < rhs;
+			case '>=': return numeric ? lhsNum >= rhsNum : lhsStr >= rhs;
+			case '<=': return numeric ? lhsNum <= rhsNum : lhsStr <= rhs;
+			default:   return false;
+		}
+	}
+
+	function traverseJson(nodes: JsonVal[], segs: JsonSeg[]): string[] {
+		if (segs.length === 0) return nodes.map(jsonValToString);
+		const next: JsonVal[] = [];
+		const seg = segs[0];
+		for (const node of nodes) {
+			if (seg.kind === 'key') {
+				if (node && typeof node === 'object' && !Array.isArray(node)) {
+					const v = (node as Record<string, JsonVal>)[seg.key];
+					if (v !== undefined) next.push(v);
+				}
+			} else if (seg.kind === 'index') {
+				if (Array.isArray(node) && seg.n < node.length) next.push(node[seg.n]);
+			} else if (seg.kind === 'wild') {
+				if (Array.isArray(node)) next.push(...node);
+				else if (node && typeof node === 'object') next.push(...Object.values(node as object));
+			} else if (seg.kind === 'filter') {
+				if (Array.isArray(node)) next.push(...node.filter(el => filterMatches(el, seg)));
+			}
+		}
+		return traverseJson(next, segs.slice(1));
+	}
+
+	function evaluateJsonPath(root: JsonVal, path: string): string[] {
+		const trimmed = path.trim();
+		let normalised = trimmed;
+		if (trimmed === '$') return [jsonValToString(root)];
+		else if (trimmed.startsWith('$.')) normalised = trimmed.slice(2);
+		else if (trimmed.startsWith('$[')) normalised = trimmed.slice(1);
+		const segs = tokeniseJsonPath(normalised);
+		return traverseJson([root], segs);
 	}
 
 	function findCSSMatches(body: string, selector: string, attribute: string): MatchResult | null {
