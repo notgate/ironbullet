@@ -330,16 +330,39 @@ impl ExecutionContext {
 
 // ── JSONPath-lite helper functions ────────────────────────────────────────────
 // Supports:
-//   • Dot-notation key:     `user.name`        → json["user"]["name"]
-//   • Array index:          `items[0].id`      → json["items"][0]["id"]
-//   • Array wildcard:       `servers[].host`   → all json["servers"][*]["host"]
-//   • Nested wildcards:     `a[].b[].c`        → flatten all json["a"][*]["b"][*]["c"]
-//   • Mixed:                `data.servers[].servers[].is_trial`
+//   • Root selector `$`:        `$.user.name`            → same as `user.name`
+//   • Dot-notation key:         `user.name`              → json["user"]["name"]
+//   • Array index:              `items[0].id`            → json["items"][0]["id"]
+//   • Array wildcard `[]`:      `servers[].host`         → all servers[*].host
+//   • Array wildcard `[*]`:     `servers[*].host`        → same as above
+//   • Dot wildcard `.*`:        `obj.*`                  → all values of an object
+//   • Bare wildcard `*`:        `*`                      → all top-level values
+//   • Nested wildcards:         `a[].b[].c`              → flatten all
+//   • Filter equality:          `items[?(@.type=='vip')].name`
+//   • Filter inequality:        `items[?(@.active!='false')].id`
+//   • Filter numeric cmp:       `items[?(@.score>10)].name`  (>, <, >=, <=)
+//   • Filter existence:         `items[?(@.optional)].id`
+//   • $ + filter on root:       `$[?(@.type=='vip')].name`  (root array filter)
 //
 // All matched leaf values are joined with ", " when multiple results exist.
 
 /// Top-level entry: tokenise `path` and traverse `root`, returning all matches joined.
 pub fn evaluate_json_path(root: &serde_json::Value, path: &str) -> String {
+    // Strip the standard JSONPath root selector `$` (and optional trailing `.`)
+    // so that `$.items[*].id` behaves identically to `items[*].id`.
+    let path = path.trim();
+    let path = if path == "$" {
+        // Bare `$` → return the root value itself
+        return json_value_to_string(root);
+    } else if let Some(rest) = path.strip_prefix("$.") {
+        rest
+    } else if let Some(rest) = path.strip_prefix("$[") {
+        // e.g. `$[0]` or `$[*]` — re-attach the `[`
+        // We need to keep the leading bracket so the tokeniser handles it
+        &path[1..] // strip just the `$`
+    } else {
+        path
+    };
     let segs = tokenise_json_path(path);
     let results = traverse_json(&[root], &segs);
     results.join(", ")
@@ -352,14 +375,25 @@ enum JsonSeg {
     Key(String),
     /// Index into an array: `[3]`
     Index(usize),
-    /// Flatten all elements of an array: `[]`
+    /// Flatten all elements of an array (or all values of an object): `[]` / `[*]` / `.*`
     Wild,
+    /// Filter array elements: `[?(@.key op value)]` or `[?(@.key)]` (existence)
+    Filter(FilterExpr),
 }
 
+/// A parsed filter expression from `[?(...)]`.
+#[derive(Debug)]
+struct FilterExpr {
+    /// Dot-path relative to current element, e.g. `type` from `@.type`
+    field: String,
+    /// None means existence check; Some holds (op, rhs)
+    cmp: Option<(FilterOp, String)>,
+}
+
+#[derive(Debug)]
+enum FilterOp { Eq, Ne, Gt, Lt, Gte, Lte }
+
 /// Tokenise a JSONPath string into segments.
-///
-/// Input `data.servers[].servers[0].is_trial` →
-/// `[Key("data"), Key("servers"), Wild, Key("servers"), Index(0), Key("is_trial")]`
 fn tokenise_json_path(path: &str) -> Vec<JsonSeg> {
     let mut segs: Vec<JsonSeg> = Vec::new();
     let mut key_buf = String::new();
@@ -367,30 +401,46 @@ fn tokenise_json_path(path: &str) -> Vec<JsonSeg> {
     let mut chars = path.chars().peekable();
     while let Some(ch) = chars.next() {
         match ch {
-            // Dot separator — flush key buffer and continue
+            // Dot separator — flush key buffer, then check for `.*` wildcard
             '.' => {
                 if !key_buf.is_empty() {
                     segs.push(JsonSeg::Key(key_buf.clone()));
                     key_buf.clear();
                 }
+                // `.*` after dot → wild over object values
+                if chars.peek() == Some(&'*') {
+                    chars.next();
+                    segs.push(JsonSeg::Wild);
+                }
             }
-            // Bracket — flush key buffer, then parse index or wildcard
+            // `*` at start of a key segment (bare wildcard) → wild
+            '*' if key_buf.is_empty() => {
+                segs.push(JsonSeg::Wild);
+            }
+            // Bracket — flush key buffer, then parse what's inside
             '[' => {
                 if !key_buf.is_empty() {
                     segs.push(JsonSeg::Key(key_buf.clone()));
                     key_buf.clear();
                 }
-                // Collect everything until ']'
+                // Collect everything until matching ']'
                 let mut inner = String::new();
                 for c2 in chars.by_ref() {
                     if c2 == ']' { break; }
                     inner.push(c2);
                 }
                 let trimmed = inner.trim();
-                if trimmed.is_empty() {
+                if trimmed.is_empty() || trimmed == "*" {
                     segs.push(JsonSeg::Wild);
                 } else if let Ok(n) = trimmed.parse::<usize>() {
                     segs.push(JsonSeg::Index(n));
+                } else if trimmed.starts_with("?(") && trimmed.ends_with(')') {
+                    // Filter expression: ?(...)
+                    let expr = &trimmed[2..trimmed.len()-1].trim();
+                    if let Some(seg) = parse_filter_expr(expr) {
+                        segs.push(JsonSeg::Filter(seg));
+                    }
+                    // Unknown filter → skip silently (no crash)
                 }
                 // After ']' there may be a leading '.' — skip it
                 if chars.peek() == Some(&'.') {
@@ -404,6 +454,97 @@ fn tokenise_json_path(path: &str) -> Vec<JsonSeg> {
         segs.push(JsonSeg::Key(key_buf));
     }
     segs
+}
+
+/// Parse the inside of `?(...)`.
+/// Handles:
+///   `@.field`               → existence check
+///   `@.field=='value'`      → equality
+///   `@.field!='value'`      → inequality
+///   `@.field>10`            → numeric greater-than (and <, >=, <=)
+fn parse_filter_expr(expr: &str) -> Option<FilterExpr> {
+    let expr = expr.trim();
+    // Must start with `@.`
+    let rest = expr.strip_prefix("@.")?;
+
+    // Try operators longest-first to avoid `>` matching `>=`
+    let ops: &[(&str, FilterOp)] = &[
+        (">=", FilterOp::Gte),
+        ("<=", FilterOp::Lte),
+        ("!=", FilterOp::Ne),
+        ("==", FilterOp::Eq),
+        (">",  FilterOp::Gt),
+        ("<",  FilterOp::Lt),
+    ];
+    for (sym, op) in ops {
+        if let Some(pos) = rest.find(sym) {
+            let field = rest[..pos].trim().to_string();
+            let raw_rhs = rest[pos + sym.len()..].trim();
+            // Strip surrounding quotes if present
+            let rhs = if (raw_rhs.starts_with('\'') && raw_rhs.ends_with('\''))
+                || (raw_rhs.starts_with('"') && raw_rhs.ends_with('"'))
+            {
+                raw_rhs[1..raw_rhs.len()-1].to_string()
+            } else {
+                raw_rhs.to_string()
+            };
+            // Build the correct variant from the reference
+            let op_variant = match sym {
+                s if *s == ">=" => FilterOp::Gte,
+                s if *s == "<=" => FilterOp::Lte,
+                s if *s == "!=" => FilterOp::Ne,
+                s if *s == "==" => FilterOp::Eq,
+                s if *s == ">"  => FilterOp::Gt,
+                _               => FilterOp::Lt,
+            };
+            return Some(FilterExpr { field, cmp: Some((op_variant, rhs)) });
+        }
+    }
+    // No operator → existence check
+    Some(FilterExpr { field: rest.trim().to_string(), cmp: None })
+}
+
+/// Evaluate a filter against a single JSON object element.
+fn filter_matches(node: &serde_json::Value, f: &FilterExpr) -> bool {
+    // Support dotted sub-paths within the filter field, e.g. `@.user.active`
+    let field_val = f.field.split('.').try_fold(node, |v, key| v.get(key));
+
+    match &f.cmp {
+        None => {
+            // Existence check: field must be present and not null/false
+            match field_val {
+                Some(serde_json::Value::Null) | None => false,
+                Some(serde_json::Value::Bool(b)) => *b,
+                Some(_) => true,
+            }
+        }
+        Some((op, rhs)) => {
+            let lhs_str = match field_val {
+                Some(v) => json_value_to_string(v),
+                None => return false,
+            };
+            // Try numeric comparison first
+            if let (Ok(l), Ok(r)) = (lhs_str.parse::<f64>(), rhs.parse::<f64>()) {
+                return match op {
+                    FilterOp::Eq  => (l - r).abs() < f64::EPSILON,
+                    FilterOp::Ne  => (l - r).abs() >= f64::EPSILON,
+                    FilterOp::Gt  => l > r,
+                    FilterOp::Lt  => l < r,
+                    FilterOp::Gte => l >= r,
+                    FilterOp::Lte => l <= r,
+                };
+            }
+            // Fall back to string comparison
+            match op {
+                FilterOp::Eq  => lhs_str == *rhs,
+                FilterOp::Ne  => lhs_str != *rhs,
+                FilterOp::Gt  => lhs_str > *rhs,
+                FilterOp::Lt  => lhs_str < *rhs,
+                FilterOp::Gte => lhs_str >= *rhs,
+                FilterOp::Lte => lhs_str <= *rhs,
+            }
+        }
+    }
 }
 
 /// Recursively traverse a slice of JSON values following `segs`.
@@ -429,8 +570,16 @@ fn traverse_json<'a>(nodes: &[&'a serde_json::Value], segs: &[JsonSeg]) -> Vec<S
                 }
             }
             JsonSeg::Wild => {
+                // Arrays: all elements; Objects: all values
                 if let Some(arr) = node.as_array() {
                     next.extend(arr.iter());
+                } else if let Some(obj) = node.as_object() {
+                    next.extend(obj.values());
+                }
+            }
+            JsonSeg::Filter(f) => {
+                if let Some(arr) = node.as_array() {
+                    next.extend(arr.iter().filter(|el| filter_matches(el, f)));
                 }
             }
         }
@@ -450,3 +599,158 @@ fn json_value_to_string(v: &serde_json::Value) -> String {
 }
 
 
+
+#[cfg(test)]
+mod jsonpath_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_bare_wildcard_object() {
+        let v = json!({"a": 1, "b": 2, "c": 3});
+        let r = evaluate_json_path(&v, "*");
+        println!("bare * on object: {:?}", r);
+        // Should return all values
+        assert!(!r.is_empty());
+    }
+
+    #[test]
+    fn test_bare_wildcard_array() {
+        let v = json!([1, 2, 3]);
+        let r = evaluate_json_path(&v, "*");
+        println!("bare * on array: {:?}", r);
+        assert!(!r.is_empty());
+    }
+
+    #[test]
+    fn test_dollar_star() {
+        let v = json!({"a": 1, "b": 2});
+        let r = evaluate_json_path(&v, "$.*");
+        println!("$.* on object: {:?}", r);
+        // Should return both values (not empty)
+        assert!(!r.is_empty());
+    }
+
+    #[test]
+    fn test_dollar_prefix_key() {
+        let v = json!({"items": {"id": 42}});
+        let r = evaluate_json_path(&v, "$.items.id");
+        assert_eq!(r, "42");
+    }
+
+    #[test]
+    fn test_dollar_array_wildcard() {
+        let v = json!({"items": [{"id": 1}, {"id": 2}]});
+        let r1 = evaluate_json_path(&v, "$.items[*].id");
+        let r2 = evaluate_json_path(&v, "items[*].id");
+        assert_eq!(r1, r2);
+    }
+
+    #[test]
+    fn test_dollar_bare_root() {
+        let v = json!({"key": "val"});
+        // Bare $ returns the whole root as JSON string
+        let r = evaluate_json_path(&v, "$");
+        assert!(r.contains("key"));
+    }
+
+    #[test]
+    fn test_filter_equality() {
+        let v = json!({"items": [{"type": "vip", "name": "Alice"}, {"type": "basic", "name": "Bob"}]});
+        let r = evaluate_json_path(&v, "items[?(@.type=='vip')].name");
+        println!("filter eq: {:?}", r);
+        assert_eq!(r, "Alice");
+    }
+
+    #[test]
+    fn test_filter_on_root_array() {
+        let v = json!([{"x": 1, "name": "Alice"}, {"x": 2, "name": "Bob"}]);
+        let r = evaluate_json_path(&v, "[?(@.x==1)].name");
+        println!("filter on root array: {:?}", r);
+        assert_eq!(r, "Alice");
+    }
+
+    #[test]
+    fn test_wildcard_bracket_star() {
+        let v = json!({"items": [{"id": 1}, {"id": 2}]});
+        let r = evaluate_json_path(&v, "items[*].id");
+        println!("items[*].id: {:?}", r);
+        assert_eq!(r, "1, 2");
+    }
+
+    #[test]
+    fn test_dollar_filter_root_array() {
+        // $[?(@.type=='vip')].name on root array
+        let v = json!([{"type": "vip", "name": "Alice"}, {"type": "basic", "name": "Bob"}]);
+        let r = evaluate_json_path(&v, "$[?(@.type=='vip')].name");
+        assert_eq!(r, "Alice");
+    }
+}
+
+
+
+
+
+    // Additional edge cases based on user reports
+    #[test]
+    fn test_bare_star_as_full_path() {
+        // User types just "*" as the json_path on a JSON object
+        let v = serde_json::json!({"token": "abc", "user": "alice"});
+        let r = evaluate_json_path(&v, "*");
+        println!("bare * on object result: {:?}", r);
+        assert!(!r.is_empty(), "bare * should return all values");
+    }
+
+    #[test]
+    fn test_bare_star_on_array() {
+        // User types just "*" as path, source is a JSON array
+        let v = serde_json::json!(["a", "b", "c"]);
+        let r = evaluate_json_path(&v, "*");
+        println!("bare * on array result: {:?}", r);
+        assert_eq!(r, "a, b, c");
+    }
+
+    #[test]
+    fn test_dollar_bracket_star() {
+        // $[*] on root array
+        let v = serde_json::json!([{"id":1},{"id":2}]);
+        let r = evaluate_json_path(&v, "$[*].id");
+        println!("$[*].id: {:?}", r);
+        assert_eq!(r, "1, 2");
+    }
+
+    #[test]
+    fn test_filter_no_quotes_equals() {
+        // Some JSONPath impls allow == without quotes for numbers
+        let v = serde_json::json!([{"score": 10, "name": "Alice"}, {"score": 5, "name": "Bob"}]);
+        let r = evaluate_json_path(&v, "[?(@.score==10)].name");
+        println!("filter numeric == : {:?}", r);
+        assert_eq!(r, "Alice");
+    }
+
+    #[test]
+    fn test_filter_nested_path_on_object() {
+        // users[?(@.active==true)].name
+        let v = serde_json::json!({"users": [{"name": "Alice", "active": true}, {"name": "Bob", "active": false}]});
+        let r = evaluate_json_path(&v, "users[?(@.active==true)].name");
+        println!("filter bool true: {:?}", r);
+        // "true" string comparison — does it work?
+    }
+
+    #[test]
+    fn test_wildcard_on_nested_array_of_values() {
+        // items[*] where items is array of strings — should return all
+        let v = serde_json::json!({"items": ["x", "y", "z"]});
+        let r = evaluate_json_path(&v, "items[*]");
+        println!("items[*] of string array: {:?}", r);
+        assert_eq!(r, "x, y, z");
+    }
+
+    #[test]
+    fn test_filter_existence_check() {
+        // [?(@.optional)] — existence filter
+        let v = serde_json::json!([{"name": "Alice", "optional": "yes"}, {"name": "Bob"}]);
+        let r = evaluate_json_path(&v, "[?(@.optional)].name");
+        println!("existence filter: {:?}", r);
+        assert_eq!(r, "Alice");
+    }

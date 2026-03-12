@@ -53,7 +53,7 @@
 			<button class="menu-item w-full text-left" onclick={() => ctxAction(() => { app.renamingBlockId = ctx.blockId; })}>
 				Rename <span class="menu-shortcut">F2</span>
 			</button>
-			<button class="menu-item w-full text-left" onclick={() => ctxAction(() => { const b = app.pipeline.blocks.find(b => b.id === ctx.blockId); if (b) { pushUndo(); send('add_block', { block_type: b.block_type, index: idx + 1 }); } })}>
+			<button class="menu-item w-full text-left" onclick={() => ctxAction(() => { const b = app.pipeline.blocks.find(b => b.id === ctx.blockId); if (b) { pushUndo(); send('paste_blocks', { blocks: JSON.parse(JSON.stringify([b])), index: idx + 1 }); } })}>
 				Duplicate
 			</button>
 			{#if isContainerBlock(ctx.blockId)}
