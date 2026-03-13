@@ -53,9 +53,10 @@ impl SidecarManager {
         let path = {
             let p = std::path::PathBuf::from(sidecar_path);
             if p.exists() {
-                // Strip \\?\ UNC prefix if present — CreateProcess on Windows rejects
-                // extended-length paths (os error 123: "filename syntax is incorrect").
-                dunce::simplified(&p).to_path_buf()
+                // Strip \\?\ UNC prefix — CreateProcess on Windows rejects extended-length
+                // paths (os error 123). Use dunce::canonicalize (resolves symlinks + strips
+                // \\?\) when possible, fall back to dunce::simplified (strips \\?\ only).
+                dunce::canonicalize(&p).unwrap_or_else(|_| dunce::simplified(&p).to_path_buf())
             } else if let Some(ref dir) = exe_dir {
                 // Try the filename part of sidecar_path next to the exe
                 let by_name = dir.join(
@@ -88,7 +89,19 @@ impl SidecarManager {
 
         // Set the working directory to the sidecar's own folder so that any
         // relative paths the sidecar uses resolve correctly.
-        let sidecar_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        // Avoid Path::new(".") as current_dir fallback — on Windows, "." can trigger
+        // os error 123 (invalid path syntax) if the process CWD is a UNC or network path.
+        // Prefer the exe directory as a safe absolute fallback.
+        let sidecar_dir_owned;
+        let sidecar_dir = if let Some(parent) = path.parent().filter(|p| p != &std::path::Path::new("")) {
+            parent
+        } else {
+            sidecar_dir_owned = std::env::current_exe()
+                .ok()
+                .and_then(|e| e.parent().map(|p| p.to_path_buf()))
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            sidecar_dir_owned.as_path()
+        };
 
         let mut cmd = Command::new(&path);
         cmd.current_dir(sidecar_dir)

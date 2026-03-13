@@ -135,16 +135,17 @@ fn resolve_sidecar_path(configured: &str) -> String {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             // 1. Next to the exe — ALWAYS preferred (deployed layout)
+            // Use dunce::canonicalize on ALL branches to strip \\?\ UNC prefix on Windows.
+            // current_exe() can return \\?\-prefixed paths (long path mode / certain installs)
+            // and CreateProcess rejects them with os error 123.
             let next_to_exe = dir.join(sidecar_name);
             if next_to_exe.exists() {
-                return next_to_exe.display().to_string();
+                return dunce::canonicalize(&next_to_exe).unwrap_or(next_to_exe).display().to_string();
             }
 
             // 2. exe_dir/../../sidecar/ — dev layout (target/release/ → project/sidecar/)
             let dev = dir.join("../../sidecar").join(sidecar_name);
             if dev.exists() {
-                // Use dunce::canonicalize to avoid \\?\ UNC prefix on Windows
-                // (CreateProcess rejects UNC-prefixed paths with os error 123)
                 return dunce::canonicalize(&dev).unwrap_or(dev).display().to_string();
             }
             // 3. exe_dir/../sidecar/ — alt dev layout
