@@ -10,6 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.4.2',
+		date: '2026-03-13',
+		highlights: 'Bug fix: sidecar spawn failure (error 123) on Windows for users with long install paths or UNC path contexts.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Sidecar spawn error 123 on Windows — "The filename, directory name, or volume label syntax is incorrect". Affected browser capture (Site Inspector) and request engine for users installed in paths where Windows returns \\\\?\\-prefixed UNC paths from current_exe() (long path mode, certain installers). Fixed by applying dunce::canonicalize to all sidecar path resolution branches.',
+					'Sidecar spawn could fail with error 123 when CWD was a UNC/network path and sidecar had no resolvable parent directory. Now falls back to the exe directory instead of "." as working directory.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.4.0',
 		date: '2026-03-09',
 		highlights: 'Site Inspector MITM proxy with full HTTPS interception, BrowserOpen block, headless Chrome pipeline support.',
