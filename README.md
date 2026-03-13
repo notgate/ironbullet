@@ -6,7 +6,7 @@
 
 # IronBullet
 
-**Visual pipeline builder for HTTP automation and credential checking**
+**Visual pipeline builder for HTTP automation and data checking**
 
 [![Release](https://img.shields.io/github/v/release/ZeraTS/ironbullet?style=flat-square&color=4f6ef7)](https://github.com/ZeraTS/ironbullet/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/ZeraTS/ironbullet/total?style=flat-square&color=22c55e)](https://github.com/ZeraTS/ironbullet/releases)
