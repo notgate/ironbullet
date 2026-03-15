@@ -192,17 +192,36 @@ pub(crate) async fn run_worker(
                 // as retryable — these are proxy-side failures, not credential failures.
                 // The credential should be re-queued rather than discarded as an error.
                 let is_network_error = result.as_ref().err().map(|e| {
-                    let msg = e.to_string();
+                    let msg = e.to_string().to_lowercase();
+                    // Timeout errors
                     msg.contains("timed out") ||
-                    msg.contains("Request timed out") ||
-                    msg.contains("Connection refused") ||
-                    msg.contains("host unreachable") ||
-                    msg.contains("proxyconnect") ||
-                    msg.contains("WSAEADDRINUSE") ||
-                    msg.contains("Only one usage of each socket address") ||
-                    msg.contains("network is unreachable") ||
+                    msg.contains("request timed out") ||
                     msg.contains("context deadline exceeded") ||
-                    msg.contains("i/o timeout")
+                    msg.contains("i/o timeout") ||
+                    // Connection-level errors
+                    msg.contains("connection refused") ||
+                    msg.contains("connection reset") ||
+                    msg.contains("reset by peer") ||
+                    msg.contains("connection closed") ||
+                    msg.contains("connection aborted") ||
+                    msg.contains("broken pipe") ||
+                    msg.contains("use of closed network connection") ||
+                    // EOF / empty response — very common from overloaded/rate-limiting proxies
+                    msg.contains("eof") ||
+                    msg.contains("empty response") ||
+                    msg.contains("unexpected eof") ||
+                    // Proxy-specific errors (from Go sidecar enriched messages)
+                    msg.contains("proxyconnect") ||
+                    msg.contains("proxy tunnel error") ||
+                    msg.contains("proxy refused") ||
+                    msg.contains("proxy connect timed out") ||
+                    // Network reachability
+                    msg.contains("host unreachable") ||
+                    msg.contains("network is unreachable") ||
+                    msg.contains("no route to host") ||
+                    // Windows port exhaustion
+                    msg.contains("wsaeaddrinuse") ||
+                    msg.contains("only one usage of each socket address")
                 }).unwrap_or(false);
                 let is_retry_status = matches!(ctx.status, BotStatus::Retry) || is_network_error;
                 if is_retry_status && retry_count < max_retries {
