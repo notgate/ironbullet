@@ -306,16 +306,25 @@ fn position_window(
 }
 
 fn run_gui() {
-    // Disable WebKit GPU compositing on Linux — prevents gray/blank screen
-    // on systems where hardware compositing is unavailable or broken (common
-    // on VMs, some GPUs, and headless setups with libwebkit2gtk-4.1).
+    // Linux WebView compatibility fixes — must be set before GTK/GDK init.
+    //
+    // The three most common causes of a gray/blank WebView on Linux:
+    //   1. NVIDIA GPU on Wayland (GNOME 46+): WebKitGTK's EGL/Wayland renderer
+    //      is broken with NVIDIA. Force XWayland via GDK_BACKEND=x11.
+    //   2. WebKit GPU compositing unavailable (VMs, software GL, some Mesa builds).
+    //   3. DMABUF renderer (webkit2gtk 2.40+) broken on certain AMD/Intel stacks.
+    //
+    // All three vars are only set if not already in the environment so the user
+    // can override any of them from the shell if needed.
     #[cfg(target_os = "linux")]
     {
+        // Force XWayland — the single most effective fix for NVIDIA + Wayland
+        if std::env::var("GDK_BACKEND").is_err() {
+            unsafe { std::env::set_var("GDK_BACKEND", "x11"); }
+        }
         if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
             unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); }
         }
-        // Also disable DMABUF renderer which can cause blank WebViews on some
-        // Mesa/Intel/AMD drivers in webkit2gtk 2.40+
         if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
             unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
         }
