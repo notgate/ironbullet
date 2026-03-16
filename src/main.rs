@@ -306,6 +306,21 @@ fn position_window(
 }
 
 fn run_gui() {
+    // Disable WebKit GPU compositing on Linux — prevents gray/blank screen
+    // on systems where hardware compositing is unavailable or broken (common
+    // on VMs, some GPUs, and headless setups with libwebkit2gtk-4.1).
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
+            unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); }
+        }
+        // Also disable DMABUF renderer which can cause blank WebViews on some
+        // Mesa/Intel/AMD drivers in webkit2gtk 2.40+
+        if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
+            unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
+        }
+    }
+
     // Clean up old binary from previous update
     if let Ok(exe) = std::env::current_exe() {
         let old = exe.with_extension("old.exe");
