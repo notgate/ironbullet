@@ -10,6 +10,36 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.4.5',
+		date: '2026-03-17',
+		highlights: 'Linux NVIDIA/Wayland gray screen fix, correct progress calculation (errors excluded), live results feed, Shadowsocks proxy support.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Gray screen on Linux with NVIDIA GPU under Wayland (GNOME 46, Ubuntu 24.04): Added GDK_BACKEND=x11 to force XWayland at startup, bypassing the broken NVIDIA/EGL Wayland renderer in WebKitGTK. Previously set env vars (WEBKIT_DISABLE_COMPOSITING_MODE, WEBKIT_DISABLE_DMABUF_RENDERER) retained for VMs and other edge cases.',
+					'Progress bar excluded errors but completed jobs showed less than 100%: Completed and stopped jobs now correctly snap to 100%. During a run the bar is capped at 99% (verified outcomes only — hits + fails) and transitions to 100% on job completion.',
+					'Done/Total counter was counting errors as completed work: now shows verified/total (hits + fails only). Hover the counter for a full breakdown including error count.',
+					'Live results feed in Hits Database was always empty: update_job_stats was snapshotting recent_results from the ring buffer and then immediately clearing them before saving to the job. One-line bug — removed the Vec::new() clear. The live feed in Hits Database now correctly streams all check results (hits, fails, bans, retries, errors) in real-time.',
+				],
+			},
+			{
+				title: 'New Features',
+				items: [
+					'Shadowsocks proxy support: ss:// URIs are now accepted in proxy lists. Both cleartext format (ss://method:password@host:port) and SIP002 base64-encoded format (ss://BASE64@host:port#label) are supported. The #fragment label (including emoji labels from proxy providers) is stripped automatically. Each unique SS server spins up a local SOCKS5 tunnel on first use and reuses it for the duration of the run — no per-request overhead.',
+				],
+			},
+			{
+				title: 'Release Assets',
+				items: [
+					'Linux zip now includes reqflow-sidecar and start.sh launcher alongside the main binary.',
+					'Windows zip now includes reqflow-sidecar.exe alongside the main binary.',
+					'Linux AppImage rebuilt with bundled webkit2gtk (95MB, no system dependencies required).',
+				],
+			},
+		],
+	},
+	{
 		version: '0.4.2',
 		date: '2026-03-13',
 		highlights: 'Bug fix: sidecar spawn failure (error 123) on Windows for users with long install paths or UNC path contexts.',
