@@ -53,7 +53,8 @@
 	}
 
 	let stats = $derived(app.runnerStats);
-	let progressPct = $derived(stats && stats.total > 0 ? (((stats as any).consumed ?? stats.processed) / stats.total * 100) : 0);
+	// Progress = verified outcomes (hits + fails) only. Errors are unverified and don't advance progress.
+	let progressPct = $derived(stats && stats.total > 0 ? (((stats.hits ?? 0) + (stats.fails ?? 0)) / stats.total * 100) : 0);
 </script>
 
 <div class="flex flex-col h-full bg-surface">

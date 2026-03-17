@@ -386,8 +386,9 @@ impl JobManager {
     }
 
     pub fn update_job_stats(&mut self, id: Uuid) {
-        if let Some(mut stats) = self.get_job_stats(id) {
-            stats.recent_results = Vec::new();
+        if let Some(stats) = self.get_job_stats(id) {
+            // recent_results is already populated by get_stats() from the ring buffer —
+            // do NOT clear it here, that was discarding the live feed data.
             if let Some(job) = self.get_job_mut(id) {
                 job.stats = stats;
             }
