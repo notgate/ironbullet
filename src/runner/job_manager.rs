@@ -70,8 +70,19 @@ fn build_proxy_pool(settings: &ProxySettings) -> ProxyPool {
 /// `default_type` is used for plain `host:port` or `host:port:user:pass` lines that
 /// carry no protocol prefix — it lets a whole source be declared as SOCKS5, for example.
 fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
+    // Strip SIP002 / URL fragment labels (e.g. `ss://...@host:port#Dubai%2C%20UAE`)
+    let line = if let Some(pos) = line.find('#') { &line[..pos] } else { line };
+    let line = line.trim();
+    if line.is_empty() { return None; }
+
     let fallback = default_type.unwrap_or(ProxyType::Http);
-    let (proxy_type, address) = if let Some(rest) = line.strip_prefix("socks5://") {
+    let (proxy_type, address) = if line.starts_with("ss://") {
+        // Shadowsocks — spin up (or reuse) a local SOCKS5 tunnel and use that.
+        let local = crate::sidecar::shadowsocks_pool::resolve_ss_proxy(line);
+        // local is `socks5://127.0.0.1:<port>` — parse it as a regular Socks5 entry
+        let rest = local.strip_prefix("socks5://").unwrap_or(&local);
+        (ProxyType::Socks5, rest.to_string())
+    } else if let Some(rest) = line.strip_prefix("socks5://") {
         (ProxyType::Socks5, rest.to_string())
     } else if let Some(rest) = line.strip_prefix("socks4://") {
         (ProxyType::Socks4, rest.to_string())
