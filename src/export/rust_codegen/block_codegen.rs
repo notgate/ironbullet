@@ -1657,6 +1657,9 @@ pub(super) fn generate_block_code(block: &Block, indent: usize, vars: &mut VarTr
         BlockSettings::HeaderSpoof(_) => {
             code.push_str(&format!("{}// HeaderSpoof block — inject X-Forwarded-For and related headers\n", pad));
         }
+        BlockSettings::NuDataSensor(_) => {
+            code.push_str(&format!("{}// NuDataSensor block — call nudata-solver HTTP service for nds-pmd token\n", pad));
+        }
     }
 
     code

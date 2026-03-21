@@ -12,6 +12,7 @@ mod settings_extended_functions;
 mod settings_data;
 mod settings_jwt;
 mod settings_header_spoof;
+mod settings_nudata;
 
 pub use settings_http::*;
 pub use settings_parse::*;
@@ -27,6 +28,7 @@ pub use settings_extended_functions::*;
 pub use settings_data::*;
 pub use settings_jwt::*;
 pub use settings_header_spoof::*;
+pub use settings_nudata::NuDataSensorSettings;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -147,6 +149,7 @@ pub enum BlockType {
     // Security / Auth utilities
     JwtToken,
     HeaderSpoof,
+    NuDataSensor,
 }
 
 impl BlockType {
@@ -216,6 +219,7 @@ impl BlockType {
             Self::FileSystem => "File System",
             Self::JwtToken => "JWT Token",
             Self::HeaderSpoof => "Header Spoof",
+            Self::NuDataSensor => "NuData Sensor",
         }
     }
 
@@ -232,7 +236,7 @@ impl BlockType {
             Self::IfElse | Self::Loop | Self::Delay | Self::Script | Self::CaseSwitch | Self::Group => "Control",
             Self::Log | Self::SetVariable | Self::ClearCookies | Self::Webhook | Self::WebSocket => "Utilities",
             Self::BrowserOpen | Self::NavigateTo | Self::ClickElement | Self::TypeText | Self::WaitForElement | Self::GetElementText | Self::Screenshot | Self::ExecuteJs => "Browser",
-            Self::JwtToken | Self::HeaderSpoof => "Security",
+            Self::JwtToken | Self::HeaderSpoof | Self::NuDataSensor => "Security",
         }
     }
 
@@ -320,6 +324,7 @@ impl BlockType {
             Self::FileSystem => BlockSettings::FileSystem(FileSystemSettings::default()),
             Self::JwtToken => BlockSettings::JwtToken(JwtSettings::default()),
             Self::HeaderSpoof => BlockSettings::HeaderSpoof(HeaderSpoofSettings::default()),
+            Self::NuDataSensor => BlockSettings::NuDataSensor(NuDataSensorSettings::default()),
         }
     }
 }
@@ -402,4 +407,5 @@ pub enum BlockSettings {
     FileSystem(FileSystemSettings),
     JwtToken(JwtSettings),
     HeaderSpoof(HeaderSpoofSettings),
+    NuDataSensor(NuDataSensorSettings),
 }

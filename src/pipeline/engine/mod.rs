@@ -9,6 +9,7 @@ mod helpers;
 mod data;
 mod jwt;
 mod header_spoof;
+mod nudata;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -514,6 +515,10 @@ impl ExecutionContext {
             }
             BlockSettings::HeaderSpoof(settings) => {
                 self.execute_header_spoof(block, settings).await?;
+                Ok(())
+            }
+            BlockSettings::NuDataSensor(settings) => {
+                self.execute_nudata_sensor(settings).await?;
                 Ok(())
             }
         }
