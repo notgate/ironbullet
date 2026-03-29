@@ -10,6 +10,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.4.8',
+		date: '2026-03-29',
+		highlights: 'Job start fix: jobs no longer stay Queued indefinitely when Run is clicked.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Job stays Queued when clicking Run (issue #42): In v0.4.7, the Shadowsocks pool resolve() function called Handle::block_on(spawn_blocking(...)) to wait for the local SOCKS5 listener to bind. Handle::block_on panics when invoked from within an async context. Since resolve() is called from start_job inside a tokio::spawn async task, the panic killed the job start silently, leaving the job in Queued state with no error surfaced. Fixed by replacing Handle::block_on with tokio::task::block_in_place, which is designed for calling blocking code from within async tasks — it cooperatively hands off the async worker thread without panicking or deadlocking.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.4.7',
 		date: '2026-03-29',
 		highlights: 'Job start stall fix for Shadowsocks users, BAN retry — accounts no longer lost to proxy bans.',
