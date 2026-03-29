@@ -85,5 +85,15 @@ fi
 chmod +x "$BINARY" 2>/dev/null || true
 [[ -f "$SIDECAR" ]] && chmod +x "$SIDECAR" 2>/dev/null || true
 
+# ── Linux WebView env vars ───────────────────────────────────────────────────
+# Set before launch so they are guaranteed in the environment before GTK/GDK
+# initialises. These fix gray WebView on NVIDIA + Wayland (GNOME 46+) and
+# other black/gray screen configurations. Each is only set if not already
+# exported so users can override from their own shell environment.
+export GDK_BACKEND="${GDK_BACKEND:-x11}"
+export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export WEBKIT_FORCE_SANDBOX="${WEBKIT_FORCE_SANDBOX:-0}"
+
 # ── Launch IronBullet ────────────────────────────────────────────────────────
 exec "$BINARY" "$@"

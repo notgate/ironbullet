@@ -10,6 +10,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.4.6',
+		date: '2026-03-29',
+		highlights: 'Shadowsocks proxy routing fix, gray screen fix for remaining NVIDIA/Wayland configurations.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Shadowsocks proxies not routing traffic (issue #40): The local SOCKS5 listener was being spawned asynchronously but the port URL was returned immediately before the listener was bound. Subsequent requests received ECONNREFUSED, causing continuous BAN results and zero hits. Fixed by polling the loopback port until it accepts connections (up to 10 s) before returning the socks5:// URL. Typical bind latency is under 10 ms.',
+					'Shadowsocks ban tracking broken: When a Shadowsocks proxy was banned, the ban key was stored as the original ss:// URI but next_proxy() looked up bans using the socks5://127.0.0.1:<port> form, causing a permanent key mismatch and bans that never applied. Both paths now use the socks5:// tunnel URL as the canonical ban key.',
+					'Gray screen on Linux still occurring after v0.4.5 fix (issue #37): Added WEBKIT_FORCE_SANDBOX=0 to the set of startup environment variables. On certain NVIDIA driver versions and kernel security configurations the WebKit sandbox helper process fails to start silently, leaving the WebView gray. Disabling the sandbox resolves this case. The variable is set both from the Rust binary and from start.sh so it is present before GTK initialisation regardless of launch method.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.4.5',
 		date: '2026-03-17',
 		highlights: 'Linux NVIDIA/Wayland gray screen fix, correct progress calculation (errors excluded), live results feed, Shadowsocks proxy support.',

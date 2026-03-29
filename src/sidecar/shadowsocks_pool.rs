@@ -18,8 +18,9 @@
 
 use std::{
     collections::HashMap,
-    net::{SocketAddr, TcpListener},
+    net::{SocketAddr, TcpListener, TcpStream},
     sync::Mutex,
+    time::{Duration, Instant},
 };
 
 use shadowsocks::{
@@ -94,6 +95,11 @@ impl ShadowsocksPool {
                 }
             }
         });
+
+        // Wait for the listener to be actually accepting connections before returning.
+        // The spawn above is fire-and-forget — without this wait, the first requests
+        // hit ECONNREFUSED because the port isn't bound yet, causing spurious BANs.
+        wait_for_port(port, Duration::from_secs(10));
 
         let mut guard = self.map.lock().unwrap();
         // Double-check in case another thread raced us
@@ -229,4 +235,25 @@ fn free_port() -> Option<u16> {
     let port = listener.local_addr().ok()?.port();
     drop(listener); // release — small TOCTOU window but acceptable for local use
     Some(port)
+}
+
+/// Spin-poll until the given 127.0.0.1:port is accepting TCP connections or
+/// the timeout elapses. Wakes every 5 ms so startup latency stays under 10 ms
+/// in the common case (shadowsocks-service binds quickly).
+fn wait_for_port(port: u16, timeout: Duration) {
+    let addr = format!("127.0.0.1:{}", port);
+    let deadline = Instant::now() + timeout;
+    loop {
+        if TcpStream::connect_timeout(
+            &addr.parse().expect("valid loopback addr"),
+            Duration::from_millis(50),
+        ).is_ok() {
+            return;
+        }
+        if Instant::now() >= deadline {
+            eprintln!("[ss-pool] timeout waiting for SS local SOCKS5 listener on port {port}");
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }

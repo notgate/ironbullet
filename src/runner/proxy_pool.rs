@@ -117,12 +117,13 @@ impl ProxyPool {
     }
 
     pub fn ban_proxy(&self, proxy: &str) {
-        // For Shadowsocks, `proxy` arrives as `socks5://127.0.0.1:<port>` (the tunnel URL).
-        // The ban map keys use the canonical `ss://...` form. Translate back if needed.
-        let key = crate::sidecar::shadowsocks_pool::canonical_for_local(proxy)
-            .unwrap_or_else(|| proxy.to_string());
+        // Ban the proxy using the URL form that next_proxy() also uses for the lookup.
+        // Both job_manager and proxy_pool store Shadowsocks entries as
+        // ProxyType::Socks5 with address = "127.0.0.1:<port>", so to_string() and
+        // to_proxy_url() both emit "socks5://127.0.0.1:<port>". Using the canonical
+        // ss:// form here caused a key mismatch — bans never applied to SS proxies.
         if let Ok(mut bans) = self.bans.write() {
-            bans.insert(key, Instant::now());
+            bans.insert(proxy.to_string(), Instant::now());
         }
     }
 

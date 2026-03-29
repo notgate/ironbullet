@@ -308,13 +308,15 @@ fn position_window(
 fn run_gui() {
     // Linux WebView compatibility fixes — must be set before GTK/GDK init.
     //
-    // The three most common causes of a gray/blank WebView on Linux:
+    // Known causes of a gray/blank WebView on Linux:
     //   1. NVIDIA GPU on Wayland (GNOME 46+): WebKitGTK's EGL/Wayland renderer
     //      is broken with NVIDIA. Force XWayland via GDK_BACKEND=x11.
     //   2. WebKit GPU compositing unavailable (VMs, software GL, some Mesa builds).
     //   3. DMABUF renderer (webkit2gtk 2.40+) broken on certain AMD/Intel stacks.
+    //   4. WebKit sandbox process fails to launch (apparmor, seccomp, certain NVIDIA
+    //      driver versions) — WEBKIT_FORCE_SANDBOX=0 disables the sandbox entirely.
     //
-    // All three vars are only set if not already in the environment so the user
+    // All vars are only set if not already in the environment so the user
     // can override any of them from the shell if needed.
     #[cfg(target_os = "linux")]
     {
@@ -327,6 +329,14 @@ fn run_gui() {
         }
         if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
             unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
+        }
+        // Disable the WebKit sandbox. On some NVIDIA driver versions and certain
+        // kernel security configurations the sandbox helper process fails to start,
+        // which leaves the WebView rendering a solid gray surface. Setting this to 0
+        // skips the sandbox entirely and resolves the remaining gray-screen cases
+        // that GDK_BACKEND=x11 alone does not fix.
+        if std::env::var("WEBKIT_FORCE_SANDBOX").is_err() {
+            unsafe { std::env::set_var("WEBKIT_FORCE_SANDBOX", "0"); }
         }
     }
 
