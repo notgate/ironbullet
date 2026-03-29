@@ -96,10 +96,22 @@ impl ShadowsocksPool {
             }
         });
 
-        // Wait for the listener to be actually accepting connections before returning.
+        // Wait for the listener to accept connections before returning.
         // The spawn above is fire-and-forget — without this wait, the first requests
         // hit ECONNREFUSED because the port isn't bound yet, causing spurious BANs.
-        wait_for_port(port, Duration::from_secs(10));
+        //
+        // spawn_blocking offloads the blocking poll loop to the tokio blocking thread
+        // pool so it does not occupy an async worker thread. This prevents a potential
+        // stall where the SS server task cannot execute because all async workers are
+        // occupied waiting on port readiness.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let _ = handle.block_on(tokio::task::spawn_blocking(move || {
+                wait_for_port(port, Duration::from_secs(10));
+            }));
+        } else {
+            // No tokio runtime on this thread — use blocking poll directly.
+            wait_for_port(port, Duration::from_secs(10));
+        }
 
         let mut guard = self.map.lock().unwrap();
         // Double-check in case another thread raced us

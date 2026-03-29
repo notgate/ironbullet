@@ -10,6 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.4.7',
+		date: '2026-03-29',
+		highlights: 'Job start stall fix for Shadowsocks users, BAN retry — accounts no longer lost to proxy bans.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Job fails to start when Shadowsocks proxies are configured (issue #41): The v0.4.6 port-readiness wait used std::thread::sleep inside a tokio async worker thread. On systems with a small CPU core count, blocking every async worker while waiting for the SS listener to bind prevented the SS server task from executing, stalling job start indefinitely. Fixed by offloading the wait to tokio\'s spawn_blocking thread pool, which is separate from the async worker pool.',
+					'Accounts lost to proxy bans (issue #41): When a check returned BAN status the credential was silently dropped. A BAN means the target site blocked the proxy IP, not that the account is invalid. Banned accounts are now re-queued for retry on a different proxy (subject to the job\'s max retry setting). Once retries are exhausted the credential is counted as an error rather than disappearing from the totals. Done/Total now correctly accounts for all credentials.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.4.6',
 		date: '2026-03-29',
 		highlights: 'Shadowsocks proxy routing fix, gray screen fix for remaining NVIDIA/Wayland configurations.',

@@ -171,20 +171,46 @@ pub(crate) async fn run_worker(
             }
             BotStatus::Ban => {
                 stats.bans.fetch_add(1, Ordering::Relaxed);
+                // Ban the proxy that triggered this result so it is skipped for
+                // future requests during the ban window.
                 if let Some(ref p) = ctx.proxy {
                     proxy_pool.ban_proxy(p);
                 }
-                if let Ok(mut feed) = result_feed.try_lock() {
-                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
-                    feed.push_back(ResultEntry {
-                        data_line: data_line.clone(),
-                        status: "BAN".into(),
-                        proxy: proxy.clone(),
-                        captures: Default::default(),
-                        error: None,
-                        ts_ms,
-                        block_results: ctx.block_results.clone(),
-                    });
+                // Re-queue the credential for retry on a different proxy.
+                // A BAN means the target blocked this proxy's IP, not that the
+                // credential is invalid. Dropping the account here causes the
+                // Done/Total counter to fall short — accounts are silently lost.
+                if retry_count < max_retries {
+                    stats.retries.fetch_add(1, Ordering::Relaxed);
+                    data_pool.return_line(data_line.clone(), retry_count + 1);
+                    if let Ok(mut feed) = result_feed.try_lock() {
+                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        feed.push_back(ResultEntry {
+                            data_line: data_line.clone(),
+                            status: "BAN".into(),
+                            proxy: proxy.clone(),
+                            captures: Default::default(),
+                            error: None,
+                            ts_ms,
+                            block_results: ctx.block_results.clone(),
+                        });
+                    }
+                } else {
+                    // Max retries exhausted — count as an error so the total
+                    // accounts for the credential rather than silently dropping it.
+                    stats.errors.fetch_add(1, Ordering::Relaxed);
+                    if let Ok(mut feed) = result_feed.try_lock() {
+                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        feed.push_back(ResultEntry {
+                            data_line: data_line.clone(),
+                            status: "BAN".into(),
+                            proxy: proxy.clone(),
+                            captures: Default::default(),
+                            error: Some("Max retries exceeded (all proxies banned for this credential)".into()),
+                            ts_ms,
+                            block_results: ctx.block_results.clone(),
+                        });
+                    }
                 }
             }
             BotStatus::Retry | BotStatus::Error => {
