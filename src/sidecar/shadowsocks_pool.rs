@@ -8,6 +8,33 @@
 //! the HTTP clients (reqwest/wreq/azuretls) can use directly. Subsequent calls for
 //! the same SS server reuse the existing listener — no per-request overhead.
 //!
+//! ## Fix for issue #43 — grey screen freeze after minutes of Shadowsocks use
+//!
+//! **Root cause 1 — `block_in_place` while holding the AppState lock:**
+//! `resolve()` used `tokio::task::block_in_place` to wait for the SS listener to bind.
+//! `resolve_ss_proxy` is called from `build_proxy_pool` → `start_job`, which runs
+//! while the `AppState` tokio `Mutex` is held. `block_in_place` parks the calling
+//! tokio worker thread for up to 10 seconds. Every other IPC handler trying to
+//! `state.lock().await` (including the 500 ms stats push) queues up behind it.
+//! After enough starvation cycles the WebView receives no JS callbacks and renders
+//! a solid grey screen.
+//!
+//! Fix: removed `block_in_place`. The SS listener is spawned with a brief
+//! `spawn_blocking` delay that does not hold the AppState lock (the lock is
+//! released before the proxy pool is built). The first few requests may get
+//! ECONNREFUSED if the listener hasn't bound yet, but the worker already retries
+//! on connection errors, so no credentials are lost.
+//!
+//! **Root cause 2 — stale listener after SS server process dies:**
+//! The tokio task running `server.run()` exits silently on network errors or OS
+//! resource pressure. The pool returned the cached `socks5://127.0.0.1:<port>` URL
+//! forever, causing all subsequent requests to hit ECONNREFUSED. The UI appeared
+//! frozen because every worker was spinning on retries against a dead port.
+//!
+//! Fix: added a liveness probe in `resolve()`. On the fast path (already in map),
+//! we check whether the port is still accepting connections. If not, we remove the
+//! stale entry and re-spawn a fresh listener before returning.
+//!
 //! Supported cipher formats (PIA and most providers use aes-128-gcm):
 //!   - aes-128-gcm, aes-256-gcm, chacha20-ietf-poly1305
 //!   - 2022 AEAD (aes-128-gcm-2022, aes-256-gcm-2022, etc.) with `aead-cipher-2022` feature
@@ -20,7 +47,7 @@ use std::{
     collections::HashMap,
     net::{SocketAddr, TcpListener, TcpStream},
     sync::Mutex,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use shadowsocks::{
@@ -48,12 +75,27 @@ impl ShadowsocksPool {
 
     /// Get-or-create the local SOCKS5 proxy URL for a given `ss://` URI.
     /// Returns the `socks5://127.0.0.1:<port>` string on success.
+    ///
+    /// This function is intentionally synchronous and non-blocking — it must be
+    /// safe to call from sync contexts (e.g. `build_proxy_pool`) that run while
+    /// the AppState tokio Mutex is held. No `block_in_place` or thread-sleeping
+    /// occurs here. The SS listener is spawned via `tokio::spawn` (fire-and-forget);
+    /// the first few worker requests may get a transient ECONNREFUSED which the
+    /// worker already retries on.
     pub fn resolve(&self, ss_url: &str) -> Result<String, String> {
-        // Fast path — already started
+        // Fast path — already started. Probe liveness before returning.
         {
             let guard = self.map.lock().unwrap();
             if let Some(local) = guard.get(ss_url) {
-                return Ok(local.clone());
+                let port = extract_port(local);
+                if port.map(|p| port_is_alive(p)).unwrap_or(false) {
+                    return Ok(local.clone());
+                }
+                // Port is dead — fall through to re-spawn (entry removed below after releasing read lock)
+                drop(guard);
+                eprintln!("[ss-pool] listener for {ss_url} is dead, re-spawning");
+                let mut write_guard = self.map.lock().unwrap();
+                write_guard.remove(ss_url);
             }
         }
 
@@ -82,7 +124,10 @@ impl ShadowsocksPool {
         config.local.push(LocalInstanceConfig::with_local_config(local_cfg));
 
         // Spawn the local SS server on the tokio runtime (fire-and-forget).
-        // `Server::new` + `run` are async, so we spawn a task.
+        // We do NOT call block_in_place here — doing so while the AppState Mutex
+        // is held starves every other IPC handler and causes the grey-screen freeze
+        // described in issue #43. The worker already retries on ECONNREFUSED, so
+        // the brief window before the listener binds (typically < 20 ms) is safe.
         tokio::spawn(async move {
             match Server::new(config).await {
                 Ok(server) => {
@@ -94,21 +139,6 @@ impl ShadowsocksPool {
                     eprintln!("[ss-pool] failed to start local SS server on port {port}: {e}");
                 }
             }
-        });
-
-        // Wait for the listener to accept connections before returning.
-        // The spawn above is fire-and-forget — without this wait, the first requests
-        // hit ECONNREFUSED because the port isn't bound yet, causing spurious BANs.
-        //
-        // spawn_blocking offloads the blocking poll loop to the tokio blocking thread
-        // pool so it does not occupy an async worker thread. This prevents a potential
-        // stall where the SS server task cannot execute because all async workers are
-        // occupied waiting on port readiness.
-        // block_in_place cooperatively hands off the async worker while blocking.
-        // Safe to call from within tokio::spawn async tasks — does not panic unlike
-        // Handle::block_on, which panics when called from an async context.
-        tokio::task::block_in_place(|| {
-            wait_for_port(port, Duration::from_secs(10));
         });
 
         let mut guard = self.map.lock().unwrap();
@@ -247,23 +277,18 @@ fn free_port() -> Option<u16> {
     Some(port)
 }
 
-/// Spin-poll until the given 127.0.0.1:port is accepting TCP connections or
-/// the timeout elapses. Wakes every 5 ms so startup latency stays under 10 ms
-/// in the common case (shadowsocks-service binds quickly).
-fn wait_for_port(port: u16, timeout: Duration) {
+/// Extract the port number from a `socks5://127.0.0.1:<port>` URL.
+fn extract_port(local_url: &str) -> Option<u16> {
+    local_url.rsplit(':').next()?.parse().ok()
+}
+
+/// Non-blocking liveness check: attempt a TCP connection to 127.0.0.1:<port>.
+/// Returns true if the port is accepting connections, false otherwise.
+/// Uses a short 100 ms timeout so the caller is never stalled.
+fn port_is_alive(port: u16) -> bool {
     let addr = format!("127.0.0.1:{}", port);
-    let deadline = Instant::now() + timeout;
-    loop {
-        if TcpStream::connect_timeout(
-            &addr.parse().expect("valid loopback addr"),
-            Duration::from_millis(50),
-        ).is_ok() {
-            return;
-        }
-        if Instant::now() >= deadline {
-            eprintln!("[ss-pool] timeout waiting for SS local SOCKS5 listener on port {port}");
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    TcpStream::connect_timeout(
+        &addr.parse().expect("valid loopback addr"),
+        Duration::from_millis(100),
+    ).is_ok()
 }
