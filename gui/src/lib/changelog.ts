@@ -10,6 +10,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.4.9',
+		date: '2026-04-01',
+		highlights: 'Black screen fix for Shadowsocks users — UI no longer freezes during proxy resolution.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Black screen with Shadowsocks proxy (issue #44): The liveness probe port_is_alive() was called while holding the std::sync::Mutex lock inside resolve(). With multiple SS proxies, each 100ms TCP connect blocked the tokio runtime, starving the WebView and causing a black screen with high CPU. Fixed by moving the port_is_alive() call outside the mutex lock scope — clone the cached value first, drop the lock, then probe liveness.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.4.8',
 		date: '2026-03-29',
 		highlights: 'Job start fix: jobs no longer stay Queued indefinitely when Run is clicked.',
@@ -17,7 +30,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 			{
 				title: 'Bug Fixes',
 				items: [
-					'Job stays Queued when clicking Run (issue #42): In v0.4.7, the Shadowsocks pool resolve() function called Handle::block_on(spawn_blocking(...)) to wait for the local SOCKS5 listener to bind. Handle::block_on panics when invoked from within an async context. Since resolve() is called from start_job inside a tokio::spawn async task, the panic killed the job start silently, leaving the job in Queued state with no error surfaced. Fixed by replacing Handle::block_on with tokio::task::block_in_place, which is designed for calling blocking code from within async tasks — it cooperatively hands off the async worker thread without panicking or deadlocking.',
+					'Job stays Queued when clicking Run (issue #42): In v0.4.7, the Shadowsocks pool resolve() function called Handle::block_on(spawn_blocking(...)) to wait for the local SOCKS5 listener to bind. Handle::block_on panics when invoked from within an async context. Since resolve() is called from start_job inside a tokio::spawn async task, the panic killed the job start silently, leaving the job in Queued state with no error surfaced. Fixed by replacing Handle::block_on with tokio::task::block_in_place, which is designed for calling blocking code from within async tasks.',
 				],
 			},
 		],

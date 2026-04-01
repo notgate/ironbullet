@@ -35,6 +35,17 @@
 //! we check whether the port is still accepting connections. If not, we remove the
 //! stale entry and re-spawn a fresh listener before returning.
 //!
+//! ## Fix for issue #44 — black screen with SS proxy (v0.4.8 regression)
+//!
+//! **Root cause — blocking TCP connect inside mutex lock:**
+//! The liveness probe `port_is_alive()` was called while holding the `std::sync::Mutex`
+//! lock. With multiple SS proxies, each 100ms TCP connect blocked the entire tokio
+//! runtime, starving the WebView and causing a black screen with high CPU.
+//!
+//! Fix: move the `port_is_alive()` call OUTSIDE the mutex lock scope. Clone the
+//! cached value first, drop the lock, then probe liveness. Only re-acquire the lock
+//! when we need to remove a dead entry.
+//!
 //! Supported cipher formats (PIA and most providers use aes-128-gcm):
 //!   - aes-128-gcm, aes-256-gcm, chacha20-ietf-poly1305
 //!   - 2022 AEAD (aes-128-gcm-2022, aes-256-gcm-2022, etc.) with `aead-cipher-2022` feature
@@ -83,20 +94,22 @@ impl ShadowsocksPool {
     /// the first few worker requests may get a transient ECONNREFUSED which the
     /// worker already retries on.
     pub fn resolve(&self, ss_url: &str) -> Result<String, String> {
-        // Fast path — already started. Probe liveness before returning.
-        {
+        // Fast path — already started. Probe liveness OUTSIDE the lock to avoid blocking.
+        let cached = {
             let guard = self.map.lock().unwrap();
-            if let Some(local) = guard.get(ss_url) {
-                let port = extract_port(local);
-                if port.map(|p| port_is_alive(p)).unwrap_or(false) {
-                    return Ok(local.clone());
-                }
-                // Port is dead — fall through to re-spawn (entry removed below after releasing read lock)
-                drop(guard);
-                eprintln!("[ss-pool] listener for {ss_url} is dead, re-spawning");
-                let mut write_guard = self.map.lock().unwrap();
-                write_guard.remove(ss_url);
+            guard.get(ss_url).cloned()
+        };
+        
+        if let Some(local) = cached {
+            let port = extract_port(&local);
+            // CRITICAL: port_is_alive() is a 100ms TCP connect — must be OUTSIDE the lock
+            if port.map(|p| port_is_alive(p)).unwrap_or(false) {
+                return Ok(local);
             }
+            // Port is dead — remove and re-spawn
+            eprintln!("[ss-pool] listener for {ss_url} is dead, re-spawning");
+            let mut guard = self.map.lock().unwrap();
+            guard.remove(ss_url);
         }
 
         // Parse the ss:// URI
