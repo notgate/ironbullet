@@ -31,11 +31,23 @@ pub(super) fn import_plugin(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let pick_path = rfd::FileDialog::new()
+            // Get default directory for plugin imports
+            let s = state.lock().await;
+            let plugins_dir = s.config.plugins_path.clone();
+            drop(s);
+            
+            let mut dialog = rfd::FileDialog::new()
                 .set_title("Import Plugin")
                 .add_filter("Plugin DLL", &["dll"])
-                .add_filter("All files", &["*"])
-                .pick_file();
+                .add_filter("All files", &["*"]);
+            
+            if !plugins_dir.is_empty() {
+                if let Ok(path) = std::path::PathBuf::from(&plugins_dir).canonicalize() {
+                    dialog = dialog.set_directory(path);
+                }
+            }
+            
+            let pick_path = dialog.pick_file();
             if let Some(src_path) = pick_path {
                 let mut s = state.lock().await;
                 // Resolve plugins directory
@@ -211,6 +223,7 @@ pub(super) fn compile_plugin(
 }
 
 pub(super) fn save_plugin_files(
+    state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
@@ -221,11 +234,21 @@ pub(super) fn save_plugin_files(
             let cargo_toml = data.get("cargo_toml").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let dir_str = data.get("dir").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
+            // Get default directory for plugin projects
+            let default_dir = { state.lock().await.config.plugins_path.clone() };
+
             let dir = if dir_str.is_empty() {
                 // Use file picker
-                let pick = rfd::FileDialog::new()
-                    .set_title("Choose plugin project directory")
-                    .pick_folder();
+                let mut dialog = rfd::FileDialog::new()
+                    .set_title("Choose plugin project directory");
+                
+                if !default_dir.is_empty() {
+                    if let Ok(path) = std::path::PathBuf::from(&default_dir).canonicalize() {
+                        dialog = dialog.set_directory(path);
+                    }
+                }
+                
+                let pick = dialog.pick_folder();
                 match pick {
                     Some(p) => p,
                     None => {

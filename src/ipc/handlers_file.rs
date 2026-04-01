@@ -37,6 +37,7 @@ pub(super) fn generate_code(
 }
 
 pub(super) fn save_code(
+    state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
@@ -44,11 +45,22 @@ pub(super) fn save_code(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let code = data.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let save_path = rfd::FileDialog::new()
+            
+            // Get default directory for saving code
+            let default_dir = { state.lock().await.config.configs_path.clone() };
+            
+            let mut dialog = rfd::FileDialog::new()
                 .set_title("Save Generated Code")
                 .add_filter("Rust source", &["rs"])
-                .add_filter("All files", &["*"])
-                .save_file();
+                .add_filter("All files", &["*"]);
+            
+            if !default_dir.is_empty() {
+                if let Ok(path) = std::path::PathBuf::from(&default_dir).canonicalize() {
+                    dialog = dialog.set_directory(path);
+                }
+            }
+            
+            let save_path = dialog.save_file();
             if let Some(path) = save_path {
                 match std::fs::write(&path, &code) {
                     Ok(()) => {
@@ -74,14 +86,25 @@ pub(super) fn import_config(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let path = data.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+            
+            // Get default directory for imports
+            let configs_dir = { state.lock().await.config.configs_path.clone() };
+            
             let pick_path = if let Some(p) = path {
                 Some(std::path::PathBuf::from(p))
             } else {
-                rfd::FileDialog::new()
+                let mut dialog = rfd::FileDialog::new()
                     .set_title("Import Config")
                     .add_filter("Config files (*.svb, *.opk, *.loli)", &["svb", "opk", "loli", "json"])
-                    .add_filter("All files", &["*"])
-                    .pick_file()
+                    .add_filter("All files", &["*"]);
+                
+                if !configs_dir.is_empty() {
+                    if let Ok(path) = std::path::PathBuf::from(&configs_dir).canonicalize() {
+                        dialog = dialog.set_directory(path);
+                    }
+                }
+                
+                dialog.pick_file()
             };
             if let Some(path) = pick_path {
                 match std::fs::read(&path) {
@@ -194,6 +217,7 @@ pub(super) fn list_configs(
 }
 
 pub(super) fn browse_folder(
+    state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
@@ -201,7 +225,28 @@ pub(super) fn browse_folder(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let field = data.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if let Some(path) = rfd::FileDialog::new().set_title("Select Folder").pick_folder() {
+            
+            // Get default directory for this field
+            let s = state.lock().await;
+            let default_dir = match field.as_str() {
+                "collections" => s.config.collections_path.clone(),
+                "wordlist_dir" => s.config.default_wordlist_path.clone(),
+                "proxy_dir" => s.config.default_proxy_path.clone(),
+                "plugins" => s.config.plugins_path.clone(),
+                "configs" => s.config.configs_path.clone(),
+                "results" => s.config.results_path.clone(),
+                _ => String::new(),
+            };
+            drop(s);
+            
+            let mut dialog = rfd::FileDialog::new().set_title("Select Folder");
+            if !default_dir.is_empty() {
+                if let Ok(path) = std::path::PathBuf::from(&default_dir).canonicalize() {
+                    dialog = dialog.set_directory(path);
+                }
+            }
+            
+            if let Some(path) = dialog.pick_folder() {
                 let resp = IpcResponse::ok("folder_selected", serde_json::json!({
                     "field": field,
                     "path": path.display().to_string(),
@@ -213,6 +258,7 @@ pub(super) fn browse_folder(
 }
 
 pub(super) fn browse_file(
+    state: Arc<Mutex<AppState>>,
     data: serde_json::Value,
     eval_js: impl Fn(String) + Send + 'static,
 ) {
@@ -220,6 +266,23 @@ pub(super) fn browse_file(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let field = data.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            
+            // Get default directory for this field
+            let s = state.lock().await;
+            let default_dir = match field.as_str() {
+                "wordlist" | "job_wordlist" => s.config.default_wordlist_path.clone(),
+                "proxies" | "proxy_group_source" => s.config.default_proxy_path.clone(),
+                "chrome_exe" => s.config.chrome_executable_path.clone()
+                    .rsplit_once(std::path::MAIN_SEPARATOR)
+                    .map(|(dir, _)| dir.to_string())
+                    .unwrap_or_default(),
+                "job_config" => s.config.configs_path.clone(),
+                "save_config" => s.config.configs_path.clone(),
+                "results_file" => s.config.results_path.clone(),
+                _ => String::new(),
+            };
+            drop(s);
+            
             let mut dialog = rfd::FileDialog::new();
             dialog = match field.as_str() {
                 "wordlist" | "job_wordlist" => dialog.set_title("Select Wordlist")
@@ -244,9 +307,19 @@ pub(super) fn browse_file(
                         .add_filter("Text files", &["txt", "csv", "lst"])
                         .add_filter("All files", &["*"])
                 },
+                "job_config" => dialog.set_title("Select Config File")
+                    .add_filter("Config files", &["rfx", "opk", "svb"])
+                    .add_filter("All files", &["*"]),
                 _ => dialog.set_title("Select File")
                     .add_filter("All files", &["*"]),
             };
+            
+            // Set starting directory if configured
+            if !default_dir.is_empty() {
+                if let Ok(path) = std::path::PathBuf::from(&default_dir).canonicalize() {
+                    dialog = dialog.set_directory(path);
+                }
+            }
 
             if let Some(path) = dialog.pick_file() {
                 let resp = IpcResponse::ok("file_selected", serde_json::json!({

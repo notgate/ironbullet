@@ -19,6 +19,10 @@ pub struct RfxMetadata {
 
 impl RfxConfig {
     pub fn from_pipeline(pipeline: &Pipeline) -> Self {
+        // Clone pipeline but clear proxy_groups - they're stored globally in GuiConfig
+        // and should NOT be persisted per-project (fixes issue #52)
+        let mut pipeline = pipeline.clone();
+        pipeline.proxy_settings.proxy_groups.clear();
         Self {
             version: 1,
             metadata: RfxMetadata {
@@ -27,7 +31,7 @@ impl RfxConfig {
                 created: pipeline.created.to_rfc3339(),
                 modified: pipeline.modified.to_rfc3339(),
             },
-            pipeline: pipeline.clone(),
+            pipeline,
         }
     }
 

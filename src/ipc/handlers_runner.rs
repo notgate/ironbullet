@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 use ironbullet::pipeline::engine::ExecutionContext;
 use ironbullet::runner::{RunnerOrchestrator, HitResult};
 use ironbullet::runner::data_pool::DataPool;
-use ironbullet::runner::proxy_pool::ProxyPool;
+use ironbullet::runner::proxy_pool::{ProxyPool, ProxyType};
 
 use super::{resolve_sidecar_path, AppState, IpcResponse};
 
@@ -358,53 +358,66 @@ pub(super) fn check_proxies(
                     all_sources = group.sources.clone();
                 }
             }
+            // Get default proxy type from settings (each source can have its own)
             drop(s);
 
-            // Load proxies from sources
-            let mut proxies: Vec<String> = Vec::new();
+            // Load proxies from sources using proper parsing (handles SOCKS5, auth, etc.)
+            let mut proxy_pool = ProxyPool::empty();
             for src in &all_sources {
+                let default_type = src.default_proxy_type.as_deref().and_then(|s| match s.to_lowercase().as_str() {
+                    "https"       => Some(ProxyType::Https),
+                    "socks4"      => Some(ProxyType::Socks4),
+                    "socks5"      => Some(ProxyType::Socks5),
+                    "shadowsocks" | "ss" => Some(ProxyType::Shadowsocks),
+                    _             => Some(ProxyType::Http),
+                });
                 match src.source_type {
                     ironbullet::pipeline::ProxySourceType::File => {
-                        if let Ok(content) = std::fs::read_to_string(&src.value) {
-                            proxies.extend(content.lines().filter(|l| !l.trim().is_empty()).map(|l| l.trim().to_string()));
-                        }
+                        let _ = proxy_pool.load_from_file(&src.value, src.default_proxy_type.as_deref());
                     }
                     ironbullet::pipeline::ProxySourceType::Inline => {
-                        proxies.extend(src.value.lines().filter(|l| !l.trim().is_empty()).map(|l| l.trim().to_string()));
+                        // Parse inline proxies line by line
+                        for line in src.value.lines().filter(|l| !l.trim().is_empty()) {
+                            proxy_pool.load_from_string(line.trim(), default_type);
+                        }
                     }
                     ironbullet::pipeline::ProxySourceType::Url => {
                         if let Ok(resp) = reqwest::get(&src.value).await {
                             if let Ok(text) = resp.text().await {
-                                proxies.extend(text.lines().filter(|l| !l.trim().is_empty()).map(|l| l.trim().to_string()));
+                                for line in text.lines().filter(|l| !l.trim().is_empty()) {
+                                    proxy_pool.load_from_string(line.trim(), default_type);
+                                }
                             }
                         }
                     }
                 }
             }
 
-            let total = proxies.len();
+            let total = proxy_pool.total();
             let mut alive = 0u32;
             let mut dead = 0u32;
 
             // Simple connectivity check: try to connect through each proxy
-            for proxy_str in &proxies {
-                let check_result = async {
-                    let proxy = reqwest::Proxy::all(proxy_str).map_err(|e| e.to_string())?;
-                    let client = reqwest::Client::builder()
-                        .proxy(proxy)
-                        .timeout(std::time::Duration::from_secs(8))
-                        .build()
-                        .map_err(|e| e.to_string())?;
-                    client.get("https://httpbin.org/ip")
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    Ok::<_, String>(())
-                }.await;
+            for _ in 0..total {
+                if let Some(proxy_url) = proxy_pool.next_proxy() {
+                    let check_result = async {
+                        let proxy = reqwest::Proxy::all(&proxy_url).map_err(|e| e.to_string())?;
+                        let client = reqwest::Client::builder()
+                            .proxy(proxy)
+                            .timeout(std::time::Duration::from_secs(8))
+                            .build()
+                            .map_err(|e| e.to_string())?;
+                        client.get("https://httpbin.org/ip")
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        Ok::<_, String>(())
+                    }.await;
 
-                match check_result {
-                    Ok(_) => alive += 1,
-                    Err(_) => dead += 1,
+                    match check_result {
+                        Ok(_) => alive += 1,
+                        Err(_) => dead += 1,
+                    }
                 }
             }
 

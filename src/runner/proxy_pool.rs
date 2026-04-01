@@ -81,6 +81,14 @@ impl ProxyPool {
         Ok(())
     }
 
+    /// Load a single proxy line into this pool.
+    /// `default_type` is the optional proxy type to use if the line doesn't specify one.
+    pub fn load_from_string(&mut self, line: &str, default_type: Option<ProxyType>) {
+        if let Some(entry) = parse_proxy_line(line.trim(), default_type) {
+            self.proxies.push(entry);
+        }
+    }
+
     pub fn next_proxy(&self) -> Option<String> {
         if self.proxies.is_empty() {
             return None;

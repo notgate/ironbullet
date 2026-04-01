@@ -54,20 +54,22 @@ export function send(cmd: string, data: Record<string, unknown> = {}) {
 }
 
 export function saveSettings() {
-	send('save_config', {
-		zoom: Math.round(app.zoom * 100),
-		font_size: app.fontSize,
-		font_family: app.fontFamily,
-		font_weight: app.fontWeight,
-		default_threads: app.pipeline.runner_settings.threads,
-		left_panel_width: app.leftPanelWidth,
-		bottom_panel_height: app.bottomPanelHeight,
-		show_block_palette: app.showBlockPalette,
-		collections_path: app.collectionsPath,
-		default_wordlist_path: app.defaultWordlistPath,
-		default_proxy_path: app.defaultProxyPath,
-		plugins_path: (app.config as any)?.plugins_path || '',
-	});
+    send('save_config', {
+        zoom: Math.round(app.zoom * 100),
+        font_size: app.fontSize,
+        font_family: app.fontFamily,
+        font_weight: app.fontWeight,
+        default_threads: app.pipeline.runner_settings.threads,
+        left_panel_width: app.leftPanelWidth,
+        bottom_panel_height: app.bottomPanelHeight,
+        show_block_palette: app.showBlockPalette,
+        collections_path: app.collectionsPath,
+        default_wordlist_path: app.defaultWordlistPath,
+        default_proxy_path: app.defaultProxyPath,
+        configs_path: app.configsPath,
+        results_path: app.resultsPath,
+        plugins_path: (app.config as any)?.plugins_path || '',
+    });
 }
 
 // Callback registry for async IPC responses
@@ -111,10 +113,12 @@ export function registerCallbacks() {
 					if (cfg.left_panel_width) app.leftPanelWidth = cfg.left_panel_width;
 					if (cfg.bottom_panel_height) app.bottomPanelHeight = cfg.bottom_panel_height;
 					if (cfg.show_block_palette !== undefined) app.showBlockPalette = cfg.show_block_palette;
-					if (cfg.collections_path) app.collectionsPath = cfg.collections_path;
-					if (cfg.default_wordlist_path) app.defaultWordlistPath = cfg.default_wordlist_path;
-					if (cfg.default_proxy_path) app.defaultProxyPath = cfg.default_proxy_path;
-				}
+if (cfg.collections_path) app.collectionsPath = cfg.collections_path;
+                    if (cfg.default_wordlist_path) app.defaultWordlistPath = cfg.default_wordlist_path;
+                    if (cfg.default_proxy_path) app.defaultProxyPath = cfg.default_proxy_path;
+                    if (cfg.configs_path) app.configsPath = cfg.configs_path;
+                    if (cfg.results_path) app.resultsPath = cfg.results_path;
+                }
 				break;
 			case 'pipeline_loaded':
 				if (resp.data) {

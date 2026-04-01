@@ -107,4 +107,40 @@
 	</div>
 {/if}
 
+{#if shouldShowSetting('paths', 'Configs Directory')}
+	<div class="py-1.5">
+		<div class="flex items-center justify-between">
+			<div>
+				<span class="text-[11px] text-muted-foreground">Default configs directory</span>
+				<p class="text-[9px] text-muted-foreground/60">Start browsing/saving config files from this folder</p>
+			</div>
+			<button class="skeu-btn text-[10px]" onclick={() => send('browse_folder', { field: 'configs' })}>Browse</button>
+		</div>
+		<input
+			type="text"
+			bind:value={app.configsPath}
+			class="w-full skeu-input text-[10px] font-mono mt-1"
+			placeholder="Not set"
+		/>
+	</div>
+{/if}
+
+{#if shouldShowSetting('paths', 'Results Directory')}
+	<div class="py-1.5">
+		<div class="flex items-center justify-between">
+			<div>
+				<span class="text-[11px] text-muted-foreground">Default results directory</span>
+				<p class="text-[9px] text-muted-foreground/60">Default folder for output/hit files</p>
+			</div>
+			<button class="skeu-btn text-[10px]" onclick={() => send('browse_folder', { field: 'results' })}>Browse</button>
+		</div>
+		<input
+			type="text"
+			bind:value={app.resultsPath}
+			class="w-full skeu-input text-[10px] font-mono mt-1"
+			placeholder="Not set"
+		/>
+	</div>
+{/if}
+
 {#if !searchQuery}<div class="my-2 groove-h h-px"></div>{/if}

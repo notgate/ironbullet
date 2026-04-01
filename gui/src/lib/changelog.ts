@@ -10,6 +10,24 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.5.0',
+		date: '2026-04-01',
+		highlights: 'Major bugfix release — SOCKS5 proxy support, file dialogs respect settings, autosave recovery.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+				'SOCKS5 proxies completely broken (issue #46): ProxyPool.load_from_string() was not parsing proxy lines correctly. Added proper load_from_string() method that accepts Option<ProxyType> and fixed the proxy loading flow to handle each source with its own default type. SOCKS5, SOCKS4, HTTP, HTTPS, and Shadowsocks proxies all work now.',
+				'Job output files saved as "New_Config_1" (issue #45): When loading a saved config, the pipeline name was not derived from the config filename if it matched default patterns. Fixed handlers_job.rs to detect "New Config" or "New Config N" patterns and replace with actual filename stem.',
+				'Unsaved session dialog on every launch (issue #47): The autosave recovery file was not deleted after successful restoration. Fixed handlers_config.rs to delete autosave after load_pipeline() succeeds.',
+				'Job creation dialog cannot find configs (issue #48): The configs list was using setupDirsPaths.configs instead of the saved configsPath from settings. Fixed JobMonitor.svelte to prefer configsPath with fallback to setupDirsPaths.',
+				'File dialogs ignore default paths from Settings (issue #50): Several file dialogs were not setting the starting directory from GuiConfig. Fixed save_code, import_config, import_plugin, and save_plugin_files to use their respective default paths from settings.',
+				'Proxy groups stored per-project and overwrite global settings (issue #52): Proxy groups were being saved inside .rfx config files, so loading an old config would restore deleted groups. Fixed RfxConfig::from_pipeline() to clear proxy_groups before saving, and load_pipeline() to always use global groups from GuiConfig instead of merging.',
+			],
+		},
+		],
+	},
+	{
 		version: '0.4.9',
 		date: '2026-04-01',
 		highlights: 'Black screen fix for Shadowsocks users — UI no longer freezes during proxy resolution.',

@@ -74,13 +74,27 @@ pub(super) fn create_job(
             if !config_path_str.is_empty() {
                 match std::fs::read_to_string(&config_path_str) {
                     Ok(raw) => {
-                        // Try parsing as-is (rfx/opk are Pipeline JSON); also try RfxConfig wrapper
+                        // Try parsing as-is (rfx/opk/svb are Pipeline JSON); also try RfxConfig wrapper
                         let loaded: Option<ironbullet::pipeline::Pipeline> =
                             serde_json::from_str::<ironbullet::pipeline::Pipeline>(&raw).ok()
                             .or_else(|| serde_json::from_str::<RfxConfig>(&raw).ok().map(|c| c.pipeline));
-                        if let Some(pipeline) = loaded {
-                            eprintln!("[create_job] Loaded config from path: {} ({} blocks)", config_path_str, pipeline.blocks.len());
+                        if let Some(mut pipeline) = loaded {
+                            // Derive pipeline name from config filename if still default/untitled
+                            let config_name = std::path::Path::new(&config_path_str)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("Config");
+                            // Check for default names: "New Config" or "New Config N" (frontend generates numbered defaults)
+                            let is_default_name = pipeline.name.is_empty()
+                                || pipeline.name == "New Config"
+                                || pipeline.name.starts_with("New Config ");
+                            if is_default_name {
+                                pipeline.name = config_name.to_string();
+                            }
+                            eprintln!("[create_job] Loaded config from path: {} ({} blocks, name='{}')", 
+                                config_path_str, pipeline.blocks.len(), pipeline.name);
                             job.pipeline = pipeline;
+                            job.config_path = Some(config_path_str);
                         } else {
                             eprintln!("[create_job] Failed to parse config at {}, falling back to active pipeline", config_path_str);
                             job.pipeline = s.pipeline.clone();
@@ -111,13 +125,7 @@ pub(super) fn create_job(
                 }
             }
 
-            // ── config path (loads pipeline from .rfx file if provided) ───────
-            if let Some(path) = data.get("config_path").and_then(|v| v.as_str()) {
-                job.config_path = Some(path.to_string());
-                if let Ok(rfx) = RfxConfig::load_from_file(path) {
-                    job.pipeline = rfx.pipeline;
-                }
-            }
+            // (config_path already handled above - no need to reload)
 
             if let Some(url) = data.get("proxy_check_url").and_then(|v| v.as_str()) {
                 if !url.is_empty() { job.proxy_check_url = url.to_string(); }

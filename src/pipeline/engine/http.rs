@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use super::*; // includes TlsClient via block::settings_http::*
+use super::*; // includes TlsClient via block::settings_http::* and RustlsClientSlot
 
 impl ExecutionContext {
     pub(super) async fn execute_http_request(
@@ -103,14 +103,25 @@ impl ExecutionContext {
             TlsClient::RustTLS => {
                 // Native reqwest + rustls. Reuse the session-scoped client so the
                 // cookie jar persists across HTTP blocks in the same pipeline run.
-                let existing = self.rustls_client.take();
+                // Only reuse if the proxy matches — otherwise rebuild with new proxy.
+                let current_proxy = self.proxy.clone();
+                let existing = self.rustls_client.take().and_then(|slot| {
+                    if slot.proxy == current_proxy {
+                        Some(slot.client)
+                    } else {
+                        None
+                    }
+                });
                 let (resp, client) = crate::sidecar::native::execute_rustls_request(
                     &sidecar_req,
                     settings.ssl_verify,
                     settings.proxy_insecure,
                     existing,
                 ).await;
-                self.rustls_client = Some(client);
+                self.rustls_client = Some(RustlsClientSlot {
+                    client,
+                    proxy: self.proxy.clone(),
+                });
                 resp
             }
             #[cfg(any(unix, target_os = "windows"))]

@@ -48,6 +48,12 @@ pub struct GuiConfig {
     /// When empty, IronBullet uses chromiumoxide's built-in auto-discovery.
     #[serde(default)]
     pub chrome_executable_path: String,
+    /// Default directory for saved config files (.rfx, .opk, .svb)
+    #[serde(default)]
+    pub configs_path: String,
+    /// Default directory for output/result files
+    #[serde(default)]
+    pub results_path: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -98,6 +104,8 @@ impl Default for GuiConfig {
             plugins_path: String::new(),
             proxy_groups: Vec::new(),
             chrome_executable_path: String::new(),
+            configs_path: String::new(),
+            results_path: String::new(),
         }
     }
 }

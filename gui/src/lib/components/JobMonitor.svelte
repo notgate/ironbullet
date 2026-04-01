@@ -338,9 +338,11 @@ Error handling
 	});
 
 	// When form opens and configs dir is known, fetch saved configs list
+	// Use configsPath (from saved config) as primary, fallback to setupDirsPaths.configs (default dir)
 	$effect(() => {
-		if (showNewJob && app.setupDirsPaths?.configs) {
-			send('list_configs', { configs_path: app.setupDirsPaths.configs });
+		const configsDir = app.configsPath || app.setupDirsPaths?.configs;
+		if (showNewJob && configsDir) {
+			send('list_configs', { configs_path: configsDir });
 		}
 	});
 

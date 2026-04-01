@@ -371,7 +371,7 @@ pub fn handle_ipc_cmd(
             None
         }
         "save_code" => {
-            handlers_file::save_code(data, eval_js);
+            handlers_file::save_code(state, data, eval_js);
             None
         }
         "import_config" => {
@@ -387,11 +387,11 @@ pub fn handle_ipc_cmd(
             None
         }
         "browse_folder" => {
-            handlers_file::browse_folder(data, eval_js);
+            handlers_file::browse_folder(state, data, eval_js);
             None
         }
         "browse_file" => {
-            handlers_file::browse_file(data, eval_js);
+            handlers_file::browse_file(state, data, eval_js);
             None
         }
 
@@ -412,7 +412,7 @@ pub fn handle_ipc_cmd(
             None
         }
         "save_plugin_files" => {
-            handlers_plugin::save_plugin_files(data, eval_js);
+            handlers_plugin::save_plugin_files(state, data, eval_js);
             None
         }
 

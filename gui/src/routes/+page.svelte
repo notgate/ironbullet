@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { registerCallbacks } from '$lib/ipc';
+	import { registerCallbacks, send } from '$lib/ipc';
 	import { app } from '$lib/state.svelte';
 	import { dock } from '$lib/state/dock.svelte';
 	import type { PanelId } from '$lib/state/dock.svelte';
@@ -86,6 +86,13 @@
 
 	onMount(() => {
 		registerCallbacks();
+
+		// Ensure default dirs are set up on startup (not just during onboarding)
+		// This is needed for job creation dialog to find saved configs
+		if (!app.setupDirsDone) {
+			console.log('[App] calling setup_default_dirs on startup');
+			send('setup_default_dirs');
+		}
 
 		// Callbacks invoked by Rust when native panel windows open/close
 		(window as any).__ibPanelOpened = (panelId: string) => {

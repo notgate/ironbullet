@@ -62,11 +62,13 @@ interface AppState {
 	fontSize: number;
 	fontWeight: string;
 
-	// Paths
-	collectionsPath: string;
-	defaultWordlistPath: string;
-	defaultProxyPath: string;
-	collectionConfigs: Array<{ path: string; name: string }>;
+// Paths
+    collectionsPath: string;
+    defaultWordlistPath: string;
+    defaultProxyPath: string;
+    configsPath: string;
+    resultsPath: string;
+    collectionConfigs: Array<{ path: string; name: string }>;
 
 	// Undo/Redo
 	canUndo: boolean;
@@ -194,10 +196,12 @@ function createAppState(): AppState {
 	let fontFamily = $state('Cascadia Code');
 	let fontSize = $state(12);
 	let fontWeight = $state('400');
-	let collectionsPath = $state('');
-	let defaultWordlistPath = $state('');
-	let defaultProxyPath = $state('');
-	let collectionConfigs = $state<Array<{ path: string; name: string }>>([]);
+let collectionsPath = $state('');
+let defaultWordlistPath = $state('');
+let defaultProxyPath = $state('');
+let configsPath = $state('');
+let resultsPath = $state('');
+let collectionConfigs = $state<Array<{ path: string; name: string }>>([]);
 
 	// Undo/Redo history
 	let canUndo = $state(false);
@@ -376,12 +380,16 @@ function createAppState(): AppState {
 		set canUndo(v: boolean) { canUndo = v; },
 		get canRedo() { return canRedo; },
 		set canRedo(v: boolean) { canRedo = v; },
-		get collectionsPath() { return collectionsPath; },
-		set collectionsPath(v) { collectionsPath = v; },
-		get defaultWordlistPath() { return defaultWordlistPath; },
-		set defaultWordlistPath(v) { defaultWordlistPath = v; },
-		get defaultProxyPath() { return defaultProxyPath; },
-		set defaultProxyPath(v) { defaultProxyPath = v; },
+get collectionsPath() { return collectionsPath; },
+        set collectionsPath(v) { collectionsPath = v; },
+        get defaultWordlistPath() { return defaultWordlistPath; },
+        set defaultWordlistPath(v) { defaultWordlistPath = v; },
+        get defaultProxyPath() { return defaultProxyPath; },
+        set defaultProxyPath(v) { defaultProxyPath = v; },
+        get configsPath() { return configsPath; },
+        set configsPath(v) { configsPath = v; },
+        get resultsPath() { return resultsPath; },
+        set resultsPath(v) { resultsPath = v; },
 		get collectionConfigs() { return collectionConfigs; },
 		set collectionConfigs(v) { collectionConfigs = v; },
 		get configTabs() { return configTabs; },

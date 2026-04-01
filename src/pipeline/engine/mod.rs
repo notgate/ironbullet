@@ -25,6 +25,18 @@ pub(crate) use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 
 use helpers::elapsed_ms;
 
+// ── RustTLS client slot — tracks proxy for proper cache invalidation ──
+pub struct RustlsClientSlot {
+    pub client: reqwest::Client,
+    pub proxy: Option<String>,
+}
+
+impl std::fmt::Debug for RustlsClientSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RustlsClientSlot(proxy={:?})", self.proxy)
+    }
+}
+
 // ── WreqTLS client slot — Unix only (BoringSSL cross-compile for Windows unsupported) ──
 #[cfg(any(unix, target_os = "windows"))]
 pub struct WreqClientSlot {
@@ -96,8 +108,9 @@ pub struct ExecutionContext {
     /// Reusable reqwest client for RustTLS requests — persists cookie jar between
     /// HTTP blocks within a single pipeline execution so multi-step login flows work.
     /// Reset for every new ExecutionContext (i.e. every credential checked).
+    /// Wrapped in RustlsClientSlot to track the proxy and invalidate on change.
     #[serde(skip)]
-    pub rustls_client: Option<reqwest::Client>,
+    pub rustls_client: Option<RustlsClientSlot>,
     /// Reusable wreq client for WreqTLS requests — Unix only (BoringSSL).
     #[cfg(any(unix, target_os = "windows"))]
     #[serde(skip)]

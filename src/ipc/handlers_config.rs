@@ -91,6 +91,8 @@ pub(super) fn save_config(
                 if let Some(v) = data.get("collections_path").and_then(|v| v.as_str()) { s.config.collections_path = v.to_string(); }
                 if let Some(v) = data.get("default_wordlist_path").and_then(|v| v.as_str()) { s.config.default_wordlist_path = v.to_string(); }
                 if let Some(v) = data.get("default_proxy_path").and_then(|v| v.as_str()) { s.config.default_proxy_path = v.to_string(); }
+                if let Some(v) = data.get("configs_path").and_then(|v| v.as_str()) { s.config.configs_path = v.to_string(); }
+                if let Some(v) = data.get("results_path").and_then(|v| v.as_str()) { s.config.results_path = v.to_string(); }
                 if let Some(v) = data.get("plugins_path").and_then(|v| v.as_str()) {
                     s.config.plugins_path = v.to_string();
                     let mut pm = PluginManager::new();
@@ -190,12 +192,17 @@ pub(super) fn save_pipeline(
             // Resolve save path: explicit path > existing pipeline_path > file dialog.
             // This prevents proxy-group and settings auto-saves from opening a dialog
             // when the pipeline has already been saved at least once (issue #7, #8).
+            let configs_dir = { state.lock().await.config.configs_path.clone() };
             let save_path = if force_dialog {
-                rfd::FileDialog::new()
+                let mut dialog = rfd::FileDialog::new()
                     .set_title("Save Config")
-                    .add_filter("ironbullet config", &["rfx"])
-                    .save_file()
-                    .map(|p| p.display().to_string())
+                    .add_filter("ironbullet config", &["rfx"]);
+                if !configs_dir.is_empty() {
+                    if let Ok(path) = std::path::PathBuf::from(&configs_dir).canonicalize() {
+                        dialog = dialog.set_directory(path);
+                    }
+                }
+                dialog.save_file().map(|p| p.display().to_string())
             } else if !path.is_empty() {
                 Some(path)
             } else {
@@ -203,11 +210,15 @@ pub(super) fn save_pipeline(
                 if let Some(ep) = existing {
                     Some(ep)
                 } else {
-                    rfd::FileDialog::new()
+                    let mut dialog = rfd::FileDialog::new()
                         .set_title("Save Config")
-                        .add_filter("ironbullet config", &["rfx"])
-                        .save_file()
-                        .map(|p| p.display().to_string())
+                        .add_filter("ironbullet config", &["rfx"]);
+                    if !configs_dir.is_empty() {
+                        if let Ok(path) = std::path::PathBuf::from(&configs_dir).canonicalize() {
+                            dialog = dialog.set_directory(path);
+                        }
+                    }
+                    dialog.save_file().map(|p| p.display().to_string())
                 }
             };
             if let Some(save_path) = save_path {
@@ -255,28 +266,31 @@ pub(super) fn load_pipeline(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let load_path = data.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let configs_dir = { state.lock().await.config.configs_path.clone() };
             let pick_path = if load_path.is_some() {
                 load_path.map(|p| std::path::PathBuf::from(p))
             } else {
-                rfd::FileDialog::new()
+                let mut dialog = rfd::FileDialog::new()
                     .set_title("Open Config")
-                    .add_filter("ironbullet config", &["rfx"])
-                    .pick_file()
+                    .add_filter("ironbullet config", &["rfx"]);
+                if !configs_dir.is_empty() {
+                    if let Ok(path) = std::path::PathBuf::from(&configs_dir).canonicalize() {
+                        dialog = dialog.set_directory(path);
+                    }
+                }
+                dialog.pick_file()
             };
             if let Some(path) = pick_path {
                 let path_str = path.display().to_string();
+                let is_autosave = path == config::autosave_path();
                 match RfxConfig::load_from_file(&path_str) {
                     Ok(config) => {
                         let mut s = state.lock().await;
                         s.pipeline = config.pipeline;
-                        // Merge global proxy groups from GuiConfig into loaded pipeline
-                        // (so global groups persist across config switches)
-                        let global_groups = s.config.proxy_groups.clone();
-                        for group in global_groups {
-                            if !s.pipeline.proxy_settings.proxy_groups.iter().any(|g| g.name == group.name) {
-                                s.pipeline.proxy_settings.proxy_groups.push(group);
-                            }
-                        }
+                        // Proxy groups are GLOBAL (stored in GuiConfig), not per-project.
+                        // Always use the global groups, ignoring any that might have been
+                        // loaded from the file (fixes issue #52).
+                        s.pipeline.proxy_settings.proxy_groups = s.config.proxy_groups.clone();
                         s.pipeline_path = Some(path_str.clone());
                         // Track in recent configs
                         let pipeline_name = s.pipeline.name.clone();
@@ -292,6 +306,11 @@ pub(super) fn load_pipeline(
                         }
                         s.config.last_config_path = path_str.clone();
                         config::save_config(&s.config);
+                        // If this was the autosave recovery file, delete it after successful load
+                        // to prevent the "unsaved session" dialog on next launch
+                        if is_autosave {
+                            let _ = std::fs::remove_file(config::autosave_path());
+                        }
                         let mut pipeline_val = serde_json::to_value(&s.pipeline).unwrap_or_default();
                         if let Some(obj) = pipeline_val.as_object_mut() {
                             obj.insert("_file_path".to_string(), serde_json::Value::String(path_str));

@@ -13,7 +13,7 @@ use raw_window_handle::HasWindowHandle;
 use wry::WebViewBuilder;
 use include_dir::{include_dir, Dir};
 
-use ironbullet::config::{load_config, save_config};
+use ironbullet::config::{load_config, save_config, autosave_path};
 use ipc::{AppState, IpcCmd};
 
 /// Check if WebView2 runtime is installed (Windows only).
@@ -675,6 +675,8 @@ fn run_gui() {
                                 s.config.window_y = Some(pos.y);
                             }
                             save_config(&s.config);
+                            // Clean up autosave file on normal exit — prevents "unsaved session" dialog on next launch
+                            let _ = std::fs::remove_file(autosave_path());
                         });
                     }
                     *control_flow = ControlFlow::Exit;
