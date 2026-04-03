@@ -227,6 +227,10 @@ pub fn handle_ipc_cmd(
             handlers_block::add_block(state, data, eval_js);
             None
         }
+        "import_curl_blocks" => {
+            handlers_block::import_curl_blocks(state, data, eval_js);
+            None
+        }
         "remove_block" => {
             handlers_block::remove_block(state, data, eval_js);
             None

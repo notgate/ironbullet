@@ -4,7 +4,7 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import { app } from '$lib/state.svelte';
-	import { syncPipelineToBackend } from '$lib/state/tabs';
+	import { send } from '$lib/ipc';
 
 	// ── tab state ───────────────────────────────────────────────────────────────
 	type Tab = 'encode' | 'diff' | 'cookies' | 'strings' | 'regex' | 'curl';
@@ -239,7 +239,10 @@
 	}
 
 	function parseCurl(raw: string): CurlParsed | string {
-		const input = raw.trim().replace(/\\\n\s*/g, ' ');
+		// Normalise line continuations: bash `\\\n` and Windows CMD `^\n`
+		const input = raw.trim()
+			.replace(/\^\r?\n\s*/g, ' ')   // CMD: ^ at end of line
+			.replace(/\\\r?\n\s*/g, ' '); // bash/PowerShell: \ at end of line
 		if (!input.startsWith('curl')) return 'Input must start with "curl"';
 
 		const result: CurlParsed = {
@@ -325,79 +328,20 @@
 			return;
 		}
 
-		// Build HTTP Request block
-		const httpId = crypto.randomUUID();
-		const httpBlock = {
-			id: httpId,
-			label: 'HTTP Request',
-			disabled: false,
-			block_type: 'HttpRequest',
-			settings: {
-				type: 'HttpRequest',
-				method: parsed.method,
-				url: parsed.url,
-				headers: parsed.headers,
-				body: parsed.body,
-				body_type: parsed.bodyType,
-				content_type: parsed.contentType,
-				follow_redirects: true,
-				max_redirects: 8,
-				timeout_ms: 10000,
-				auto_redirect: true,
-				basic_auth: null,
-				http_version: 'HTTP/1.1',
-				response_var: 'SOURCE',
-				custom_cookies: '',
-				ssl_verify: true,
-				proxy_insecure: false,
-				cipher_suites: '',
-				tls_client: 'RustTLS',
-				browser_profile: '',
-				ja3_override: '',
-				http2fp_override: '',
-				wreq_emulation: '',
-			},
-		};
+		// Delegate block creation to Rust via IPC so blocks are constructed with
+		// Block::new() — correct serde shape, safe_mode field, all defaults set.
+		// The pipeline_loaded response updates the frontend state exactly like
+		// any other add_block call, so disable/delete/debug all work normally.
+		send('import_curl_blocks', {
+			method:       parsed.method,
+			url:          parsed.url,
+			headers:      parsed.headers,
+			body:         parsed.body,
+			body_type:    parsed.bodyType,
+			content_type: parsed.contentType,
+		});
 
-		// Build KeyCheck block — check for HTTP 200
-		const keyId = crypto.randomUUID();
-		const keyBlock = {
-			id: keyId,
-			label: 'Key Check',
-			disabled: false,
-			block_type: 'KeyCheck',
-			settings: {
-				type: 'KeyCheck',
-				keychains: [
-					{
-						result: 'Success',
-						mode: 'And',
-						conditions: [
-							{ source: 'data.RESPONSECODE', comparison: 'EqualTo', value: '200' },
-						],
-					},
-					{
-						result: 'Fail',
-						mode: 'And',
-						conditions: [
-							{ source: 'data.RESPONSECODE', comparison: 'NotEqualTo', value: '200' },
-						],
-					},
-				],
-				stop_on_fail: false,
-			},
-		};
-
-		// Inject into active pipeline
-		app.pipeline.blocks = [...app.pipeline.blocks, httpBlock as any, keyBlock as any];
-		const tab = app.configTabs.find(t => t.id === app.activeTabId);
-		if (tab) {
-			tab.pipeline.blocks = JSON.parse(JSON.stringify(app.pipeline.blocks));
-			tab.isDirty = true;
-		}
-		syncPipelineToBackend();
-
-		curlSuccess = `Imported: HTTP ${parsed.method} block + KeyCheck block added to pipeline.`;
+		curlSuccess = `Imported: HTTP ${parsed.method} block + KeyCheck block — added to pipeline.`;
 		curlInput = '';
 	}
 

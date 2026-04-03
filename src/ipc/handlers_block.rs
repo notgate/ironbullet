@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use ironbullet::pipeline::block::{Block, BlockSettings, BlockType, GroupSettings};
+use ironbullet::pipeline::block::{Block, BlockSettings, BlockType, GroupSettings,
+    HttpRequestSettings, BodyType, KeyCheckSettings, Keychain, KeyCondition, KeychainMode, Comparison};
+use ironbullet::pipeline::BotStatus;
 
 use super::block_tree::{
     add_block_to_nested, extract_block_recursive, find_block_mut,
@@ -458,6 +460,100 @@ pub(super) fn group_blocks(
                 remaining.insert(adj_pos, group);
                 s.pipeline.blocks = remaining;
             }
+            let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
+            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+                obj.insert("_tab_id".to_string(), tid);
+            }
+            auto_save_if_known(&s);
+            let resp = IpcResponse::ok("pipeline_loaded", resp_data);
+            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+        });
+    }
+}
+
+/// Import a parsed cURL command as two pipeline blocks (HttpRequest + KeyCheck).
+/// Blocks are created server-side via Block::new() so all defaults are correct and
+/// the blocks round-trip cleanly through Rust serde on every subsequent mutation.
+pub(super) fn import_curl_blocks(
+    state: Arc<Mutex<AppState>>,
+    data: serde_json::Value,
+    eval_js: impl Fn(String) + Send + 'static,
+) {
+    let rt = tokio::runtime::Handle::try_current();
+    if let Ok(handle) = rt {
+        handle.spawn(async move {
+            let mut s = state.lock().await;
+
+            // Sync current blocks from frontend before appending.
+            if let Some(blk_val) = data.get("_blocks") {
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
+            }
+            if let Some(sblk_val) = data.get("_startup_blocks") {
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
+            }
+
+            let method  = data.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_string();
+            let url     = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let body    = data.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let ct      = data.get("content_type").and_then(|v| v.as_str()).unwrap_or("application/x-www-form-urlencoded").to_string();
+            let bt_str  = data.get("body_type").and_then(|v| v.as_str()).unwrap_or("None");
+            let headers: Vec<(String, String)> = data.get("headers")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+
+            let body_type = match bt_str {
+                "Standard" => BodyType::Standard,
+                "Raw"      => BodyType::Raw,
+                _          => BodyType::None,
+            };
+
+            // Build HTTP Request block via Block::new() — ensures all fields have
+            // correct defaults and safe_mode/block_type are properly set.
+            let mut http_block = Block::new(BlockType::HttpRequest);
+            http_block.label = "HTTP Request".to_string();
+            if let BlockSettings::HttpRequest(ref mut hs) = http_block.settings {
+                hs.method       = method;
+                hs.url          = url;
+                hs.headers      = headers;
+                hs.body         = body;
+                hs.body_type    = body_type;
+                hs.content_type = ct;
+            }
+
+            // Build KeyCheck block — HTTP 200 = Success, else Fail.
+            let mut key_block = Block::new(BlockType::KeyCheck);
+            key_block.label = "Key Check".to_string();
+            if let BlockSettings::KeyCheck(ref mut ks) = key_block.settings {
+                ks.keychains = vec![
+                    Keychain {
+                        result: BotStatus::Success,
+                        mode: KeychainMode::And,
+                        conditions: vec![KeyCondition {
+                            source: "data.RESPONSECODE".to_string(),
+                            comparison: Comparison::EqualTo,
+                            value: "200".to_string(),
+                        }],
+                    },
+                    Keychain {
+                        result: BotStatus::Fail,
+                        mode: KeychainMode::And,
+                        conditions: vec![KeyCondition {
+                            source: "data.RESPONSECODE".to_string(),
+                            comparison: Comparison::NotEqualTo,
+                            value: "200".to_string(),
+                        }],
+                    },
+                ];
+                ks.stop_on_fail = false;
+            }
+
+            s.pipeline.blocks.push(http_block);
+            s.pipeline.blocks.push(key_block);
+
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
             if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
                 obj.insert("_tab_id".to_string(), tid);
