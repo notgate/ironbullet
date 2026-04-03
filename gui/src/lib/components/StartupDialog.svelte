@@ -31,6 +31,19 @@
 
 	function dismiss() {
 		if (canClose) {
+			// If the active tab is a blank unsaved tab, give it a fresh generated name
+			// so it can't accidentally overwrite the last saved project on Ctrl+S.
+			const tab = app.configTabs.find(t => t.id === app.activeTabId);
+			if (tab && !tab.filePath && (tab.pipeline?.blocks?.length ?? 0) === 0) {
+				const existing = app.configTabs.map(t => t.name);
+				let n = 1;
+				while (existing.filter(nm => nm !== tab.name).includes(`New Config ${n}`)) n++;
+				const freshName = `New Config ${n}`;
+				tab.name = freshName;
+				tab.pipeline.name = freshName;
+				tab.isDirty = false;
+				tab.savedSnapshot = JSON.stringify(tab.pipeline);
+			}
 			app.showStartup = false;
 			mode = 'home';
 		}

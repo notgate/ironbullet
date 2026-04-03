@@ -3,9 +3,11 @@
 	import Check from '@lucide/svelte/icons/check';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
+	import { app } from '$lib/state.svelte';
+	import { syncPipelineToBackend } from '$lib/state/tabs';
 
 	// ── tab state ───────────────────────────────────────────────────────────────
-	type Tab = 'encode' | 'diff' | 'cookies' | 'strings' | 'regex';
+	type Tab = 'encode' | 'diff' | 'cookies' | 'strings' | 'regex' | 'curl';
 	let activeTab = $state<Tab>('encode');
 
 	// ── shared copy helper ───────────────────────────────────────────────────────
@@ -220,12 +222,192 @@
 		}
 	});
 
+	// ═══════════════════════════════════════════════════════════════════════════
+	// CURL IMPORTER
+	// ═══════════════════════════════════════════════════════════════════════════
+	let curlInput = $state('');
+	let curlError = $state('');
+	let curlSuccess = $state('');
+
+	interface CurlParsed {
+		method: string;
+		url: string;
+		headers: [string, string][];
+		body: string;
+		bodyType: 'None' | 'Standard' | 'Raw';
+		contentType: string;
+	}
+
+	function parseCurl(raw: string): CurlParsed | string {
+		const input = raw.trim().replace(/\\\n\s*/g, ' ');
+		if (!input.startsWith('curl')) return 'Input must start with "curl"';
+
+		const result: CurlParsed = {
+			method: 'GET',
+			url: '',
+			headers: [],
+			body: '',
+			bodyType: 'None',
+			contentType: 'application/x-www-form-urlencoded',
+		};
+
+		// Tokenise respecting single and double quotes
+		const tokens: string[] = [];
+		let i = 0;
+		while (i < input.length) {
+			while (i < input.length && /\s/.test(input[i])) i++;
+			if (i >= input.length) break;
+			let token = '';
+			if (input[i] === "'") {
+				i++;
+				while (i < input.length && input[i] !== "'") token += input[i++];
+				i++; // closing quote
+			} else if (input[i] === '"') {
+				i++;
+				while (i < input.length && input[i] !== '"') {
+					if (input[i] === '\\' && i + 1 < input.length) { i++; token += input[i++]; }
+					else token += input[i++];
+				}
+				i++;
+			} else {
+				while (i < input.length && !/\s/.test(input[i])) token += input[i++];
+			}
+			if (token) tokens.push(token);
+		}
+
+		let j = 1; // skip 'curl'
+		while (j < tokens.length) {
+			const t = tokens[j];
+			if (t === '-X' || t === '--request') {
+				result.method = tokens[++j]?.toUpperCase() ?? 'GET';
+			} else if (t === '-H' || t === '--header') {
+				const hdr = tokens[++j] ?? '';
+				const colon = hdr.indexOf(':');
+				if (colon !== -1) {
+					const name = hdr.slice(0, colon).trim();
+					const val = hdr.slice(colon + 1).trim();
+					// Skip headers that are auto-managed or meaningless for replay
+					const skip = /^(cookie|content-length|host|connection|transfer-encoding)$/i.test(name);
+					if (!skip) {
+						result.headers.push([name, val]);
+						if (/^content-type$/i.test(name)) result.contentType = val.split(';')[0].trim();
+					}
+				}
+			} else if (t === '-d' || t === '--data' || t === '--data-raw' || t === '--data-binary' || t === '--data-urlencode') {
+				result.body = tokens[++j] ?? '';
+				result.bodyType = 'Standard';
+				if (result.method === 'GET') result.method = 'POST';
+			} else if (t === '--json') {
+				result.body = tokens[++j] ?? '';
+				result.bodyType = 'Raw';
+				result.contentType = 'application/json';
+				if (result.method === 'GET') result.method = 'POST';
+			} else if (!t.startsWith('-')) {
+				if (!result.url) result.url = t;
+			} else if (t === '-L' || t === '--location' || t === '--compressed' || t === '-s' || t === '--silent' || t === '-k' || t === '--insecure' || t === '-v' || t === '--verbose' || t === '-i' || t === '--include' || t === '--http1.1' || t === '--http2') {
+				// known flags with no value — ignore
+			} else if (t === '-u' || t === '--user' || t === '-A' || t === '--user-agent' || t === '-b' || t === '--cookie' || t === '-e' || t === '--referer' || t === '-m' || t === '--max-time' || t === '--connect-timeout' || t === '--max-redirs' || t === '-o' || t === '--output' || t === '-w' || t === '--write-out') {
+				j++; // consume value, ignore
+			}
+			j++;
+		}
+
+		if (!result.url) return 'Could not find a URL in the cURL command';
+		return result;
+	}
+
+	function importCurl() {
+		curlError = '';
+		curlSuccess = '';
+		const parsed = parseCurl(curlInput);
+		if (typeof parsed === 'string') {
+			curlError = parsed;
+			return;
+		}
+
+		// Build HTTP Request block
+		const httpId = crypto.randomUUID();
+		const httpBlock = {
+			id: httpId,
+			label: 'HTTP Request',
+			disabled: false,
+			block_type: 'HttpRequest',
+			settings: {
+				type: 'HttpRequest',
+				method: parsed.method,
+				url: parsed.url,
+				headers: parsed.headers,
+				body: parsed.body,
+				body_type: parsed.bodyType,
+				content_type: parsed.contentType,
+				follow_redirects: true,
+				max_redirects: 8,
+				timeout_ms: 10000,
+				auto_redirect: true,
+				basic_auth: null,
+				http_version: 'HTTP/1.1',
+				response_var: 'SOURCE',
+				custom_cookies: '',
+				ssl_verify: true,
+				proxy_insecure: false,
+				cipher_suites: '',
+				tls_client: 'RustTLS',
+				browser_profile: '',
+				ja3_override: '',
+				http2fp_override: '',
+				wreq_emulation: '',
+			},
+		};
+
+		// Build KeyCheck block — check for HTTP 200
+		const keyId = crypto.randomUUID();
+		const keyBlock = {
+			id: keyId,
+			label: 'Key Check',
+			disabled: false,
+			block_type: 'KeyCheck',
+			settings: {
+				type: 'KeyCheck',
+				keychains: [
+					{
+						result: 'Success',
+						mode: 'And',
+						conditions: [
+							{ source: 'data.RESPONSECODE', comparison: 'EqualTo', value: '200' },
+						],
+					},
+					{
+						result: 'Fail',
+						mode: 'And',
+						conditions: [
+							{ source: 'data.RESPONSECODE', comparison: 'NotEqualTo', value: '200' },
+						],
+					},
+				],
+				stop_on_fail: false,
+			},
+		};
+
+		// Inject into active pipeline
+		app.pipeline.blocks = [...app.pipeline.blocks, httpBlock as any, keyBlock as any];
+		const tab = app.configTabs.find(t => t.id === app.activeTabId);
+		if (tab) {
+			tab.pipeline.blocks = JSON.parse(JSON.stringify(app.pipeline.blocks));
+			tab.isDirty = true;
+		}
+		syncPipelineToBackend();
+
+		curlSuccess = `Imported: HTTP ${parsed.method} block + KeyCheck block added to pipeline.`;
+		curlInput = '';
+	}
+
 	const TAB_LABELS: Record<Tab, string> = {
 		encode:  'Encode/Decode',
 		diff:    'Diff',
 		cookies: 'Cookies',
 		strings: 'Strings',
 		regex:   'Regex',
+		curl:    'cURL Import',
 	};
 </script>
 
@@ -559,6 +741,49 @@
 			</div>
 		</div>
 		{/if}
+	</div>
+	{/if}
+
+	<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+	<!-- CURL IMPORT -->
+	<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+	{#if activeTab === 'curl'}
+	<div class="flex flex-col gap-2 p-2 overflow-y-auto flex-1">
+		<div class="text-[10px] text-muted-foreground leading-relaxed">
+			Paste a cURL command from DevTools (Network → right-click request → Copy as cURL). Generates an HTTP Request block and a KeyCheck block in your active pipeline.
+		</div>
+
+		<div>
+			<div class="flex justify-between mb-0.5">
+				<span class="text-[9px] text-muted-foreground uppercase tracking-wider">cURL Command</span>
+				<button class="text-[9px] text-muted-foreground hover:text-foreground" onclick={() => { curlInput = ''; curlError = ''; curlSuccess = ''; }}>Clear</button>
+			</div>
+			<textarea
+				rows={8}
+				bind:value={curlInput}
+				placeholder="Paste cURL command here..."
+				class="w-full skeu-input text-[10px] font-mono resize-y"
+			></textarea>
+		</div>
+
+		{#if curlError}
+			<div class="text-[10px] text-red font-mono">{curlError}</div>
+		{/if}
+		{#if curlSuccess}
+			<div class="text-[10px] text-green font-mono">{curlSuccess}</div>
+		{/if}
+
+		<button
+			class="skeu-btn text-[11px] bg-primary/20 text-primary hover:bg-primary/30 w-full"
+			onclick={importCurl}
+			disabled={!curlInput.trim()}
+		>Convert to Pipeline Blocks</button>
+
+		<div class="text-[9px] text-muted-foreground/60 space-y-0.5 mt-1">
+			<div>Supported flags: -X, -H, -d / --data-raw / --data-binary, --json, -L, --compressed, -k</div>
+			<div>Skipped headers: Cookie, Content-Length, Host, Connection</div>
+			<div>The generated KeyCheck block checks for HTTP 200 — edit conditions after import as needed.</div>
+		</div>
 	</div>
 	{/if}
 </div>
