@@ -403,11 +403,12 @@
 					<div class="font-mono text-[10px] max-h-28 overflow-y-auto space-y-px px-2 py-1" style="scrollbar-width: thin;">
 						{#each recentSlice as r (r.data_line + r.ts_ms)}
 							{@const statusColor =
-								r.status === 'SUCCESS' ? 'text-green bg-green/10 border-green/30' :
-								r.status === 'FAIL'    ? 'text-red-400 bg-red-400/10 border-red-400/30' :
-								r.status === 'BAN'     ? 'text-orange-400 bg-orange-400/10 border-orange-400/30' :
-								r.status === 'RETRY'   ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' :
-								                         'text-muted-foreground bg-muted/10 border-border'}
+								r.status === 'SUCCESS'  ? 'text-green bg-green/10 border-green/30' :
+								r.status === 'FAIL'     ? 'text-red-400 bg-red-400/10 border-red-400/30' :
+								r.status === 'BAN'      ? 'text-orange-400 bg-orange-400/10 border-orange-400/30' :
+								r.status === 'RETRY'    ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' :
+								r.status === 'TO_CHECK' ? 'text-purple-400 bg-purple-400/10 border-purple-400/30' :
+								                          'text-muted-foreground bg-muted/10 border-border'}
 							<div class="flex items-center gap-1.5 py-0.5 hover:bg-accent/10 rounded px-1">
 								<span class="shrink-0 border rounded px-1 py-px text-[9px] font-semibold {statusColor}">{r.status}</span>
 								<span class="truncate text-foreground/80 flex-1">{r.data_line}</span>

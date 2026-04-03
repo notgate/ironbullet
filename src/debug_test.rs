@@ -499,4 +499,48 @@ mod tests {
 
         println!("=== JSONPATH COMPLEX EXTRACTION PASSED ✓ ===");
     }
+
+    /// Verify that a KeyCheck with result=ToCheck sets status=ToCheck on the context.
+    #[tokio::test]
+    async fn test_keycheck_to_check_status() {
+        use crate::pipeline::block::*;
+        use crate::pipeline::BotStatus;
+        use crate::pipeline::engine::ExecutionContext;
+        use crate::sidecar::native::create_native_backend;
+        use uuid::Uuid;
+
+        let sidecar_tx = create_native_backend();
+
+        // Block 1: SetVariable STATUS="AMBIGUOUS"
+        let mut b1 = Block::new(BlockType::SetVariable);
+        b1.settings = BlockSettings::SetVariable(SetVariableSettings {
+            name: "STATUS".into(),
+            value: "AMBIGUOUS".into(),
+            capture: false,
+        });
+
+        // Block 2: KeyCheck — STATUS contains "AMBIGUOUS" → ToCheck
+        let mut b2 = Block::new(BlockType::KeyCheck);
+        b2.settings = BlockSettings::KeyCheck(KeyCheckSettings {
+            keychains: vec![Keychain {
+                result: BotStatus::ToCheck,
+                conditions: vec![KeyCondition {
+                    source: "STATUS".into(),
+                    comparison: Comparison::EqualTo,
+                    value: "AMBIGUOUS".into(),
+                }],
+                mode: KeychainMode::And,
+            }],
+            stop_on_fail: false,
+        });
+
+        let blocks = vec![b1, b2];
+        let mut ctx = ExecutionContext::new(Uuid::new_v4().to_string());
+        ctx.execute_blocks(&blocks, &sidecar_tx).await.unwrap();
+
+        assert_eq!(ctx.status, BotStatus::ToCheck,
+            "KeyCheck result=ToCheck should set context status to ToCheck, got {:?}", ctx.status);
+
+        println!("=== KEYCHECK TO_CHECK STATUS PASSED ✓ ===");
+    }
 }

@@ -94,7 +94,7 @@
 					<span class="text-[10px] text-muted-foreground shrink-0">Result:</span>
 					<SkeuSelect value={keychain.result}
 						onValueChange={(v) => updateKeychainResult(ki, v)}
-						options={[{value:'Success',label:'SUCCESS'},{value:'Fail',label:'FAIL'},{value:'Ban',label:'BAN'},{value:'Retry',label:'RETRY'},{value:'Custom',label:'CUSTOM'}]}
+						options={[{value:'Success',label:'SUCCESS'},{value:'Fail',label:'FAIL'},{value:'Ban',label:'BAN'},{value:'Retry',label:'RETRY'},{value:'Custom',label:'CUSTOM'},{value:'ToCheck',label:'TO CHECK'}]}
 						class="text-[10px]"
 					/>
 					<!-- AND / OR mode toggle -->

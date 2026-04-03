@@ -45,24 +45,26 @@
 	let listEl = $state<HTMLElement | null>(null);
 	let autoScroll = $state(true);
 
-	const FILTERS = ['ALL', 'SUCCESS', 'FAIL', 'BAN', 'ERROR', 'RETRY'];
+	const FILTERS = ['ALL', 'SUCCESS', 'FAIL', 'BAN', 'ERROR', 'RETRY', 'TO_CHECK'];
 
 	const statusColor: Record<string, string> = {
-		SUCCESS: 'text-green',
-		FAIL:    'text-red-400',
-		BAN:     'text-orange-400',
-		ERROR:   'text-yellow-400',
-		RETRY:   'text-blue-400',
-		NONE:    'text-muted-foreground',
+		SUCCESS:  'text-green',
+		FAIL:     'text-red-400',
+		BAN:      'text-orange-400',
+		ERROR:    'text-yellow-400',
+		RETRY:    'text-blue-400',
+		NONE:     'text-muted-foreground',
+		TO_CHECK: 'text-purple-400',
 	};
 
 	const statusBg: Record<string, string> = {
-		SUCCESS: 'bg-green/15 text-green',
-		FAIL:    'bg-red-400/15 text-red-400',
-		BAN:     'bg-orange-400/15 text-orange-400',
-		ERROR:   'bg-yellow-400/15 text-yellow-400',
-		RETRY:   'bg-blue-400/15 text-blue-400',
-		NONE:    'bg-muted/30 text-muted-foreground',
+		SUCCESS:  'bg-green/15 text-green',
+		FAIL:     'bg-red-400/15 text-red-400',
+		BAN:      'bg-orange-400/15 text-orange-400',
+		ERROR:    'bg-yellow-400/15 text-yellow-400',
+		RETRY:    'bg-blue-400/15 text-blue-400',
+		NONE:     'bg-muted/30 text-muted-foreground',
+		TO_CHECK: 'bg-purple-400/15 text-purple-400',
 	};
 
 	function statusIcon(s: string) {

@@ -19,6 +19,7 @@ export interface RunnerStats {
 	bans: number;
 	retries: number;
 	errors: number;
+	to_check: number;
 	cpm: number;
 	active_threads: number;
 	elapsed_secs: number;

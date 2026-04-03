@@ -136,6 +136,7 @@ impl Default for Job {
                 bans: 0,
                 retries: 0,
                 errors: 0,
+                to_check: 0,
                 cpm: 0.0,
                 active_threads: 0,
                 elapsed_secs: 0.0,

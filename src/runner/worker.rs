@@ -328,6 +328,36 @@ pub(crate) async fn run_worker(
                     });
                 }
             }
+            BotStatus::ToCheck => {
+                // ToCheck = ambiguous result needing manual verification.
+                // Saved to file + hits feed like Success/Custom, but tracked separately.
+                stats.to_check.fetch_add(1, Ordering::Relaxed);
+                let captures = ctx.variables.captures();
+                let hit = HitResult {
+                    data_line: data_line.clone(),
+                    captures: captures.clone(),
+                    proxy: proxy.clone(),
+                    response: resp_body.clone(),
+                    headers: resp_headers.clone(),
+                    status: resp_status.clone(),
+                };
+                if let Some(ref ow) = output_writer {
+                    ow.write_hit(&hit, BotStatus::ToCheck);
+                }
+                let _ = hits_tx.send(hit).await;
+                if let Ok(mut feed) = result_feed.try_lock() {
+                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                    feed.push_back(ResultEntry {
+                        data_line: data_line.clone(),
+                        status: "TO_CHECK".into(),
+                        proxy: proxy.clone(),
+                        captures,
+                        error: None,
+                        ts_ms,
+                        block_results: ctx.block_results.clone(),
+                    });
+                }
+            }
             BotStatus::None => {
                 // No KeyCheck block ran or no condition matched — treat as Fail.
                 // This prevents 0/0/0 counters when a config has no outcome blocks.

@@ -39,7 +39,7 @@ export type BlockType =
 	| 'ByteArray' | 'Constants' | 'Dictionary' | 'FloatFunction' | 'IntegerFunction' | 'TimeFunction' | 'GenerateGUID' | 'PhoneCountry' | 'LambdaParser'
 	| 'FileSystem';
 
-export type BotStatus = 'None' | 'Success' | 'Fail' | 'Ban' | 'Retry' | 'Error' | 'Custom';
+export type BotStatus = 'None' | 'Success' | 'Fail' | 'Ban' | 'Retry' | 'Error' | 'Custom' | 'ToCheck';
 export type Comparison = 'Contains' | 'NotContains' | 'EqualTo' | 'NotEqualTo' | 'MatchesRegex' | 'GreaterThan' | 'LessThan' | 'Exists' | 'NotExists';
 
 export interface DataSettings {

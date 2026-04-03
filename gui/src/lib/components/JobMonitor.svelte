@@ -687,6 +687,7 @@ Error handling
 						<th class="px-2 py-1 font-medium text-right text-red-400">Fails</th>
 						<th class="px-2 py-1 font-medium text-right text-orange-400">Bans</th>
 						<th class="px-2 py-1 font-medium text-right text-muted-foreground">Errs</th>
+						<th class="px-2 py-1 font-medium text-right text-purple-400" title="To Check — ambiguous results needing manual verification">TC</th>
 						<th class="px-2 py-1 font-medium text-right">Done/Total</th>
 						<th class="px-2 py-1 font-medium text-right">Time</th>
 						<th class="px-2 py-1 font-medium text-center">Actions</th>
@@ -726,6 +727,7 @@ Error handling
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.fails ?? 0) > 0 ? 'text-red-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.fails) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.bans ?? 0) > 0 ? 'text-orange-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.bans) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.errors ?? 0) > 0 ? 'text-yellow-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.errors) : 0}</td>
+							<td class="px-2 py-1 text-right font-mono text-[10px] {(job.stats?.to_check ?? 0) > 0 ? 'text-purple-400' : 'text-muted-foreground/40'}">{job.stats ? fmt(job.stats.to_check ?? 0) : 0}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground" title={job.stats ? `Verified: ${fmt((job.stats.hits ?? 0) + (job.stats.fails ?? 0))} / ${fmt(job.stats.total)} · Errors: ${fmt(job.stats.errors ?? 0)} (not counted toward progress)` : ''}>{job.stats ? `${fmt((job.stats.hits ?? 0) + (job.stats.fails ?? 0))}/${fmt(job.stats.total)}` : '0/0'}</td>
 							<td class="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">{job.stats ? formatDuration(job.stats.elapsed_secs) : '0:00'}</td>
 							<td class="px-2 py-1 text-center" onclick={(e) => e.stopPropagation()}>

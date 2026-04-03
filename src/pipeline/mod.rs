@@ -321,4 +321,6 @@ pub enum BotStatus {
     Retry,
     Error,
     Custom,
+    /// Accounts that gave ambiguous results needing manual verification.
+    ToCheck,
 }

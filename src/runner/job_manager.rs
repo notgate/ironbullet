@@ -141,6 +141,7 @@ impl ProxyCheckHandle {
             bans:           0,
             retries:        0,
             errors:         self.errors.load(Ordering::Relaxed),
+            to_check:       0,
             cpm,
             active_threads: self.active_threads.load(Ordering::Relaxed),
             elapsed_secs,
