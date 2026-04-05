@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=IronBullet
-Comment=HTTP automation and data checking toolkit
+Comment=HTTP automation toolkit
 Exec=ironbullet
 Icon=ironbullet
 Type=Application
