@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=IronBullet
+Comment=HTTP automation and data checking toolkit
+Exec=ironbullet
+Icon=ironbullet
+Type=Application
+Categories=Development;Network;
+Terminal=false

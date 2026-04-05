@@ -70,13 +70,20 @@ use shadowsocks_service::{
     config::{Config, ConfigType, LocalConfig, LocalInstanceConfig, ProtocolType, ServerInstanceConfig},
     local::Server,
 };
+use tokio::task::JoinHandle;
 
 /// Global singleton pool — initialised once per process.
 static POOL: std::sync::OnceLock<ShadowsocksPool> = std::sync::OnceLock::new();
 
+struct SsEntry {
+    local_url: String,
+    task_handle: JoinHandle<()>,
+}
+
 pub struct ShadowsocksPool {
-    /// Maps canonical ss:// URL → local `socks5://127.0.0.1:<port>` string.
-    map: Mutex<HashMap<String, String>>,
+    /// Maps canonical ss:// URL → (local URL, task handle).
+    /// FIX: Track task handles so we can abort stale servers and prevent memory leaks.
+    map: Mutex<HashMap<String, SsEntry>>,
 }
 
 impl ShadowsocksPool {
@@ -93,23 +100,27 @@ impl ShadowsocksPool {
     /// occurs here. The SS listener is spawned via `tokio::spawn` (fire-and-forget);
     /// the first few worker requests may get a transient ECONNREFUSED which the
     /// worker already retries on.
+    ///
+    /// FIX: Track task handles and abort stale servers to prevent memory leaks.
     pub fn resolve(&self, ss_url: &str) -> Result<String, String> {
         // Fast path — already started. Probe liveness OUTSIDE the lock to avoid blocking.
-        let cached = {
+        let cached_url = {
             let guard = self.map.lock().unwrap();
-            guard.get(ss_url).cloned()
+            guard.get(ss_url).map(|entry| entry.local_url.clone())
         };
-        
-        if let Some(local) = cached {
+
+        if let Some(local) = cached_url {
             let port = extract_port(&local);
             // CRITICAL: port_is_alive() is a 100ms TCP connect — must be OUTSIDE the lock
             if port.map(|p| port_is_alive(p)).unwrap_or(false) {
                 return Ok(local);
             }
-            // Port is dead — remove and re-spawn
-            eprintln!("[ss-pool] listener for {ss_url} is dead, re-spawning");
+            // Port is dead — abort the task and remove entry
+            eprintln!("[ss-pool] listener for {ss_url} is dead, aborting and re-spawning");
             let mut guard = self.map.lock().unwrap();
-            guard.remove(ss_url);
+            if let Some(entry) = guard.remove(ss_url) {
+                entry.task_handle.abort();
+            }
         }
 
         // Parse the ss:// URI
@@ -136,12 +147,15 @@ impl ShadowsocksPool {
         local_cfg.mode = Mode::TcpOnly;
         config.local.push(LocalInstanceConfig::with_local_config(local_cfg));
 
-        // Spawn the local SS server on the tokio runtime (fire-and-forget).
+        // Spawn the local SS server on the tokio runtime.
         // We do NOT call block_in_place here — doing so while the AppState Mutex
         // is held starves every other IPC handler and causes the grey-screen freeze
         // described in issue #43. The worker already retries on ECONNREFUSED, so
         // the brief window before the listener binds (typically < 20 ms) is safe.
-        tokio::spawn(async move {
+        //
+        // FIX: Capture the JoinHandle so we can abort the task if the server dies
+        // or is no longer needed. This prevents unbounded task accumulation.
+        let task_handle = tokio::spawn(async move {
             match Server::new(config).await {
                 Ok(server) => {
                     if let Err(e) = server.run().await {
@@ -152,14 +166,20 @@ impl ShadowsocksPool {
                     eprintln!("[ss-pool] failed to start local SS server on port {port}: {e}");
                 }
             }
+            eprintln!("[ss-pool] task for port {} terminated", port);
         });
 
         let mut guard = self.map.lock().unwrap();
         // Double-check in case another thread raced us
         if let Some(existing) = guard.get(ss_url) {
-            return Ok(existing.clone());
+            // Abort the task we just spawned since we already have one
+            task_handle.abort();
+            return Ok(existing.local_url.clone());
         }
-        guard.insert(ss_url.to_string(), local_url.clone());
+        guard.insert(ss_url.to_string(), SsEntry {
+            local_url: local_url.clone(),
+            task_handle,
+        });
         Ok(local_url)
     }
 }
@@ -187,12 +207,26 @@ pub fn resolve_ss_proxy(ss_url: &str) -> String {
 pub fn canonical_for_local(local_url: &str) -> Option<String> {
     let guard = pool().map.lock().unwrap();
     // Reverse scan — pool is small (one entry per unique SS server)
-    for (canonical, local) in guard.iter() {
-        if local == local_url {
+    for (canonical, entry) in guard.iter() {
+        if entry.local_url == local_url {
             return Some(canonical.clone());
         }
     }
     None
+}
+
+/// Cleanup function to abort all tracked Shadowsocks server tasks.
+/// Call this on application shutdown to prevent lingering background tasks.
+pub fn shutdown_all() {
+    let mut guard = pool().map.lock().unwrap();
+    let count = guard.len();
+    if count > 0 {
+        eprintln!("[ss-pool] Shutting down {} shadowsocks servers", count);
+        for (ss_url, entry) in guard.drain() {
+            eprintln!("[ss-pool] Aborting task for {}", ss_url);
+            entry.task_handle.abort();
+        }
+    }
 }
 
 // ── URI parsing ─────────────────────────────────────────────────────────────

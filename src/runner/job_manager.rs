@@ -66,16 +66,38 @@ fn build_proxy_pool(settings: &ProxySettings) -> ProxyPool {
     ProxyPool::new(entries, settings.ban_duration_secs)
 }
 
+/// Detect proxy type from port number for untyped host:port lines.
+/// Common SOCKS5 ports → Socks5, otherwise → fallback type.
+fn detect_proxy_type_from_port(port_str: &str, fallback: ProxyType) -> ProxyType {
+    if let Ok(port) = port_str.parse::<u16>() {
+        match port {
+            // Standard SOCKS5 ports
+            1080 | 1081 => ProxyType::Socks5,
+            // Tor SOCKS5 ports
+            9050 | 9150 => ProxyType::Socks5,
+            // Shadowsocks common local ports (when ss:// wasn't used)
+            1086 | 1087 | 1088 => ProxyType::Socks5,
+            // All other ports → use fallback
+            _ => fallback,
+        }
+    } else {
+        fallback
+    }
+}
+
 /// Parse a single proxy line into a ProxyEntry.
 /// `default_type` is used for plain `host:port` or `host:port:user:pass` lines that
 /// carry no protocol prefix — it lets a whole source be declared as SOCKS5, for example.
+///
+/// FIX #56: Auto-detect SOCKS5 from common ports (1080, 1081, 9050, 9150) when no
+/// explicit type is provided. This fixes the issue where SOCKS5 proxies work in
+/// Debugger but fail in Jobs mode (plain host:port was defaulting to HTTP).
 fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
     // Strip SIP002 / URL fragment labels (e.g. `ss://...@host:port#Dubai%2C%20UAE`)
     let line = if let Some(pos) = line.find('#') { &line[..pos] } else { line };
     let line = line.trim();
     if line.is_empty() { return None; }
 
-    let fallback = default_type.unwrap_or(ProxyType::Http);
     let (proxy_type, address) = if line.starts_with("ss://") {
         // Shadowsocks — spin up (or reuse) a local SOCKS5 tunnel and use that.
         let local = crate::sidecar::shadowsocks_pool::resolve_ss_proxy(line);
@@ -93,9 +115,19 @@ fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<P
     } else {
         let parts: Vec<&str> = line.split(':').collect();
         match parts.len() {
-            2 => (fallback, format!("{}:{}", parts[0], parts[1])),
+            // host:port — intelligent detection
+            2 => {
+                let fallback = default_type.unwrap_or(ProxyType::Http);
+                let detected_type = detect_proxy_type_from_port(parts[1], fallback);
+                (detected_type, format!("{}:{}", parts[0], parts[1]))
+            }
             // ip:port:user:pass — preserve source-level type, inject credentials
-            4 => (fallback, format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1])),
+            4 => {
+                let fallback = default_type.unwrap_or(ProxyType::Http);
+                let detected_type = detect_proxy_type_from_port(parts[1], fallback);
+                (detected_type, format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1]))
+            }
+            // type:host:port:user:pass
             5 => {
                 let pt = match parts[0].to_lowercase().as_str() {
                     "https" => ProxyType::Https,

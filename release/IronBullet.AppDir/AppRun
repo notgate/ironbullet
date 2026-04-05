@@ -1,0 +1,5 @@
+#!/bin/bash
+APPDIR="$(dirname "$(readlink -f "$0")")"
+export PATH="${APPDIR}/usr/bin:${PATH}"
+cd "${APPDIR}/usr/bin"
+exec "${APPDIR}/usr/bin/ironbullet" "$@"
