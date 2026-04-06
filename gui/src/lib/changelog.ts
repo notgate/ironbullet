@@ -10,6 +10,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.5.5',
+		date: '2026-04-06',
+		highlights: 'Bug fixes: startup restore regression (#57), SOCKS5 in Saved Config jobs (#58), Sticky mode group override (#59).',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Startup restore regression (issue #57): After v0.5.4, the dedup check caused the startup-restored tab (empty content, correct filePath) to be reused when opening the same file from Collections. Fixed: AppState::new() now loads the last-opened pipeline from disk so the startup tab has real content.',
+					'SOCKS5 proxies ignored in Saved Config jobs (issue #58): Saved Config jobs loaded proxy_mode and proxy_sources from the .rfx file, which may predate in-session changes. Fixed: create_job now inherits proxy_mode and proxy_sources from the active in-memory pipeline.',
+					'Sticky mode group override ignored (issue #59): Auto-elevating proxy_mode from None hardcoded Rotate instead of using the group\'s own mode. Fixed: create_job reads ProxyGroup.mode and uses it, so Sticky groups activate in Sticky mode.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.5.4',
 		date: '2026-04-06',
 		highlights: 'Bug fixes: duplicate tabs, SOCKS5 proxy groups in saved configs, job dialog proxy controls, output filenames, and WebView2 OOM crash.',

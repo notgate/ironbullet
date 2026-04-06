@@ -94,9 +94,12 @@ pub(super) fn create_job(
                             eprintln!("[create_job] Loaded config from path: {} ({} blocks, name='{}')",
                                 config_path_str, pipeline.blocks.len(), pipeline.name);
                             // Proxy groups are global (stored in GuiConfig, not per-file).
-                            // Restore them the same way load_pipeline does so Saved Config
-                            // jobs see the same proxy groups as Current Tab jobs (fix #58).
                             pipeline.proxy_settings.proxy_groups = s.config.proxy_groups.clone();
+                            // Inherit proxy_mode + proxy_sources from the active in-memory pipeline
+                            // so SOCKS5/HTTP proxies configured in the current session are always
+                            // applied, even if the saved .rfx predates those settings (#58).
+                            pipeline.proxy_settings.proxy_mode = s.pipeline.proxy_settings.proxy_mode.clone();
+                            pipeline.proxy_settings.proxy_sources = s.pipeline.proxy_settings.proxy_sources.clone();
                             job.pipeline = pipeline;
                             job.config_path = Some(config_path_str);
                         } else {
@@ -193,7 +196,13 @@ pub(super) fn create_job(
                             let mut settings = job.pipeline.proxy_settings.clone();
                             settings.active_group = group.to_string();
                             if matches!(settings.proxy_mode, ProxyMode::None) {
-                                settings.proxy_mode = ProxyMode::Rotate;
+                                // Use the selected group's own mode so Sticky groups
+                                // activate in Sticky mode, not forced Rotate (#59).
+                                let group_mode = settings.proxy_groups.iter()
+                                    .find(|g| g.name == group)
+                                    .map(|g| g.mode.clone())
+                                    .unwrap_or(ProxyMode::Rotate);
+                                settings.proxy_mode = group_mode;
                             }
                             job.proxy_source = ProxySourceConfig { settings };
                             eprintln!("[create_job] proxy override: group = {}", group);

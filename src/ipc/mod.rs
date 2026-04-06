@@ -97,7 +97,17 @@ impl AppState {
         } else {
             None
         };
-        let mut pipeline = Pipeline::default();
+        // Load last-opened pipeline from disk so the startup restore tab has real content.
+        // Using Pipeline::default() here caused the dedup check in openInNewTab to switch
+        // to an empty tab when the user re-opened the same file from Collections (#57).
+        let mut pipeline = pipeline_path.as_deref()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|raw| {
+                serde_json::from_str::<Pipeline>(&raw).ok()
+                    .or_else(|| serde_json::from_str::<ironbullet::export::format::RfxConfig>(&raw)
+                        .ok().map(|c| c.pipeline))
+            })
+            .unwrap_or_default();
         // Merge global proxy groups from config into pipeline (so they persist across config switches)
         pipeline.proxy_settings.proxy_groups = cfg.proxy_groups.clone();
         Self {
