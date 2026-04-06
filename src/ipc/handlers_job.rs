@@ -91,8 +91,12 @@ pub(super) fn create_job(
                             if is_default_name {
                                 pipeline.name = config_name.to_string();
                             }
-                            eprintln!("[create_job] Loaded config from path: {} ({} blocks, name='{}')", 
+                            eprintln!("[create_job] Loaded config from path: {} ({} blocks, name='{}')",
                                 config_path_str, pipeline.blocks.len(), pipeline.name);
+                            // Proxy groups are global (stored in GuiConfig, not per-file).
+                            // Restore them the same way load_pipeline does so Saved Config
+                            // jobs see the same proxy groups as Current Tab jobs (fix #58).
+                            pipeline.proxy_settings.proxy_groups = s.config.proxy_groups.clone();
                             job.pipeline = pipeline;
                             job.config_path = Some(config_path_str);
                         } else {
@@ -109,11 +113,26 @@ pub(super) fn create_job(
                 // ── pipeline snapshot from frontend (keeps proxy_settings etc. in sync) ──
                 if let Some(pl) = data.get("pipeline") {
                     match serde_json::from_value::<ironbullet::pipeline::Pipeline>(pl.clone()) {
-                        Ok(pipeline) => {
+                        Ok(mut pipeline) => {
                             eprintln!("[create_job] Pipeline OK: {} blocks, proxy_mode={:?}, proxy_sources={}",
                                 pipeline.blocks.len(),
                                 pipeline.proxy_settings.proxy_mode,
                                 pipeline.proxy_settings.proxy_sources.len());
+                            // Fix #60: if pipeline has a default name ("New Config N") and the
+                            // active tab was loaded from a file, rename using the file stem so
+                            // the output file gets the correct name (e.g. httpbin_Success.txt).
+                            let is_default_name = pipeline.name.is_empty()
+                                || pipeline.name == "New Config"
+                                || pipeline.name.starts_with("New Config ");
+                            if is_default_name {
+                                if let Some(ref path) = s.pipeline_path {
+                                    let config_name = std::path::Path::new(path)
+                                        .file_stem()
+                                        .and_then(|s| s.to_str())
+                                        .unwrap_or("Config");
+                                    pipeline.name = config_name.to_string();
+                                }
+                            }
                             job.pipeline = pipeline;
                         }
                         Err(e) => {
@@ -167,9 +186,15 @@ pub(super) fn create_job(
                         if let Some(group) = data.get("proxy_override_group")
                             .and_then(|v| v.as_str()).filter(|s| !s.is_empty())
                         {
-                            // Clone the pipeline's proxy settings and override the active group
+                            // Clone the pipeline's proxy settings and override the active group.
+                            // If proxy_mode is None, auto-elevate to Rotate so the group is
+                            // actually used — fix #59: job dialog group selection was silently
+                            // ignored when the pipeline had proxy_mode=None.
                             let mut settings = job.pipeline.proxy_settings.clone();
                             settings.active_group = group.to_string();
+                            if matches!(settings.proxy_mode, ProxyMode::None) {
+                                settings.proxy_mode = ProxyMode::Rotate;
+                            }
                             job.proxy_source = ProxySourceConfig { settings };
                             eprintln!("[create_job] proxy override: group = {}", group);
                         }
@@ -589,12 +614,11 @@ pub(super) fn get_job_debug_log(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let mut s = state.lock().await;
+            let s = state.lock().await;
             if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
                 if let Ok(uuid) = uuid::Uuid::parse_str(id) {
-                    s.job_manager.update_job_stats(uuid);
                     let filter = data.get("filter").and_then(|v| v.as_str()).unwrap_or("ALL").to_string();
-                    let results: Vec<_> = s.job_manager.get_job_stats(uuid)
+                    let results: Vec<_> = s.job_manager.get_job_stats_full(uuid)
                         .map(|stats| stats.recent_results.into_iter()
                             .filter(|r| filter == "ALL" || r.status == filter)
                             .collect())

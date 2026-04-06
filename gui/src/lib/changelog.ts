@@ -10,6 +10,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.5.4',
+		date: '2026-04-06',
+		highlights: 'Bug fixes: duplicate tabs, SOCKS5 proxy groups in saved configs, job dialog proxy controls, output filenames, and WebView2 OOM crash.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Duplicate tabs (issue #57): Opening the same config file twice now switches to the existing tab instead of creating a duplicate.',
+					'SOCKS5 proxy groups ignored in Saved Config jobs (issue #58): Global proxy groups were not restored when loading a config via config_path. Fixed create_job to apply proxy_groups from GuiConfig the same way load_pipeline does.',
+					'Job dialog proxy group override ignored when pipeline proxy_mode=None (issue #59): Selecting a proxy group in the New Job dialog had no effect if the pipeline had no proxy mode set. Fixed create_job to auto-elevate proxy_mode to Rotate when overriding with a group.',
+					'Output file named "New_Config_1" for Current Tab jobs (issue #60): When the active pipeline had a default name, output files were named after the default. Fixed create_job to rename from the file stem using pipeline_path when available.',
+					'WebView2 Out of Memory crash with SOCKS5 proxies (issue #61): The jobs_list IPC broadcast (every 500ms) was serializing up to 500 ResultEntry structs with full block_results into each message, causing multi-MB JSON payloads that exhausted WebView2 memory. recent_results is now excluded from jobs_list and only fetched on demand by the debug log dialog.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.5.0',
 		date: '2026-04-01',
 		highlights: 'Major bugfix release — SOCKS5 proxy support, file dialogs respect settings, autosave recovery.',

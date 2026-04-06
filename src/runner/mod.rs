@@ -244,7 +244,21 @@ impl RunnerOrchestrator {
         self.running.store(false, Ordering::SeqCst);
     }
 
+    /// Returns live stats WITHOUT the recent_results ring buffer.
+    /// Use this for high-frequency broadcasts (jobs_list every 500ms) to avoid
+    /// sending up to 500 ResultEntry structs (with full block_results) per IPC
+    /// message — fix #61: WebView2 OOM caused by the cumulative JSON size.
     pub fn get_stats(&self) -> RunnerStats {
+        self.get_stats_with_results(false)
+    }
+
+    /// Returns live stats WITH the recent_results ring buffer populated.
+    /// Only called on demand by get_job_debug_log.
+    pub fn get_stats_full(&self) -> RunnerStats {
+        self.get_stats_with_results(true)
+    }
+
+    fn get_stats_with_results(&self, include_results: bool) -> RunnerStats {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -254,10 +268,14 @@ impl RunnerOrchestrator {
         let processed = self.stats.processed.load(Ordering::Relaxed);
         let cpm = if elapsed_secs > 0.0 { processed as f64 / elapsed_secs * 60.0 } else { 0.0 };
 
-        // Snapshot the live feed (non-blocking try_lock; return empty if contended)
-        let recent_results = self.result_feed.try_lock()
-            .map(|feed| feed.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
+        let recent_results = if include_results {
+            // Snapshot the live feed (non-blocking try_lock; return empty if contended)
+            self.result_feed.try_lock()
+                .map(|feed| feed.iter().cloned().collect::<Vec<_>>())
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
 
         RunnerStats {
             total: self.data_pool.total(),

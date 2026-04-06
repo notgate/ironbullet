@@ -243,6 +243,13 @@ impl JobManager {
         self.proxy_handles.get(&id).map(|h| h.get_stats())
     }
 
+    /// Like get_job_stats but includes recent_results (block-level debug log).
+    /// Only call this from get_job_debug_log — never from jobs_list broadcasts.
+    pub fn get_job_stats_full(&self, id: Uuid) -> Option<RunnerStats> {
+        if let Some(r) = self.runners.get(&id) { return Some(r.get_stats_full()); }
+        self.proxy_handles.get(&id).map(|h| h.get_stats())
+    }
+
     pub fn get_job_hits(&self, id: Uuid) -> Vec<HitResult> {
         self.job_hits.get(&id).cloned().unwrap_or_default()
     }

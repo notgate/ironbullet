@@ -141,6 +141,14 @@ export function loadPipelineIntoTab(pipeline: Pipeline, filePath?: string) {
 
 /** Open a pipeline in a new tab */
 export function openInNewTab(pipeline: Pipeline, filePath?: string) {
+	// Dedup: if a tab with this file is already open, just switch to it
+	if (filePath) {
+		const existing = app.configTabs.find(t => t.filePath === filePath);
+		if (existing) {
+			switchTab(existing.id);
+			return;
+		}
+	}
 	saveCurrentTabState();
 	const id = crypto.randomUUID();
 	const snapshot = JSON.stringify(pipeline);
