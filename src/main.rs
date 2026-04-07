@@ -534,9 +534,11 @@ fn run_gui() {
             }
         })
         .with_drag_drop_handler(move |e| {
+            // IMPORTANT: return false to let the browser handle internal drag events
+            // (block palette drag-and-drop, tab reordering, etc.). Only return true
+            // when we actually handle an external file drop with matching extensions.
             match e {
                 wry::DragDropEvent::Drop { paths, position: _, .. } => {
-                    eprintln!("[drag-drop] Drop event: {} files", paths.len());
                     let txt_files: Vec<String> = paths.into_iter()
                         .filter_map(|p| {
                             let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -548,15 +550,16 @@ fn run_gui() {
                         })
                         .collect();
                     if !txt_files.is_empty() {
+                        eprintln!("[drag-drop] dispatching {} txt/csv files to frontend", txt_files.len());
                         let json = format!("[{}]",
                             txt_files.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(","));
-                        eprintln!("[drag-drop] dispatching {} txt/csv files to frontend", txt_files.len());
                         let js = format!("window.dispatchEvent(new CustomEvent('ironbullet-file-drop', {{ detail: {} }}))", json);
                         let _ = drop_proxy.send_event(Evt::EvalJs(js));
+                        return true; // we handled this file drop
                     }
-                    true
+                    false // no matching files — let browser handle it
                 }
-                _ => true,
+                _ => false, // Enter/Over/Leave — pass through to browser for internal drag-and-drop
             }
         })
         .build(&window)
