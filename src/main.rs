@@ -421,7 +421,6 @@ fn run_gui() {
 
     let state = Arc::new(Mutex::new(AppState::new()));
     let ipc_proxy = proxy.clone();
-    let drop_proxy = proxy.clone();
     let ipc_state = state.clone();
 
     // ── WebView2 availability check (Windows only) ──────────────────────────────
@@ -533,35 +532,10 @@ fn run_gui() {
                 });
             }
         })
-        .with_drag_drop_handler(move |e| {
-            // IMPORTANT: return false to let the browser handle internal drag events
-            // (block palette drag-and-drop, tab reordering, etc.). Only return true
-            // when we actually handle an external file drop with matching extensions.
-            match e {
-                wry::DragDropEvent::Drop { paths, position: _, .. } => {
-                    let txt_files: Vec<String> = paths.into_iter()
-                        .filter_map(|p| {
-                            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-                            if ext.eq_ignore_ascii_case("txt") || ext.eq_ignore_ascii_case("csv") {
-                                Some(p.display().to_string().replace('\\', "\\\\").replace('"', "\\\""))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    if !txt_files.is_empty() {
-                        eprintln!("[drag-drop] dispatching {} txt/csv files to frontend", txt_files.len());
-                        let json = format!("[{}]",
-                            txt_files.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(","));
-                        let js = format!("window.dispatchEvent(new CustomEvent('ironbullet-file-drop', {{ detail: {} }}))", json);
-                        let _ = drop_proxy.send_event(Evt::EvalJs(js));
-                        return true; // we handled this file drop
-                    }
-                    false // no matching files — let browser handle it
-                }
-                _ => false, // Enter/Over/Leave — pass through to browser for internal drag-and-drop
-            }
-        })
+        // NOTE: with_drag_drop_handler is NOT used here. On Windows (WebView2),
+        // registering a custom IDropTarget replaces WebView2's built-in one entirely,
+        // breaking internal browser drag-and-drop (block palette, tab reordering).
+        // File import uses IPC browse_file dialogs instead (issue #51).
         .build(&window)
         .expect("Failed to create webview");
 
