@@ -76,6 +76,8 @@ pub struct RunnerOrchestrator {
     result_feed: Arc<Mutex<VecDeque<ResultEntry>>>,
     /// Optional Chrome/Chromium executable override for BrowserOpen blocks.
     chrome_executable_path: Option<std::path::PathBuf>,
+    /// Custom user input values injected into the globals namespace (issue #62).
+    custom_input_values: std::collections::HashMap<String, String>,
 }
 
 pub(crate) struct RunnerStatsInner {
@@ -118,6 +120,7 @@ impl RunnerOrchestrator {
         hits_tx: mpsc::Sender<HitResult>,
         plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
         chrome_executable_path: Option<std::path::PathBuf>,
+        custom_input_values: std::collections::HashMap<String, String>,
     ) -> Self {
         let ow = if pipeline.output_settings.save_to_file {
             Some(Arc::new(output::OutputWriter::new(
@@ -153,6 +156,7 @@ impl RunnerOrchestrator {
             plugin_manager,
             chrome_executable_path,
             result_feed: Arc::new(Mutex::new(VecDeque::with_capacity(RESULT_FEED_CAP))),
+            custom_input_values,
         }
     }
 
@@ -203,6 +207,7 @@ impl RunnerOrchestrator {
             let plugin_manager = self.plugin_manager.clone();
             let chrome_executable_path = self.chrome_executable_path.clone();
             let result_feed = self.result_feed.clone();
+            let custom_inputs = self.custom_input_values.clone();
 
             let handle = tokio::spawn(async move {
                 worker::run_worker(
@@ -220,6 +225,7 @@ impl RunnerOrchestrator {
                     plugin_manager,
                     chrome_executable_path,
                     result_feed,
+                    custom_inputs,
                 ).await;
             });
             handles.push(handle);

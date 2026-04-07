@@ -159,6 +159,16 @@ pub(super) fn create_job(
                 job.proxy_check_type = pt.to_string();
             }
 
+            // ── custom user inputs (issue #62) ────────────────────────────────
+            // Frontend sends custom_input_values: { "KEY": "value", ... }
+            if let Some(vals) = data.get("custom_input_values").and_then(|v| v.as_object()) {
+                for (k, v) in vals {
+                    if let Some(val) = v.as_str() {
+                        job.custom_input_values.insert(k.clone(), val.to_string());
+                    }
+                }
+            }
+
             // ── per-job proxy override (config jobs only) ─────────────────────
             // proxy_override_mode: "pipeline" | "file" | "group"
             //   "file"  → use a specific proxy file, Rotate mode
@@ -190,19 +200,19 @@ pub(super) fn create_job(
                             .and_then(|v| v.as_str()).filter(|s| !s.is_empty())
                         {
                             // Clone the pipeline's proxy settings and override the active group.
-                            // If proxy_mode is None, auto-elevate to Rotate so the group is
-                            // actually used — fix #59: job dialog group selection was silently
-                            // ignored when the pipeline had proxy_mode=None.
+                            // Auto-elevate proxy_mode from the group's own mode if the current
+                            // mode is None — fixes #58/#59 where Sticky groups didn't activate.
                             let mut settings = job.pipeline.proxy_settings.clone();
                             settings.active_group = group.to_string();
-                            if matches!(settings.proxy_mode, ProxyMode::None) {
-                                // Use the selected group's own mode so Sticky groups
-                                // activate in Sticky mode, not forced Rotate (#59).
-                                let group_mode = settings.proxy_groups.iter()
-                                    .find(|g| g.name == group)
-                                    .map(|g| g.mode.clone())
-                                    .unwrap_or(ProxyMode::Rotate);
-                                settings.proxy_mode = group_mode;
+                            if let Some(pg) = settings.proxy_groups.iter()
+                                .chain(s.config.proxy_groups.iter())
+                                .find(|g| g.name == group)
+                            {
+                                if matches!(settings.proxy_mode, ProxyMode::None) {
+                                    settings.proxy_mode = pg.mode.clone();
+                                    eprintln!("[create_job] auto-elevated proxy_mode to {:?} from group '{}'",
+                                        pg.mode, group);
+                                }
                             }
                             job.proxy_source = ProxySourceConfig { settings };
                             eprintln!("[create_job] proxy override: group = {}", group);

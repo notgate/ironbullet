@@ -421,6 +421,7 @@ fn run_gui() {
 
     let state = Arc::new(Mutex::new(AppState::new()));
     let ipc_proxy = proxy.clone();
+    let drop_proxy = proxy.clone();
     let ipc_state = state.clone();
 
     // ── WebView2 availability check (Windows only) ──────────────────────────────
@@ -530,6 +531,31 @@ fn run_gui() {
                         let _ = eval_proxy.send_event(Evt::EvalJs(js));
                     });
                 });
+            }
+        })
+        .with_drag_drop_handler(move |e| {
+            match e {
+                wry::DragDropEvent::Drop { paths, position: _, .. } => {
+                    // Send dropped file paths to the frontend via JS event (issue #51).
+                    let txt_files: Vec<String> = paths.into_iter()
+                        .filter_map(|p| {
+                            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                            if ext.eq_ignore_ascii_case("txt") || ext.eq_ignore_ascii_case("csv") {
+                                Some(p.display().to_string().replace('\\', "\\\\").replace('"', "\\\""))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    if !txt_files.is_empty() {
+                        let json = format!("[{}]",
+                            txt_files.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(","));
+                        let js = format!("window.dispatchEvent(new CustomEvent('ironbullet-file-drop', {{ detail: {} }}))", json);
+                        let _ = drop_proxy.send_event(Evt::EvalJs(js));
+                    }
+                    true
+                }
+                _ => true,
             }
         })
         .build(&window)

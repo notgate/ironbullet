@@ -287,9 +287,10 @@ pub(super) fn load_pipeline(
                     Ok(config) => {
                         let mut s = state.lock().await;
                         s.pipeline = config.pipeline;
-                        // Proxy groups are GLOBAL (stored in GuiConfig), not per-project.
-                        // Always use the global groups, ignoring any that might have been
-                        // loaded from the file (fixes issue #52).
+                        // Merge proxy groups: global groups are the source of truth for
+                        // group definitions (issue #52), but the config file's proxy_mode
+                        // and active_group are preserved so Saved Configs remember their
+                        // proxy settings (issues #58, #59, #63).
                         s.pipeline.proxy_settings.proxy_groups = s.config.proxy_groups.clone();
                         s.pipeline_path = Some(path_str.clone());
                         // Track in recent configs

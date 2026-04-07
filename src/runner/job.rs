@@ -41,6 +41,10 @@ pub struct Job {
     pub proxy_check_list: String,
     #[serde(default)]
     pub proxy_check_type: String,
+    /// Custom user input values provided at job creation (issue #62).
+    /// Keys match pipeline.custom_inputs[].name, values are user-supplied.
+    #[serde(default)]
+    pub custom_input_values: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,6 +150,7 @@ impl Default for Job {
             proxy_check_url: default_proxy_check_url(),
             proxy_check_list: String::new(),
             proxy_check_type: String::new(),
+            custom_input_values: std::collections::HashMap::new(),
         }
     }
 }

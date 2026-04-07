@@ -25,6 +25,21 @@ where
     }
 }
 
+/// User-defined input field that runners can prompt for at job creation time.
+/// Values are injected into the `globals` namespace and accessible via `<globals.NAME>`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomInput {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_input_type")]
+    pub input_type: String,
+    #[serde(default)]
+    pub default_value: String,
+}
+
+fn default_input_type() -> String { "text".into() }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pipeline {
     #[serde(deserialize_with = "deserialize_uuid_tolerant")]
@@ -42,6 +57,10 @@ pub struct Pipeline {
     pub runner_settings: RunnerSettings,
     #[serde(default)]
     pub output_settings: OutputSettings,
+    /// Custom user-defined input fields (issue #62). Values provided at job
+    /// creation are injected into the globals namespace for all runners.
+    #[serde(default)]
+    pub custom_inputs: Vec<CustomInput>,
 }
 
 impl Default for Pipeline {
@@ -59,6 +78,7 @@ impl Default for Pipeline {
             browser_settings: BrowserSettings::default(),
             runner_settings: RunnerSettings::default(),
             output_settings: OutputSettings::default(),
+            custom_inputs: Vec::new(),
         }
     }
 }

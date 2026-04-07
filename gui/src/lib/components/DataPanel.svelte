@@ -2,7 +2,38 @@
 	import { app } from '$lib/state.svelte';
 	import { send } from '$lib/ipc';
 	import { syncPipelineToBackend } from '$lib/state/tabs';
-	import { onDestroy } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+
+	let dropHighlight = $state(false);
+
+	// File drag-and-drop handler (issue #51)
+	// Native file drops are forwarded as 'ironbullet-file-drop' custom events by the backend.
+	function handleFileDrop(e: CustomEvent<string[]>) {
+		const paths = e.detail || [];
+		if (paths.length === 0) return;
+		for (const p of paths) {
+			addDroppedProxyFile(p);
+		}
+		syncPipelineToBackend();
+	}
+
+	function addDroppedProxyFile(path: string) {
+		const src: ProxySource = {
+			source_type: 'File',
+			value: path,
+			refresh_interval_secs: 0,
+			default_proxy_type: null,
+		};
+		app.pipeline.proxy_settings.proxy_sources = [...app.pipeline.proxy_settings.proxy_sources, src];
+	}
+
+	onMount(() => {
+		window.addEventListener('ironbullet-file-drop', handleFileDrop as EventListener);
+	});
+
+	onDestroy(() => {
+		window.removeEventListener('ironbullet-file-drop', handleFileDrop as EventListener);
+	});
 	import SkeuSelect from './SkeuSelect.svelte';
 	import type { ProxySource } from '$lib/types';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -184,7 +215,14 @@
 	}
 </script>
 
-<div class="flex flex-col h-full bg-surface p-2 space-y-2.5 overflow-y-auto">
+<div
+	class="flex flex-col h-full bg-surface p-2 space-y-2.5 overflow-y-auto"
+	class:ring-2={dropHighlight}
+	class:ring-accent={dropHighlight}
+	ondragover={(e) => { e.preventDefault(); dropHighlight = true; }}
+	ondragleave={() => { dropHighlight = false; }}
+	ondrop={() => { dropHighlight = false; }}
+>
 	<!-- Data Settings -->
 	<div>
 		<div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">

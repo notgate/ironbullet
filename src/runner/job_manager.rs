@@ -12,21 +12,27 @@ use super::job::{DataSourceType, Job, JobState, StartCondition};
 use super::proxy_pool::{ProxyPool, ProxyEntry, ProxyType};
 use super::{HitResult, RunnerOrchestrator, RunnerStats};
 
-/// Build a ProxyPool from the pipeline's proxy_settings.
-/// Loads all proxy sources (File, Inline, Url) and applies the configured mode.
-fn build_proxy_pool(settings: &ProxySettings) -> ProxyPool {
-    // Determine which sources to use
-    let sources = if !settings.active_group.is_empty() {
-        settings.proxy_groups.iter()
-            .find(|g| g.name == settings.active_group)
-            .map(|g| g.sources.as_slice())
-            .unwrap_or(&settings.proxy_sources)
+/// Build a ProxyPool and resolve the effective ProxyMode.
+/// Returns (pool, effective_mode) — the mode accounts for group-level overrides
+/// so Sticky groups auto-elevate even when the top-level mode is None (#58/#59).
+fn build_proxy_pool(settings: &ProxySettings) -> (ProxyPool, ProxyMode) {
+    let (sources, effective_mode) = if !settings.active_group.is_empty() {
+        if let Some(g) = settings.proxy_groups.iter().find(|g| g.name == settings.active_group) {
+            let mode = if matches!(settings.proxy_mode, ProxyMode::None) {
+                g.mode.clone()
+            } else {
+                settings.proxy_mode.clone()
+            };
+            (g.sources.as_slice(), mode)
+        } else {
+            (&settings.proxy_sources[..], settings.proxy_mode.clone())
+        }
     } else {
-        &settings.proxy_sources
+        (&settings.proxy_sources[..], settings.proxy_mode.clone())
     };
 
-    if matches!(settings.proxy_mode, ProxyMode::None) || sources.is_empty() {
-        return ProxyPool::empty();
+    if matches!(effective_mode, ProxyMode::None) || sources.is_empty() {
+        return (ProxyPool::empty(), ProxyMode::None);
     }
 
     let mut entries: Vec<ProxyEntry> = Vec::new();
@@ -63,7 +69,7 @@ fn build_proxy_pool(settings: &ProxySettings) -> ProxyPool {
         entries.extend(raw_lines.into_iter().filter_map(|l| parse_proxy_for_pool(&l, default_type)));
     }
 
-    ProxyPool::new(entries, settings.ban_duration_secs)
+    (ProxyPool::new(entries, settings.ban_duration_secs), effective_mode)
 }
 
 /// Detect proxy type from port number for untyped host:port lines.
@@ -387,8 +393,7 @@ impl JobManager {
         } else {
             &job.pipeline.proxy_settings
         };
-        let proxy_mode = proxy_settings_ref.proxy_mode.clone();
-        let proxy_pool = build_proxy_pool(proxy_settings_ref);
+        let (proxy_pool, proxy_mode) = build_proxy_pool(proxy_settings_ref);
         let (hits_tx, hits_rx) = mpsc::channel::<HitResult>(1024);
 
         let runner = Arc::new(RunnerOrchestrator::new(
@@ -401,6 +406,7 @@ impl JobManager {
             hits_tx,
             plugin_manager,
             chrome_executable_path,
+            job.custom_input_values.clone(),
         ));
 
         job.state = JobState::Running;

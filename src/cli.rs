@@ -221,6 +221,7 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
         hits_tx,
         None,
         None, // chrome_executable_path — not used in CLI mode
+        std::collections::HashMap::new(), // no custom inputs in CLI mode
     ));
 
     eprintln!("[*] starting with {} threads", threads);

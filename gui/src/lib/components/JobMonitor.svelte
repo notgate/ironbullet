@@ -24,6 +24,7 @@
 
 	let showNewJob = $state(false);
 	let showHelp = $state(false);
+	let customInputValues = $state<Record<string, string>>({});
 
 	// Job row context menu
 	let jobCtxMenu = $state<{ x: number; y: number; job: any } | null>(null);
@@ -373,8 +374,11 @@ Error handling
 				proxy_override_file: newJobProxyMode === 'file' ? newJobProxyFile : undefined,
 				proxy_override_group: newJobProxyMode === 'group' ? newJobProxyGroup : undefined,
 			} : {}),
+			// Custom user input values (issue #62)
+			...(Object.keys(customInputValues).length > 0 ? { custom_input_values: customInputValues } : {}),
 		});
 		showNewJob = false;
+		customInputValues = {};
 		newJobName = '';
 		newJobDataSource = '';
 		proxyCheckList = '';
@@ -662,6 +666,25 @@ Error handling
 					</div>
 				{/if}
 			</div>
+			{#if app.pipeline?.custom_inputs?.length}
+				<div class="mt-2">
+					<label class="text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">Custom Inputs</label>
+					<div class="grid grid-cols-2 gap-1 mt-0.5">
+						{#each app.pipeline.custom_inputs as ci}
+							<div>
+								<label class="text-muted-foreground text-[10px]" title={ci.description || ci.name}>{ci.name}</label>
+								<input
+									type={ci.input_type === 'number' ? 'number' : 'text'}
+									value={customInputValues[ci.name] ?? ci.default_value ?? ''}
+									oninput={(e) => { customInputValues[ci.name] = e.currentTarget.value; }}
+									placeholder={ci.default_value || ci.name}
+									class="skeu-input w-full text-xs font-mono"
+								/>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
 			<div class="flex items-center gap-2 mt-1">
 				<button class="skeu-btn text-xs text-green" onclick={createJob}>Create Job</button>
 				<button class="skeu-btn text-xs text-muted-foreground" onclick={() => { showNewJob = false; }}>Cancel</button>

@@ -230,6 +230,7 @@ pub(super) fn start_runner(
                 hits_tx,
                 Some(pm),
                 chrome_exe,
+                std::collections::HashMap::new(),
             ));
 
             s.runner = Some(runner.clone());

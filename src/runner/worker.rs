@@ -27,6 +27,7 @@ pub(crate) async fn run_worker(
     plugin_manager: Option<Arc<crate::plugin::manager::PluginManager>>,
     chrome_executable_path: Option<std::path::PathBuf>,
     result_feed: Arc<Mutex<VecDeque<ResultEntry>>>,
+    custom_input_values: std::collections::HashMap<String, String>,
 ) {
     stats.active_threads.fetch_add(1, Ordering::Relaxed);
 
@@ -82,6 +83,12 @@ pub(crate) async fn run_worker(
         ctx.proxy = proxy.clone();
         ctx.plugin_manager = plugin_manager.clone();
         ctx.chrome_executable_path = chrome_executable_path.clone();
+
+        // Inject custom user input values into globals namespace (issue #62).
+        // Accessible in configs via <globals.KEY> or <KEY>.
+        for (k, v) in &custom_input_values {
+            ctx.variables.globals.insert(k.clone(), v.clone());
+        }
 
         let parts: Vec<&str> = data_line.split(pipeline.data_settings.separator).collect();
         for (i, slice_name) in pipeline.data_settings.slices.iter().enumerate() {
@@ -196,8 +203,8 @@ pub(crate) async fn run_worker(
                         });
                     }
                 } else {
-                    // Max retries exhausted — count as an error so the total
-                    // accounts for the credential rather than silently dropping it.
+                    // Max retries exhausted — stash for final replay (issue #64).
+                    data_pool.stash_error(data_line.clone());
                     stats.errors.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut feed) = result_feed.try_lock() {
                         if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
@@ -266,11 +273,11 @@ pub(crate) async fn run_worker(
                         });
                     }
                 } else {
+                    // Max retries exhausted — stash for final replay pass (issue #64).
+                    // Transient network/proxy errors shouldn't permanently discard credentials.
+                    data_pool.stash_error(data_line.clone());
                     stats.errors.fetch_add(1, Ordering::Relaxed);
                     let err_msg = result.as_ref().err().map(|e| e.to_string());
-                    // Write error entries to the output file (issue #10).
-                    // The error message is stored under the "_error" capture key so
-                    // it appears in the output file for offline debugging.
                     if let Some(ref ow) = output_writer {
                         let mut err_caps = std::collections::HashMap::new();
                         if let Some(ref msg) = err_msg {
