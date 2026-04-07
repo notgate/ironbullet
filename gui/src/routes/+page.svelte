@@ -35,6 +35,7 @@
 	import FingerprintDialog from '$lib/components/FingerprintDialog.svelte';
 	import HitsDialog from '$lib/components/HitsDialog.svelte';
 	import Toast from '$lib/components/Toast.svelte';
+	import TextContextMenu from '$lib/components/TextContextMenu.svelte';
 	import type { Block } from '$lib/types';
 
 	// ── Native panel window detection ──
@@ -377,6 +378,7 @@
 	<FingerprintDialog />
 	<HitsDialog />
 	<Toast />
+	<TextContextMenu />
 
 	<ContextMenu />
 {/if}

@@ -13,9 +13,7 @@ export type WithoutChildrenOrChild<T> = WithoutChildren<WithoutChild<T>>;
 export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & { ref?: U | null };
 
 export function fmt(n: number): string {
-	if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-	if (n >= 1e3) return Math.round(n / 1e3) + 'K';
-	return '' + n;
+	return n.toLocaleString('en-US');
 }
 
 export function formatDuration(secs: number): string {

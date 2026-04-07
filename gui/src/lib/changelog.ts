@@ -12,7 +12,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 	{
 		version: '0.6.0',
 		date: '2026-04-07',
-		highlights: 'Mega update — error requeue, sticky proxy fix, custom user inputs, drag-and-drop file import.',
+		highlights: 'Mega update — error requeue, sticky proxy fix, custom user inputs, right-click context menu, full stat numbers.',
 		sections: [
 			{
 				title: 'Bug Fixes',
@@ -20,13 +20,14 @@ export const CHANGELOG: ChangelogEntry[] = [
 					'Errored credentials requeued for final pass (issue #64): Accounts that exhaust max_retries due to transient network/proxy errors are stashed and replayed once after the main pool drains with fresh proxies.',
 					'Sticky proxy mode auto-elevation (issues #58, #59): Selecting a Sticky proxy group in the Job dialog or loading a Saved Config now correctly activates Sticky mode instead of silently ignoring it.',
 					'Proxy settings preserved per saved config (issue #63): Loading an .rfx file no longer overwrites its proxy_mode and active_group.',
+					'Stats now show full numbers with commas (e.g. 1,234 instead of 1K) for accuracy (issue #65).',
 				],
 			},
 			{
 				title: 'New Features',
 				items: [
 					'Custom user input variables (issue #62): Configs can define custom_inputs with name, description, type, and default value. The Job dialog shows input fields and values are injected into the globals namespace.',
-					'Drag-and-drop file import (issue #51): Drop .txt/.csv files onto the Data/Proxy panel to auto-add them as proxy sources.',
+					'Right-click context menu (issue #65): Copy, Paste, Select All on response viewer, variable inspector, debug panel, and all text content areas.',
 				],
 			},
 		],
