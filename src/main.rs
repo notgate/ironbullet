@@ -536,7 +536,7 @@ fn run_gui() {
         .with_drag_drop_handler(move |e| {
             match e {
                 wry::DragDropEvent::Drop { paths, position: _, .. } => {
-                    // Send dropped file paths to the frontend via JS event (issue #51).
+                    eprintln!("[drag-drop] Drop event: {} files", paths.len());
                     let txt_files: Vec<String> = paths.into_iter()
                         .filter_map(|p| {
                             let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -550,6 +550,7 @@ fn run_gui() {
                     if !txt_files.is_empty() {
                         let json = format!("[{}]",
                             txt_files.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(","));
+                        eprintln!("[drag-drop] dispatching {} txt/csv files to frontend", txt_files.len());
                         let js = format!("window.dispatchEvent(new CustomEvent('ironbullet-file-drop', {{ detail: {} }}))", json);
                         let _ = drop_proxy.send_event(Evt::EvalJs(js));
                     }

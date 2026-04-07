@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { registerCallbacks, send } from '$lib/ipc';
 	import { app } from '$lib/state.svelte';
+	import { syncPipelineToBackend } from '$lib/state/tabs';
+	import { toast } from '$lib/toast.svelte';
 	import { dock } from '$lib/state/dock.svelte';
 	import type { PanelId } from '$lib/state/dock.svelte';
 	import { createKeydownHandler } from '$lib/keyboard';
@@ -84,8 +86,34 @@
 		(blocks) => { clipboardBlocks = blocks; },
 	);
 
+	// File drag-and-drop handler (issue #51)
+	// Wry sends 'ironbullet-file-drop' CustomEvent with file paths on native file drop.
+	function handleFileDrop(e: Event) {
+		const paths = (e as CustomEvent<string[]>).detail || [];
+		if (paths.length === 0) return;
+		let added = 0;
+		for (const p of paths) {
+			const lower = p.toLowerCase();
+			if (lower.endsWith('.txt') || lower.endsWith('.csv')) {
+				app.pipeline.proxy_settings.proxy_sources = [
+					...app.pipeline.proxy_settings.proxy_sources,
+					{ source_type: 'File', value: p, refresh_interval_secs: 0, default_proxy_type: null },
+				];
+				added++;
+			}
+		}
+		if (added > 0) {
+			syncPipelineToBackend();
+			const fname = paths[0].split(/[/\\]/).pop() || paths[0];
+			toast(`Added ${added} file${added > 1 ? 's' : ''} as proxy source (${fname}${added > 1 ? ', ...' : ''})`, 'success');
+		}
+	}
+
 	onMount(() => {
 		registerCallbacks();
+
+		// File drop listener — must be at root level so it works regardless of active panel
+		window.addEventListener('ironbullet-file-drop', handleFileDrop);
 
 		// Ensure default dirs are set up on startup (not just during onboarding)
 		// This is needed for job creation dialog to find saved configs
@@ -102,6 +130,10 @@
 		(window as any).__ibPanelClosed = (panelId: string) => {
 			// Native window was closed — re-dock to bottom
 			dock.movePanel(panelId as PanelId, 'bottom');
+		};
+
+		return () => {
+			window.removeEventListener('ironbullet-file-drop', handleFileDrop);
 		};
 	});
 
