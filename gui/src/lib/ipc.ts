@@ -53,6 +53,23 @@ export function send(cmd: string, data: Record<string, unknown> = {}) {
 	window.ipc.postMessage(JSON.stringify({ cmd, data: payload }));
 }
 
+/** One-shot IPC call that resolves when the backend responds with the matching event. */
+const pendingCallbacks = new Map<string, (data: any) => void>();
+export function sendAsync(cmd: string, responseEvent: string, data: Record<string, unknown> = {}): Promise<any> {
+	return new Promise((resolve) => {
+		pendingCallbacks.set(responseEvent, resolve);
+		send(cmd, data);
+		// Safety timeout so we never hang
+		setTimeout(() => { if (pendingCallbacks.delete(responseEvent)) resolve(null); }, 3000);
+	});
+}
+// Called from registerCallbacks — resolves pending async calls
+export function _resolvePending(event: string, data: any): boolean {
+	const cb = pendingCallbacks.get(event);
+	if (cb) { pendingCallbacks.delete(event); cb(data); return true; }
+	return false;
+}
+
 export function saveSettings() {
     send('save_config', {
         zoom: Math.round(app.zoom * 100),
@@ -87,6 +104,9 @@ export function registerCallbacks() {
 		if (!SILENT_CMDS.has(resp.cmd)) {
 			console.log(`[IPC] ← ${resp.cmd}`, resp.success ? 'OK' : `ERR: ${resp.error}`, resp.data !== undefined ? resp.data : '');
 		}
+
+		// Resolve pending sendAsync calls first
+		if (_resolvePending(resp.cmd, resp.data)) return;
 
 		// Route to specific handler
 		switch (resp.cmd) {

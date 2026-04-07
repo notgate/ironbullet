@@ -430,6 +430,27 @@ pub fn handle_ipc_cmd(
             None
         }
 
+        "clipboard_copy" => {
+            let text = data.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let ok = arboard::Clipboard::new()
+                .and_then(|mut cb| cb.set_text(&text))
+                .is_ok();
+            let resp = IpcResponse::ok("clipboard_copy", serde_json::json!({ "ok": ok }));
+            let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());
+            eval_js(js);
+            None
+        }
+
+        "clipboard_paste" => {
+            let text = arboard::Clipboard::new()
+                .and_then(|mut cb| cb.get_text())
+                .unwrap_or_default();
+            let resp = IpcResponse::ok("clipboard_paste", serde_json::json!({ "text": text }));
+            let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());
+            eval_js(js);
+            None
+        }
+
         "get_app_info" => {
             let resp = handlers_update::get_app_info();
             let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());

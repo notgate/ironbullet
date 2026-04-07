@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { send, sendAsync } from '$lib/ipc';
 	import Copy from '@lucide/svelte/icons/copy';
 	import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
 	import TextSelect from '@lucide/svelte/icons/text-select';
@@ -33,25 +34,23 @@
 
 	function doCopy() {
 		if (!menu?.text) { menu = null; return; }
-		// Create a temporary textarea to use execCommand (no permissions popup)
-		const ta = document.createElement('textarea');
-		ta.value = menu.text;
-		ta.style.position = 'fixed';
-		ta.style.left = '-9999px';
-		document.body.appendChild(ta);
-		ta.select();
-		document.execCommand('copy');
-		document.body.removeChild(ta);
+		send('clipboard_copy', { text: menu.text });
 		menu = null;
 	}
 
-	function doPaste() {
-		// Focus the original target and execute paste command
+	async function doPaste() {
 		const target = menu?.target;
 		menu = null;
-		if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+		const resp = await sendAsync('clipboard_paste', 'clipboard_paste');
+		if (!resp?.text || !target) return;
+		const text = resp.text as string;
+		if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
 			target.focus();
-			document.execCommand('paste');
+			const start = target.selectionStart ?? target.value.length;
+			const end = target.selectionEnd ?? target.value.length;
+			target.value = target.value.slice(0, start) + text + target.value.slice(end);
+			target.selectionStart = target.selectionEnd = start + text.length;
+			target.dispatchEvent(new Event('input', { bubbles: true }));
 		}
 	}
 
@@ -64,7 +63,6 @@
 			target.focus();
 			target.select();
 		} else {
-			// Select text within the closest scrollable container or the element itself
 			const container = target.closest('.panel-inset, .overflow-auto, pre, code') || target;
 			const sel = window.getSelection();
 			if (sel) {
