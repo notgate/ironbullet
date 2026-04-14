@@ -250,22 +250,25 @@ pub(super) fn remove_job(
             }
             let jobs = s.job_manager.list_jobs();
             let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
 
-pub(super) fn list_jobs(
-    state: Arc<Mutex<AppState>>,
-    eval_js: impl Fn(String) + Send + 'static,
-) {
+pub(super) fn list_jobs(state: Arc<Mutex<AppState>>, eval_js: impl Fn(String) + Send + 'static) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let mut s = state.lock().await;
             let jobs = s.job_manager.list_jobs();
             let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -548,7 +551,10 @@ pub(super) fn pause_job(
             }
             let jobs = s.job_manager.list_jobs();
             let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -569,7 +575,10 @@ pub(super) fn resume_job(
             }
             let jobs = s.job_manager.list_jobs();
             let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -596,7 +605,10 @@ pub(super) fn stop_job(
             }
             let jobs = s.job_manager.list_jobs();
             let resp = IpcResponse::ok("jobs_list", serde_json::to_value(jobs).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -614,11 +626,17 @@ pub(super) fn get_job_stats(
                 if let Ok(uuid) = uuid::Uuid::parse_str(id) {
                     s.job_manager.update_job_stats(uuid);
                     let stats = s.job_manager.get_job_stats(uuid);
-                    let resp = IpcResponse::ok("job_stats_update", serde_json::json!({
-                        "id": id,
-                        "stats": serde_json::to_value(&stats).unwrap_or_default(),
-                    }));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp = IpcResponse::ok(
+                        "job_stats_update",
+                        serde_json::json!({
+                            "id": id,
+                            "stats": serde_json::to_value(&stats).unwrap_or_default(),
+                        }),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                 }
             }
         });
@@ -636,17 +654,33 @@ pub(super) fn get_job_debug_log(
             let s = state.lock().await;
             if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
                 if let Ok(uuid) = uuid::Uuid::parse_str(id) {
-                    let filter = data.get("filter").and_then(|v| v.as_str()).unwrap_or("ALL").to_string();
-                    let results: Vec<_> = s.job_manager.get_job_stats_full(uuid)
-                        .map(|stats| stats.recent_results.into_iter()
-                            .filter(|r| filter == "ALL" || r.status == filter)
-                            .collect())
+                    let filter = data
+                        .get("filter")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("ALL")
+                        .to_string();
+                    let results: Vec<_> = s
+                        .job_manager
+                        .get_job_stats_full(uuid)
+                        .map(|stats| {
+                            stats
+                                .recent_results
+                                .into_iter()
+                                .filter(|r| filter == "ALL" || r.status == filter)
+                                .collect()
+                        })
                         .unwrap_or_default();
-                    let resp = IpcResponse::ok("job_debug_log", serde_json::json!({
-                        "id": id,
-                        "results": serde_json::to_value(&results).unwrap_or_default(),
-                    }));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp = IpcResponse::ok(
+                        "job_debug_log",
+                        serde_json::json!({
+                            "id": id,
+                            "results": serde_json::to_value(&results).unwrap_or_default(),
+                        }),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                 }
             }
         });
@@ -665,11 +699,17 @@ pub(super) fn get_job_hits(
             if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
                 if let Ok(uuid) = uuid::Uuid::parse_str(id) {
                     let hits = s.job_manager.get_job_hits(uuid);
-                    let resp = IpcResponse::ok("job_hits", serde_json::json!({
-                        "id": id,
-                        "hits": serde_json::to_value(&hits).unwrap_or_default(),
-                    }));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp = IpcResponse::ok(
+                        "job_hits",
+                        serde_json::json!({
+                            "id": id,
+                            "hits": serde_json::to_value(&hits).unwrap_or_default(),
+                        }),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                 }
             }
         });
@@ -685,7 +725,11 @@ pub(super) fn update_job(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let mut s = state.lock().await;
-            let id_str = data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let id_str = data
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             if let Ok(uuid) = uuid::Uuid::parse_str(&id_str) {
                 if let Some(job) = s.job_manager.get_job_mut(uuid) {
                     if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
@@ -695,7 +739,10 @@ pub(super) fn update_job(
                         job.thread_count = tc as usize;
                     }
                     if let Some(ds) = data.get("data_source") {
-                        if let Ok(new_ds) = serde_json::from_value::<ironbullet::runner::job::DataSource>(ds.clone()) {
+                        if let Ok(new_ds) = serde_json::from_value::<
+                            ironbullet::runner::job::DataSource,
+                        >(ds.clone())
+                        {
                             job.data_source = new_ds;
                         }
                     }
@@ -711,7 +758,10 @@ pub(super) fn update_job(
                 }
             }
             let resp = IpcResponse::ok("job_updated", serde_json::json!({ "id": id_str }));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }

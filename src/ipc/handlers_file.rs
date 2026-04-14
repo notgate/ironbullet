@@ -24,14 +24,21 @@ pub(super) fn generate_code(
                 None => {
                     let s = state.lock().await;
                     let code = rust_codegen::generate_rust_code(&s.pipeline);
-                    let resp = IpcResponse::ok("code_generated", serde_json::json!({ "code": code }));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp =
+                        IpcResponse::ok("code_generated", serde_json::json!({ "code": code }));
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                     return;
                 }
             };
             let code = rust_codegen::generate_rust_code(pipeline);
             let resp = IpcResponse::ok("code_generated", serde_json::json!({ "code": code }));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -44,32 +51,45 @@ pub(super) fn save_code(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let code = data.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            
+            let code = data
+                .get("code")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
             // Get default directory for saving code
             let default_dir = { state.lock().await.config.configs_path.clone() };
-            
+
             let mut dialog = rfd::FileDialog::new()
                 .set_title("Save Generated Code")
                 .add_filter("Rust source", &["rs"])
                 .add_filter("All files", &["*"]);
-            
+
             if !default_dir.is_empty() {
                 if let Ok(path) = std::path::PathBuf::from(&default_dir).canonicalize() {
                     dialog = dialog.set_directory(path);
                 }
             }
-            
+
             let save_path = dialog.save_file();
             if let Some(path) = save_path {
                 match std::fs::write(&path, &code) {
                     Ok(()) => {
-                        let resp = IpcResponse::ok("code_saved", serde_json::json!({ "path": path.display().to_string() }));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp = IpcResponse::ok(
+                            "code_saved",
+                            serde_json::json!({ "path": path.display().to_string() }),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                     Err(e) => {
                         let resp = IpcResponse::err("code_saved", e.to_string());
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                 }
             }
@@ -85,53 +105,75 @@ pub(super) fn import_config(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let path = data.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
-            
+            let path = data
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
             // Get default directory for imports
             let configs_dir = { state.lock().await.config.configs_path.clone() };
-            
+
             let pick_path = if let Some(p) = path {
                 Some(std::path::PathBuf::from(p))
             } else {
                 let mut dialog = rfd::FileDialog::new()
                     .set_title("Import Config")
-                    .add_filter("Config files (*.svb, *.opk, *.loli)", &["svb", "opk", "loli", "json"])
+                    .add_filter(
+                        "Config files (*.svb, *.opk, *.loli)",
+                        &["svb", "opk", "loli", "json"],
+                    )
                     .add_filter("All files", &["*"]);
-                
+
                 if !configs_dir.is_empty() {
                     if let Ok(path) = std::path::PathBuf::from(&configs_dir).canonicalize() {
                         dialog = dialog.set_directory(path);
                     }
                 }
-                
+
                 dialog.pick_file()
             };
             if let Some(path) = pick_path {
                 match std::fs::read(&path) {
-                    Ok(bytes) => {
-                        match ironbullet::import::import_config_bytes(&bytes) {
-                            Ok(result) => {
-                                let mut s = state.lock().await;
-                                s.pipeline = result.pipeline;
-                                let mut data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-                                if !result.warnings.is_empty() {
-                                    data["_import_warnings"] = serde_json::to_value(&result.warnings).unwrap_or_default();
-                                }
-                                if !result.security_issues.is_empty() {
-                                    data["_security_issues"] = serde_json::to_value(&result.security_issues).unwrap_or_default();
-                                }
-                                let resp = IpcResponse::ok("pipeline_loaded", data);
-                                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    Ok(bytes) => match ironbullet::import::import_config_bytes(&bytes) {
+                        Ok(result) => {
+                            let mut s = state.lock().await;
+                            s.pipeline = result.pipeline;
+                            let mut data = serde_json::to_value(&s.pipeline).unwrap_or_default();
+                            if !result.warnings.is_empty() {
+                                data["_import_warnings"] =
+                                    serde_json::to_value(&result.warnings).unwrap_or_default();
                             }
-                            Err(e) => {
-                                let resp = IpcResponse::err("pipeline_loaded", format!("Import failed: {}", e));
-                                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                            if !result.security_issues.is_empty() {
+                                data["_security_issues"] =
+                                    serde_json::to_value(&result.security_issues)
+                                        .unwrap_or_default();
                             }
+                            let resp = IpcResponse::ok("pipeline_loaded", data);
+                            eval_js(format!(
+                                "window.__ipc_callback({})",
+                                serde_json::to_string(&resp).unwrap_or_default()
+                            ));
                         }
-                    }
+                        Err(e) => {
+                            let resp = IpcResponse::err(
+                                "pipeline_loaded",
+                                format!("Import failed: {}", e),
+                            );
+                            eval_js(format!(
+                                "window.__ipc_callback({})",
+                                serde_json::to_string(&resp).unwrap_or_default()
+                            ));
+                        }
+                    },
                     Err(e) => {
-                        let resp = IpcResponse::err("pipeline_loaded", format!("Failed to read file: {}", e));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp = IpcResponse::err(
+                            "pipeline_loaded",
+                            format!("Failed to read file: {}", e),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                 }
             }
@@ -156,7 +198,11 @@ pub(super) fn list_collections(
                     for entry in entries.flatten() {
                         let p = entry.path();
                         if p.extension().map(|e| e == "rfx").unwrap_or(false) {
-                            let name = p.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                            let name = p
+                                .file_stem()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string();
                             configs.push(serde_json::json!({
                                 "path": p.display().to_string(),
                                 "name": name,
@@ -171,7 +217,10 @@ pub(super) fn list_collections(
                 na.to_lowercase().cmp(&nb.to_lowercase())
             });
             let resp = IpcResponse::ok("collections_list", serde_json::json!(configs));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -179,23 +228,31 @@ pub(super) fn list_collections(
 /// List saved configs (.opk / .svb / .rfx) in the given directory.
 /// Frontend sends: { configs_path: "/path/to/configs" }
 /// Returns: configs_list: [{ name, path, ext }, ...]
-pub(super) fn list_configs(
-    data: serde_json::Value,
-    eval_js: impl Fn(String) + Send + 'static,
-) {
+pub(super) fn list_configs(data: serde_json::Value, eval_js: impl Fn(String) + Send + 'static) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let path = data.get("configs_path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let path = data
+                .get("configs_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
 
             let mut configs: Vec<serde_json::Value> = Vec::new();
             if !path.is_empty() {
                 if let Ok(entries) = std::fs::read_dir(&path) {
                     for entry in entries.flatten() {
                         let p = entry.path();
-                        let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                        let ext = p
+                            .extension()
+                            .map(|e| e.to_string_lossy().to_lowercase())
+                            .unwrap_or_default();
                         if ext == "opk" || ext == "svb" || ext == "rfx" {
-                            let name = p.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                            let name = p
+                                .file_stem()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string();
                             configs.push(serde_json::json!({
                                 "path": p.display().to_string(),
                                 "name": name,
@@ -211,7 +268,10 @@ pub(super) fn list_configs(
                 na.to_lowercase().cmp(&nb.to_lowercase())
             });
             let resp = IpcResponse::ok("configs_list", serde_json::json!(configs));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -224,8 +284,12 @@ pub(super) fn browse_folder(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let field = data.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            
+            let field = data
+                .get("field")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
             // Get default directory for this field
             let s = state.lock().await;
             let default_dir = match field.as_str() {
@@ -238,20 +302,26 @@ pub(super) fn browse_folder(
                 _ => String::new(),
             };
             drop(s);
-            
+
             let mut dialog = rfd::FileDialog::new().set_title("Select Folder");
             if !default_dir.is_empty() {
                 if let Ok(path) = std::path::PathBuf::from(&default_dir).canonicalize() {
                     dialog = dialog.set_directory(path);
                 }
             }
-            
+
             if let Some(path) = dialog.pick_folder() {
-                let resp = IpcResponse::ok("folder_selected", serde_json::json!({
-                    "field": field,
-                    "path": path.display().to_string(),
-                }));
-                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                let resp = IpcResponse::ok(
+                    "folder_selected",
+                    serde_json::json!({
+                        "field": field,
+                        "path": path.display().to_string(),
+                    }),
+                );
+                eval_js(format!(
+                    "window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()
+                ));
             }
         });
     }
@@ -265,14 +335,21 @@ pub(super) fn browse_file(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let field = data.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            
+            let field = data
+                .get("field")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
             // Get default directory for this field
             let s = state.lock().await;
             let default_dir = match field.as_str() {
                 "wordlist" | "job_wordlist" => s.config.default_wordlist_path.clone(),
                 "proxies" | "proxy_group_source" => s.config.default_proxy_path.clone(),
-                "chrome_exe" => s.config.chrome_executable_path.clone()
+                "chrome_exe" => s
+                    .config
+                    .chrome_executable_path
+                    .clone()
                     .rsplit_once(std::path::MAIN_SEPARATOR)
                     .map(|(dir, _)| dir.to_string())
                     .unwrap_or_default(),
@@ -282,38 +359,41 @@ pub(super) fn browse_file(
                 _ => String::new(),
             };
             drop(s);
-            
+
             let mut dialog = rfd::FileDialog::new();
             dialog = match field.as_str() {
-                "wordlist" | "job_wordlist" => dialog.set_title("Select Wordlist")
+                "wordlist" | "job_wordlist" => dialog
+                    .set_title("Select Wordlist")
                     .add_filter("Text files", &["txt", "csv", "lst", "dat"])
                     .add_filter("All files", &["*"]),
-                "proxies" => dialog.set_title("Select Proxy File")
+                "proxies" => dialog
+                    .set_title("Select Proxy File")
                     .add_filter("Text files", &["txt", "csv", "lst"])
                     .add_filter("All files", &["*"]),
                 "chrome_exe" => {
                     let title = "Select Chrome / Chromium Executable";
                     if cfg!(target_os = "windows") {
-                        dialog.set_title(title)
+                        dialog
+                            .set_title(title)
                             .add_filter("Executables", &["exe"])
                             .add_filter("All files", &["*"])
                     } else {
-                        dialog.set_title(title)
-                            .add_filter("All files", &["*"])
+                        dialog.set_title(title).add_filter("All files", &["*"])
                     }
-                },
-                "proxy_group_source" => {
-                    dialog.set_title("Select Proxy File")
-                        .add_filter("Text files", &["txt", "csv", "lst"])
-                        .add_filter("All files", &["*"])
-                },
-                "job_config" => dialog.set_title("Select Config File")
+                }
+                "proxy_group_source" => dialog
+                    .set_title("Select Proxy File")
+                    .add_filter("Text files", &["txt", "csv", "lst"])
+                    .add_filter("All files", &["*"]),
+                "job_config" => dialog
+                    .set_title("Select Config File")
                     .add_filter("Config files", &["rfx", "opk", "svb"])
                     .add_filter("All files", &["*"]),
-                _ => dialog.set_title("Select File")
+                _ => dialog
+                    .set_title("Select File")
                     .add_filter("All files", &["*"]),
             };
-            
+
             // Set starting directory if configured
             if !default_dir.is_empty() {
                 if let Ok(path) = std::path::PathBuf::from(&default_dir).canonicalize() {
@@ -322,11 +402,17 @@ pub(super) fn browse_file(
             }
 
             if let Some(path) = dialog.pick_file() {
-                let resp = IpcResponse::ok("file_selected", serde_json::json!({
-                    "field": field,
-                    "path": path.display().to_string(),
-                }));
-                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                let resp = IpcResponse::ok(
+                    "file_selected",
+                    serde_json::json!({
+                        "field": field,
+                        "path": path.display().to_string(),
+                    }),
+                );
+                eval_js(format!(
+                    "window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()
+                ));
             }
         });
     }

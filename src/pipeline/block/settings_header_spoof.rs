@@ -14,7 +14,9 @@ pub enum IpSpoofStrategy {
 }
 
 impl Default for IpSpoofStrategy {
-    fn default() -> Self { Self::RandomPublic }
+    fn default() -> Self {
+        Self::RandomPublic
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,7 +54,9 @@ pub struct HeaderSpoofSettings {
     pub inject_host: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 impl Default for HeaderSpoofSettings {
     fn default() -> Self {

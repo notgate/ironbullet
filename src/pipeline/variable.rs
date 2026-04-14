@@ -41,19 +41,27 @@ impl VariableValue {
 }
 
 impl From<String> for VariableValue {
-    fn from(s: String) -> Self { Self::String(s) }
+    fn from(s: String) -> Self {
+        Self::String(s)
+    }
 }
 
 impl From<&str> for VariableValue {
-    fn from(s: &str) -> Self { Self::String(s.to_string()) }
+    fn from(s: &str) -> Self {
+        Self::String(s.to_string())
+    }
 }
 
 impl From<Vec<String>> for VariableValue {
-    fn from(l: Vec<String>) -> Self { Self::List(l) }
+    fn from(l: Vec<String>) -> Self {
+        Self::List(l)
+    }
 }
 
 impl From<i64> for VariableValue {
-    fn from(i: i64) -> Self { Self::Int(i) }
+    fn from(i: i64) -> Self {
+        Self::Int(i)
+    }
 }
 
 /// Variable store with scoped access.
@@ -79,7 +87,9 @@ impl VariableStore {
             // data. prefix: check data namespace first, fall back to user_vars.
             // ParseJSON/JwtToken/etc. write to user_vars; configs often use
             // "data.MYVAR" for these — fall back so both forms resolve correctly.
-            self.data.get(rest).cloned()
+            self.data
+                .get(rest)
+                .cloned()
                 .or_else(|| self.user_vars.get(rest).map(|v| v.value.as_str()))
         } else if let Some(rest) = key.strip_prefix("globals.") {
             self.globals.get(rest).cloned()
@@ -87,17 +97,22 @@ impl VariableStore {
             // Bare name: check user_vars first (ParseJSON output), then data namespace.
             // HTTP blocks store RESPONSECODE/LASTRESPONSE/SOURCE via set_data —
             // a bare "RESPONSECODE" should still resolve for convenience.
-            self.user_vars.get(key).map(|v| v.value.as_str())
+            self.user_vars
+                .get(key)
+                .map(|v| v.value.as_str())
                 .or_else(|| self.data.get(key).cloned())
         }
     }
 
     pub fn set_user(&mut self, name: &str, value: String, is_capture: bool) {
-        self.user_vars.insert(name.to_string(), Variable {
-            name: name.to_string(),
-            value: VariableValue::String(value),
-            is_capture,
-        });
+        self.user_vars.insert(
+            name.to_string(),
+            Variable {
+                name: name.to_string(),
+                value: VariableValue::String(value),
+                is_capture,
+            },
+        );
     }
 
     pub fn set_data(&mut self, key: &str, value: String) {
@@ -162,7 +177,8 @@ impl VariableStore {
 
     /// Get all captures (variables marked as CAP)
     pub fn captures(&self) -> HashMap<String, String> {
-        self.user_vars.iter()
+        self.user_vars
+            .iter()
             .filter(|(_, v)| v.is_capture)
             .map(|(k, v)| (k.clone(), v.value.as_str()))
             .collect()

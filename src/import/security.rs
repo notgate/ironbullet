@@ -94,16 +94,22 @@ fn scan_block(block: &Block, legit_domains: &[String], issues: &mut Vec<Security
             scan_script(block, &s.code, issues);
         }
         BlockSettings::IfElse(s) => {
-            for b in &s.true_blocks { scan_block(b, legit_domains, issues); }
-            for b in &s.false_blocks { scan_block(b, legit_domains, issues); }
+            for b in &s.true_blocks {
+                scan_block(b, legit_domains, issues);
+            }
+            for b in &s.false_blocks {
+                scan_block(b, legit_domains, issues);
+            }
         }
         _ => {}
     }
 }
 
 fn scan_http_request(
-    block: &Block, s: &HttpRequestSettings,
-    legit_domains: &[String], issues: &mut Vec<SecurityIssue>,
+    block: &Block,
+    s: &HttpRequestSettings,
+    legit_domains: &[String],
+    issues: &mut Vec<SecurityIssue>,
 ) {
     let url_lower = s.url.to_lowercase();
 
@@ -116,10 +122,21 @@ fn scan_http_request(
                 description: format!(
                     "Block \"{}\" sends data to a known exfiltration service. \
                     Credentials or captured data may be sent to an attacker-controlled endpoint.",
-                    if block.label.is_empty() { "HTTP Request" } else { &block.label }
+                    if block.label.is_empty() {
+                        "HTTP Request"
+                    } else {
+                        &block.label
+                    }
                 ),
-                code_snippet: format!("URL: {}\nMethod: {}\nBody: {}", s.url, s.method,
-                    if s.body.len() > 200 { format!("{}...", &s.body[..200]) } else { s.body.clone() }
+                code_snippet: format!(
+                    "URL: {}\nMethod: {}\nBody: {}",
+                    s.url,
+                    s.method,
+                    if s.body.len() > 200 {
+                        format!("{}...", &s.body[..200])
+                    } else {
+                        s.body.clone()
+                    }
                 ),
             });
             break;
@@ -128,12 +145,18 @@ fn scan_http_request(
 
     // Check if request sends credentials to a non-target domain
     if let Some(domain) = extract_domain(&s.url) {
-        let is_legit = legit_domains.iter().any(|d| domain == *d || domain.ends_with(&format!(".{}", d)));
+        let is_legit = legit_domains
+            .iter()
+            .any(|d| domain == *d || domain.ends_with(&format!(".{}", d)));
         if !is_legit {
-            let body_has_creds = s.body.contains("<input.USER>") || s.body.contains("<input.PASS>")
-                || s.body.contains("<USER>") || s.body.contains("<PASS>");
-            let url_has_creds = s.url.contains("<input.USER>") || s.url.contains("<input.PASS>")
-                || s.url.contains("<USER>") || s.url.contains("<PASS>");
+            let body_has_creds = s.body.contains("<input.USER>")
+                || s.body.contains("<input.PASS>")
+                || s.body.contains("<USER>")
+                || s.body.contains("<PASS>");
+            let url_has_creds = s.url.contains("<input.USER>")
+                || s.url.contains("<input.PASS>")
+                || s.url.contains("<USER>")
+                || s.url.contains("<PASS>");
             if body_has_creds || url_has_creds {
                 issues.push(SecurityIssue {
                     severity: SecuritySeverity::Critical,
@@ -141,11 +164,21 @@ fn scan_http_request(
                     description: format!(
                         "Block \"{}\" sends username/password data to \"{}\" which is not \
                         the primary target domain. This may be credential harvesting.",
-                        if block.label.is_empty() { "HTTP Request" } else { &block.label },
+                        if block.label.is_empty() {
+                            "HTTP Request"
+                        } else {
+                            &block.label
+                        },
                         domain
                     ),
-                    code_snippet: format!("URL: {}\nBody: {}", s.url,
-                        if s.body.len() > 200 { format!("{}...", &s.body[..200]) } else { s.body.clone() }
+                    code_snippet: format!(
+                        "URL: {}\nBody: {}",
+                        s.url,
+                        if s.body.len() > 200 {
+                            format!("{}...", &s.body[..200])
+                        } else {
+                            s.body.clone()
+                        }
                     ),
                 });
             }
@@ -162,7 +195,11 @@ fn scan_http_request(
                 description: format!(
                     "Block \"{}\" targets a raw IP address ({}) instead of a domain name. \
                     This is unusual and could indicate a command-and-control server.",
-                    if block.label.is_empty() { "HTTP Request" } else { &block.label },
+                    if block.label.is_empty() {
+                        "HTTP Request"
+                    } else {
+                        &block.label
+                    },
                     host
                 ),
                 code_snippet: format!("URL: {}", s.url),
@@ -182,7 +219,11 @@ fn scan_script(block: &Block, code: &str, issues: &mut Vec<SecurityIssue>) {
                 description: format!(
                     "Block \"{}\" contains code that may execute system commands or \
                     perform dangerous operations.",
-                    if block.label.is_empty() { "Script" } else { &block.label }
+                    if block.label.is_empty() {
+                        "Script"
+                    } else {
+                        &block.label
+                    }
                 ),
                 code_snippet: truncate_code(code, *pattern),
             });
@@ -196,7 +237,11 @@ fn scan_script(block: &Block, code: &str, issues: &mut Vec<SecurityIssue>) {
             title: "Base64 encoding detected in script".into(),
             description: format!(
                 "Block \"{}\" uses Base64 encoding which may be hiding malicious URLs or payloads.",
-                if block.label.is_empty() { "Script" } else { &block.label }
+                if block.label.is_empty() {
+                    "Script"
+                } else {
+                    &block.label
+                }
             ),
             code_snippet: truncate_code(code, "base64"),
         });
@@ -211,7 +256,11 @@ fn scan_script(block: &Block, code: &str, issues: &mut Vec<SecurityIssue>) {
                 title: "Exfiltration URL in script".into(),
                 description: format!(
                     "Block \"{}\" contains a URL to a known data exfiltration service.",
-                    if block.label.is_empty() { "Script" } else { &block.label }
+                    if block.label.is_empty() {
+                        "Script"
+                    } else {
+                        &block.label
+                    }
                 ),
                 code_snippet: truncate_code(code, pattern),
             });

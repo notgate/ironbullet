@@ -109,7 +109,7 @@ For \`Proxy Check\`:
 		},
 		{
 			heading: 'Editing Jobs',
-			content: `Click the \`✏ pencil\` icon on any stopped or paused job to edit it.
+			content: `Click the \`Edit\` button on any stopped or paused job to edit it.
 
 Editable fields:
 • \`Name\` — rename the job
@@ -123,19 +123,19 @@ Note: Jobs must not be in \`Running\` state to edit. Stop or pause first.`
 			heading: 'Job Controls',
 			content: `Each row has action buttons on the right:
 
-\`▶ Play\` — start a Queued or Waiting job
-\`⏸ Pause\` — temporarily halt a Running job (resumes from same position)
-\`▶ Resume\` — continue a Paused job
-\`■ Stop\` — permanently stop a Running or Paused job
-\`✏ Edit\` — open the edit dialog (not available while Running)
-\`🗑 Delete\` — remove the job and all its data
+\`Play\` — start a Queued or Waiting job
+\`Pause\` — temporarily halt a Running job (resumes from same position)
+\`Resume\` — continue a Paused job
+\`Stop\` — permanently stop a Running or Paused job
+\`Edit\` — open the edit dialog (not available while Running)
+\`Delete\` — remove the job and all its data
 
 Stats columns: \`CPM\` (checks per minute) • \`Hits\` • \`Processed/Total\` • \`Elapsed Time\``
 		},
 		{
 			heading: 'Hits Database',
 			content: `• Hits for each job are stored separately and viewable in the \`Data\` tab
-• Click a job row or the \`📊 database icon\` to jump to that job's hits in the Data panel
+• Click a job row or the database button to jump to that job's hits in the Data panel
 • The \`Data\` panel shows a \`Hits Database\` section with a job dropdown selector
 • Switching jobs in the dropdown loads hits for that job from the backend
 • Hits are removed from the database when the job is deleted

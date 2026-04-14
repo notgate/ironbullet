@@ -1,7 +1,10 @@
 use super::*;
 
 impl ExecutionContext {
-    pub(super) fn execute_parse_lr(&mut self, settings: &ParseLRSettings) -> crate::error::Result<()> {
+    pub(super) fn execute_parse_lr(
+        &mut self,
+        settings: &ParseLRSettings,
+    ) -> crate::error::Result<()> {
         let source = self.variables.resolve_input(&settings.input_var);
         let left = self.variables.interpolate(&settings.left);
         let right = self.variables.interpolate(&settings.right);
@@ -19,7 +22,8 @@ impl ExecutionContext {
                 }
             }
             let value = results.join(", ");
-            self.variables.set_user(&settings.output_var, value, settings.capture);
+            self.variables
+                .set_user(&settings.output_var, value, settings.capture);
         } else {
             let value = if let Some(start) = source.find(&left) {
                 let after = start + left.len();
@@ -31,13 +35,17 @@ impl ExecutionContext {
             } else {
                 String::new()
             };
-            self.variables.set_user(&settings.output_var, value, settings.capture);
+            self.variables
+                .set_user(&settings.output_var, value, settings.capture);
         }
 
         Ok(())
     }
 
-    pub(super) fn execute_parse_regex(&mut self, settings: &ParseRegexSettings) -> crate::error::Result<()> {
+    pub(super) fn execute_parse_regex(
+        &mut self,
+        settings: &ParseRegexSettings,
+    ) -> crate::error::Result<()> {
         let source = self.variables.resolve_input(&settings.input_var);
         let pattern = self.variables.interpolate(&settings.pattern);
         let re = regex::Regex::new(&pattern)?;
@@ -48,13 +56,17 @@ impl ExecutionContext {
                 let group_val = caps.get(i).map(|m| m.as_str()).unwrap_or("");
                 output = output.replace(&format!("${}", i), group_val);
             }
-            self.variables.set_user(&settings.output_var, output, settings.capture);
+            self.variables
+                .set_user(&settings.output_var, output, settings.capture);
         }
 
         Ok(())
     }
 
-    pub(super) fn execute_parse_json(&mut self, settings: &ParseJSONSettings) -> crate::error::Result<()> {
+    pub(super) fn execute_parse_json(
+        &mut self,
+        settings: &ParseJSONSettings,
+    ) -> crate::error::Result<()> {
         let source = self.variables.resolve_input(&settings.input_var);
         let path = self.variables.interpolate(&settings.json_path);
 
@@ -62,7 +74,8 @@ impl ExecutionContext {
         // Failing the whole check on an empty body makes configs brittle for endpoints that
         // conditionally return JSON (e.g. success = JSON, failure = empty / redirect).
         if source.trim().is_empty() {
-            self.variables.set_user(&settings.output_var, String::new(), settings.capture);
+            self.variables
+                .set_user(&settings.output_var, String::new(), settings.capture);
             return Ok(());
         }
 
@@ -82,18 +95,26 @@ impl ExecutionContext {
             evaluate_json_path(&json, &path)
         };
 
-        self.variables.set_user(&settings.output_var, value, settings.capture);
+        self.variables
+            .set_user(&settings.output_var, value, settings.capture);
         Ok(())
     }
 
-    pub(super) fn execute_parse_css(&mut self, settings: &ParseCSSSettings) -> crate::error::Result<()> {
+    pub(super) fn execute_parse_css(
+        &mut self,
+        settings: &ParseCSSSettings,
+    ) -> crate::error::Result<()> {
         let source = self.variables.resolve_input(&settings.input_var);
         let selector_str = self.variables.interpolate(&settings.selector);
         let attribute = self.variables.interpolate(&settings.attribute);
 
         let document = scraper::Html::parse_document(&source);
-        let selector = scraper::Selector::parse(&selector_str)
-            .map_err(|e| crate::error::AppError::Pipeline(format!("Invalid CSS selector '{}': {:?}", selector_str, e)))?;
+        let selector = scraper::Selector::parse(&selector_str).map_err(|e| {
+            crate::error::AppError::Pipeline(format!(
+                "Invalid CSS selector '{}': {:?}",
+                selector_str, e
+            ))
+        })?;
 
         let elements: Vec<_> = document.select(&selector).collect();
         let value = if elements.is_empty() {
@@ -116,11 +137,18 @@ impl ExecutionContext {
             }
         };
 
-        self.variables.set_user(&settings.output_var, value.trim().to_string(), settings.capture);
+        self.variables.set_user(
+            &settings.output_var,
+            value.trim().to_string(),
+            settings.capture,
+        );
         Ok(())
     }
 
-    pub(super) fn execute_parse_xpath(&mut self, settings: &ParseXPathSettings) -> crate::error::Result<()> {
+    pub(super) fn execute_parse_xpath(
+        &mut self,
+        settings: &ParseXPathSettings,
+    ) -> crate::error::Result<()> {
         let source = self.variables.resolve_input(&settings.input_var);
         let xpath_str = self.variables.interpolate(&settings.xpath);
 
@@ -133,29 +161,25 @@ impl ExecutionContext {
                     Ok(Some(xpath)) => {
                         let ctx = sxd_xpath::Context::new();
                         match xpath.evaluate(&ctx, doc.root()) {
-                            Ok(val) => {
-                                match val {
-                                    sxd_xpath::Value::String(s) => s,
-                                    sxd_xpath::Value::Number(n) => n.to_string(),
-                                    sxd_xpath::Value::Boolean(b) => b.to_string(),
-                                    sxd_xpath::Value::Nodeset(ns) => {
-                                        ns.iter()
-                                            .map(|node| node.string_value())
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    }
-                                }
-                            }
-                            Err(_) => {
-                                String::new()
-                            }
+                            Ok(val) => match val {
+                                sxd_xpath::Value::String(s) => s,
+                                sxd_xpath::Value::Number(n) => n.to_string(),
+                                sxd_xpath::Value::Boolean(b) => b.to_string(),
+                                sxd_xpath::Value::Nodeset(ns) => ns
+                                    .iter()
+                                    .map(|node| node.string_value())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                            },
+                            Err(_) => String::new(),
                         }
                     }
                     Ok(None) => String::new(),
                     Err(e) => {
-                        return Err(crate::error::AppError::Pipeline(
-                            format!("Invalid XPath '{}': {:?}", xpath_str, e),
-                        ));
+                        return Err(crate::error::AppError::Pipeline(format!(
+                            "Invalid XPath '{}': {:?}",
+                            xpath_str, e
+                        )));
                     }
                 }
             }
@@ -174,9 +198,11 @@ impl ExecutionContext {
                                         sxd_xpath::Value::String(s) => s,
                                         sxd_xpath::Value::Number(n) => n.to_string(),
                                         sxd_xpath::Value::Boolean(b) => b.to_string(),
-                                        sxd_xpath::Value::Nodeset(ns) => {
-                                            ns.iter().map(|n| n.string_value()).collect::<Vec<_>>().join(", ")
-                                        }
+                                        sxd_xpath::Value::Nodeset(ns) => ns
+                                            .iter()
+                                            .map(|n| n.string_value())
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
                                     },
                                     Err(_) => String::new(),
                                 }
@@ -189,20 +215,30 @@ impl ExecutionContext {
             }
         };
 
-        self.variables.set_user(&settings.output_var, value.trim().to_string(), settings.capture);
+        self.variables.set_user(
+            &settings.output_var,
+            value.trim().to_string(),
+            settings.capture,
+        );
         Ok(())
     }
 
-    pub(super) fn execute_parse_cookie(&mut self, settings: &ParseCookieSettings) -> crate::error::Result<()> {
+    pub(super) fn execute_parse_cookie(
+        &mut self,
+        settings: &ParseCookieSettings,
+    ) -> crate::error::Result<()> {
         let source = self.variables.resolve_input(&settings.input_var);
         let cookie_name = self.variables.interpolate(&settings.cookie_name);
 
         // Source is expected to be a JSON object {"name":"value",...}
-        let value = if let Ok(map) = serde_json::from_str::<std::collections::HashMap<String, String>>(&source) {
+        let value = if let Ok(map) =
+            serde_json::from_str::<std::collections::HashMap<String, String>>(&source)
+        {
             map.get(&cookie_name).cloned().unwrap_or_default()
         } else {
             // Fallback: try parsing as "name=value; name2=value2" cookie header string
-            source.split(';')
+            source
+                .split(';')
                 .filter_map(|pair| {
                     let pair = pair.trim();
                     let eq = pair.find('=')?;
@@ -213,11 +249,15 @@ impl ExecutionContext {
                 .unwrap_or_default()
         };
 
-        self.variables.set_user(&settings.output_var, value, settings.capture);
+        self.variables
+            .set_user(&settings.output_var, value, settings.capture);
         Ok(())
     }
 
-    pub(super) fn execute_lambda_parser(&mut self, settings: &LambdaParserSettings) -> crate::error::Result<()> {
+    pub(super) fn execute_lambda_parser(
+        &mut self,
+        settings: &LambdaParserSettings,
+    ) -> crate::error::Result<()> {
         let input = self.variables.resolve_input(&settings.input_var);
         let lambda_expr = self.variables.interpolate(&settings.lambda_expression);
 
@@ -225,7 +265,8 @@ impl ExecutionContext {
         // Supports: x => x.split(',')[0], x => x.trim(), etc.
         let result = self.simple_lambda_parser(&input, &lambda_expr);
 
-        self.variables.set_user(&settings.output_var, result, settings.capture);
+        self.variables
+            .set_user(&settings.output_var, result, settings.capture);
         Ok(())
     }
 
@@ -256,14 +297,16 @@ impl ExecutionContext {
                             "replace" => {
                                 let parts: Vec<&str> = args.split(',').collect();
                                 if parts.len() == 2 {
-                                    let search = parts[0].trim().trim_matches(|c| c == '\'' || c == '"');
-                                    let replace = parts[1].trim().trim_matches(|c| c == '\'' || c == '"');
+                                    let search =
+                                        parts[0].trim().trim_matches(|c| c == '\'' || c == '"');
+                                    let replace =
+                                        parts[1].trim().trim_matches(|c| c == '\'' || c == '"');
                                     result.replace(search, replace)
                                 } else {
                                     result
                                 }
                             }
-                            _ => result
+                            _ => result,
                         };
                     } else if let Some(bracket_pos) = op.find('[') {
                         // Array indexing: [0], [1], etc.
@@ -290,39 +333,63 @@ impl ExecutionContext {
     }
 
     // ── Unified Parse dispatch ────────────────────────────────────────
-    pub(super) fn execute_parse(&mut self, s: &crate::pipeline::block::ParseSettings) -> crate::error::Result<()> {
-        use crate::pipeline::block::{ParseMode, ParseLRSettings, ParseRegexSettings, ParseJSONSettings, ParseCSSSettings, ParseXPathSettings, ParseCookieSettings, LambdaParserSettings};
+    pub(super) fn execute_parse(
+        &mut self,
+        s: &crate::pipeline::block::ParseSettings,
+    ) -> crate::error::Result<()> {
+        use crate::pipeline::block::{
+            LambdaParserSettings, ParseCSSSettings, ParseCookieSettings, ParseJSONSettings,
+            ParseLRSettings, ParseMode, ParseRegexSettings, ParseXPathSettings,
+        };
         match &s.parse_mode {
             ParseMode::LR => self.execute_parse_lr(&ParseLRSettings {
-                input_var: s.input_var.clone(), left: s.left.clone(), right: s.right.clone(),
-                output_var: s.output_var.clone(), capture: s.capture,
-                recursive: s.recursive, case_insensitive: s.case_insensitive,
+                input_var: s.input_var.clone(),
+                left: s.left.clone(),
+                right: s.right.clone(),
+                output_var: s.output_var.clone(),
+                capture: s.capture,
+                recursive: s.recursive,
+                case_insensitive: s.case_insensitive,
             }),
             ParseMode::Regex => self.execute_parse_regex(&ParseRegexSettings {
-                input_var: s.input_var.clone(), pattern: s.pattern.clone(),
-                output_format: s.output_format.clone(), output_var: s.output_var.clone(),
-                capture: s.capture, multi_line: s.multi_line,
+                input_var: s.input_var.clone(),
+                pattern: s.pattern.clone(),
+                output_format: s.output_format.clone(),
+                output_var: s.output_var.clone(),
+                capture: s.capture,
+                multi_line: s.multi_line,
             }),
             ParseMode::Json => self.execute_parse_json(&ParseJSONSettings {
-                input_var: s.input_var.clone(), json_path: s.json_path.clone(),
-                output_var: s.output_var.clone(), capture: s.capture,
+                input_var: s.input_var.clone(),
+                json_path: s.json_path.clone(),
+                output_var: s.output_var.clone(),
+                capture: s.capture,
             }),
             ParseMode::Css => self.execute_parse_css(&ParseCSSSettings {
-                input_var: s.input_var.clone(), selector: s.selector.clone(),
-                attribute: s.attribute.clone(), output_var: s.output_var.clone(),
-                capture: s.capture, index: s.index,
+                input_var: s.input_var.clone(),
+                selector: s.selector.clone(),
+                attribute: s.attribute.clone(),
+                output_var: s.output_var.clone(),
+                capture: s.capture,
+                index: s.index,
             }),
             ParseMode::XPath => self.execute_parse_xpath(&ParseXPathSettings {
-                input_var: s.input_var.clone(), xpath: s.xpath.clone(),
-                output_var: s.output_var.clone(), capture: s.capture,
+                input_var: s.input_var.clone(),
+                xpath: s.xpath.clone(),
+                output_var: s.output_var.clone(),
+                capture: s.capture,
             }),
             ParseMode::Cookie => self.execute_parse_cookie(&ParseCookieSettings {
-                input_var: s.input_var.clone(), cookie_name: s.cookie_name.clone(),
-                output_var: s.output_var.clone(), capture: s.capture,
+                input_var: s.input_var.clone(),
+                cookie_name: s.cookie_name.clone(),
+                output_var: s.output_var.clone(),
+                capture: s.capture,
             }),
             ParseMode::Lambda => self.execute_lambda_parser(&LambdaParserSettings {
-                input_var: s.input_var.clone(), lambda_expression: s.lambda_expression.clone(),
-                output_var: s.output_var.clone(), capture: s.capture,
+                input_var: s.input_var.clone(),
+                lambda_expression: s.lambda_expression.clone(),
+                output_var: s.output_var.clone(),
+                capture: s.capture,
             }),
         }
     }
@@ -391,7 +458,14 @@ struct FilterExpr {
 }
 
 #[derive(Debug)]
-enum FilterOp { Eq, Ne, Gt, Lt, Gte, Lte }
+enum FilterOp {
+    Eq,
+    Ne,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+}
 
 /// Tokenise a JSONPath string into segments.
 fn tokenise_json_path(path: &str) -> Vec<JsonSeg> {
@@ -426,7 +500,9 @@ fn tokenise_json_path(path: &str) -> Vec<JsonSeg> {
                 // Collect everything until matching ']'
                 let mut inner = String::new();
                 for c2 in chars.by_ref() {
-                    if c2 == ']' { break; }
+                    if c2 == ']' {
+                        break;
+                    }
                     inner.push(c2);
                 }
                 let trimmed = inner.trim();
@@ -436,7 +512,7 @@ fn tokenise_json_path(path: &str) -> Vec<JsonSeg> {
                     segs.push(JsonSeg::Index(n));
                 } else if trimmed.starts_with("?(") && trimmed.ends_with(')') {
                     // Filter expression: ?(...)
-                    let expr = &trimmed[2..trimmed.len()-1].trim();
+                    let expr = &trimmed[2..trimmed.len() - 1].trim();
                     if let Some(seg) = parse_filter_expr(expr) {
                         segs.push(JsonSeg::Filter(seg));
                     }
@@ -473,8 +549,8 @@ fn parse_filter_expr(expr: &str) -> Option<FilterExpr> {
         ("<=", FilterOp::Lte),
         ("!=", FilterOp::Ne),
         ("==", FilterOp::Eq),
-        (">",  FilterOp::Gt),
-        ("<",  FilterOp::Lt),
+        (">", FilterOp::Gt),
+        ("<", FilterOp::Lt),
     ];
     for (sym, op) in ops {
         if let Some(pos) = rest.find(sym) {
@@ -484,7 +560,7 @@ fn parse_filter_expr(expr: &str) -> Option<FilterExpr> {
             let rhs = if (raw_rhs.starts_with('\'') && raw_rhs.ends_with('\''))
                 || (raw_rhs.starts_with('"') && raw_rhs.ends_with('"'))
             {
-                raw_rhs[1..raw_rhs.len()-1].to_string()
+                raw_rhs[1..raw_rhs.len() - 1].to_string()
             } else {
                 raw_rhs.to_string()
             };
@@ -494,14 +570,20 @@ fn parse_filter_expr(expr: &str) -> Option<FilterExpr> {
                 s if *s == "<=" => FilterOp::Lte,
                 s if *s == "!=" => FilterOp::Ne,
                 s if *s == "==" => FilterOp::Eq,
-                s if *s == ">"  => FilterOp::Gt,
-                _               => FilterOp::Lt,
+                s if *s == ">" => FilterOp::Gt,
+                _ => FilterOp::Lt,
             };
-            return Some(FilterExpr { field, cmp: Some((op_variant, rhs)) });
+            return Some(FilterExpr {
+                field,
+                cmp: Some((op_variant, rhs)),
+            });
         }
     }
     // No operator → existence check
-    Some(FilterExpr { field: rest.trim().to_string(), cmp: None })
+    Some(FilterExpr {
+        field: rest.trim().to_string(),
+        cmp: None,
+    })
 }
 
 /// Evaluate a filter against a single JSON object element.
@@ -526,20 +608,20 @@ fn filter_matches(node: &serde_json::Value, f: &FilterExpr) -> bool {
             // Try numeric comparison first
             if let (Ok(l), Ok(r)) = (lhs_str.parse::<f64>(), rhs.parse::<f64>()) {
                 return match op {
-                    FilterOp::Eq  => (l - r).abs() < f64::EPSILON,
-                    FilterOp::Ne  => (l - r).abs() >= f64::EPSILON,
-                    FilterOp::Gt  => l > r,
-                    FilterOp::Lt  => l < r,
+                    FilterOp::Eq => (l - r).abs() < f64::EPSILON,
+                    FilterOp::Ne => (l - r).abs() >= f64::EPSILON,
+                    FilterOp::Gt => l > r,
+                    FilterOp::Lt => l < r,
                     FilterOp::Gte => l >= r,
                     FilterOp::Lte => l <= r,
                 };
             }
             // Fall back to string comparison
             match op {
-                FilterOp::Eq  => lhs_str == *rhs,
-                FilterOp::Ne  => lhs_str != *rhs,
-                FilterOp::Gt  => lhs_str > *rhs,
-                FilterOp::Lt  => lhs_str < *rhs,
+                FilterOp::Eq => lhs_str == *rhs,
+                FilterOp::Ne => lhs_str != *rhs,
+                FilterOp::Gt => lhs_str > *rhs,
+                FilterOp::Lt => lhs_str < *rhs,
                 FilterOp::Gte => lhs_str >= *rhs,
                 FilterOp::Lte => lhs_str <= *rhs,
             }
@@ -598,8 +680,6 @@ fn json_value_to_string(v: &serde_json::Value) -> String {
     }
 }
 
-
-
 #[cfg(test)]
 mod jsonpath_tests {
     use super::*;
@@ -656,7 +736,8 @@ mod jsonpath_tests {
 
     #[test]
     fn test_filter_equality() {
-        let v = json!({"items": [{"type": "vip", "name": "Alice"}, {"type": "basic", "name": "Bob"}]});
+        let v =
+            json!({"items": [{"type": "vip", "name": "Alice"}, {"type": "basic", "name": "Bob"}]});
         let r = evaluate_json_path(&v, "items[?(@.type=='vip')].name");
         println!("filter eq: {:?}", r);
         assert_eq!(r, "Alice");
@@ -687,70 +768,66 @@ mod jsonpath_tests {
     }
 }
 
+// Additional edge cases based on user reports
+#[test]
+fn test_bare_star_as_full_path() {
+    // User types just "*" as the json_path on a JSON object
+    let v = serde_json::json!({"token": "abc", "user": "alice"});
+    let r = evaluate_json_path(&v, "*");
+    println!("bare * on object result: {:?}", r);
+    assert!(!r.is_empty(), "bare * should return all values");
+}
 
+#[test]
+fn test_bare_star_on_array() {
+    // User types just "*" as path, source is a JSON array
+    let v = serde_json::json!(["a", "b", "c"]);
+    let r = evaluate_json_path(&v, "*");
+    println!("bare * on array result: {:?}", r);
+    assert_eq!(r, "a, b, c");
+}
 
+#[test]
+fn test_dollar_bracket_star() {
+    // $[*] on root array
+    let v = serde_json::json!([{"id":1},{"id":2}]);
+    let r = evaluate_json_path(&v, "$[*].id");
+    println!("$[*].id: {:?}", r);
+    assert_eq!(r, "1, 2");
+}
 
+#[test]
+fn test_filter_no_quotes_equals() {
+    // Some JSONPath impls allow == without quotes for numbers
+    let v = serde_json::json!([{"score": 10, "name": "Alice"}, {"score": 5, "name": "Bob"}]);
+    let r = evaluate_json_path(&v, "[?(@.score==10)].name");
+    println!("filter numeric == : {:?}", r);
+    assert_eq!(r, "Alice");
+}
 
-    // Additional edge cases based on user reports
-    #[test]
-    fn test_bare_star_as_full_path() {
-        // User types just "*" as the json_path on a JSON object
-        let v = serde_json::json!({"token": "abc", "user": "alice"});
-        let r = evaluate_json_path(&v, "*");
-        println!("bare * on object result: {:?}", r);
-        assert!(!r.is_empty(), "bare * should return all values");
-    }
+#[test]
+fn test_filter_nested_path_on_object() {
+    // users[?(@.active==true)].name
+    let v = serde_json::json!({"users": [{"name": "Alice", "active": true}, {"name": "Bob", "active": false}]});
+    let r = evaluate_json_path(&v, "users[?(@.active==true)].name");
+    println!("filter bool true: {:?}", r);
+    // "true" string comparison — does it work?
+}
 
-    #[test]
-    fn test_bare_star_on_array() {
-        // User types just "*" as path, source is a JSON array
-        let v = serde_json::json!(["a", "b", "c"]);
-        let r = evaluate_json_path(&v, "*");
-        println!("bare * on array result: {:?}", r);
-        assert_eq!(r, "a, b, c");
-    }
+#[test]
+fn test_wildcard_on_nested_array_of_values() {
+    // items[*] where items is array of strings — should return all
+    let v = serde_json::json!({"items": ["x", "y", "z"]});
+    let r = evaluate_json_path(&v, "items[*]");
+    println!("items[*] of string array: {:?}", r);
+    assert_eq!(r, "x, y, z");
+}
 
-    #[test]
-    fn test_dollar_bracket_star() {
-        // $[*] on root array
-        let v = serde_json::json!([{"id":1},{"id":2}]);
-        let r = evaluate_json_path(&v, "$[*].id");
-        println!("$[*].id: {:?}", r);
-        assert_eq!(r, "1, 2");
-    }
-
-    #[test]
-    fn test_filter_no_quotes_equals() {
-        // Some JSONPath impls allow == without quotes for numbers
-        let v = serde_json::json!([{"score": 10, "name": "Alice"}, {"score": 5, "name": "Bob"}]);
-        let r = evaluate_json_path(&v, "[?(@.score==10)].name");
-        println!("filter numeric == : {:?}", r);
-        assert_eq!(r, "Alice");
-    }
-
-    #[test]
-    fn test_filter_nested_path_on_object() {
-        // users[?(@.active==true)].name
-        let v = serde_json::json!({"users": [{"name": "Alice", "active": true}, {"name": "Bob", "active": false}]});
-        let r = evaluate_json_path(&v, "users[?(@.active==true)].name");
-        println!("filter bool true: {:?}", r);
-        // "true" string comparison — does it work?
-    }
-
-    #[test]
-    fn test_wildcard_on_nested_array_of_values() {
-        // items[*] where items is array of strings — should return all
-        let v = serde_json::json!({"items": ["x", "y", "z"]});
-        let r = evaluate_json_path(&v, "items[*]");
-        println!("items[*] of string array: {:?}", r);
-        assert_eq!(r, "x, y, z");
-    }
-
-    #[test]
-    fn test_filter_existence_check() {
-        // [?(@.optional)] — existence filter
-        let v = serde_json::json!([{"name": "Alice", "optional": "yes"}, {"name": "Bob"}]);
-        let r = evaluate_json_path(&v, "[?(@.optional)].name");
-        println!("existence filter: {:?}", r);
-        assert_eq!(r, "Alice");
-    }
+#[test]
+fn test_filter_existence_check() {
+    // [?(@.optional)] — existence filter
+    let v = serde_json::json!([{"name": "Alice", "optional": "yes"}, {"name": "Bob"}]);
+    let r = evaluate_json_path(&v, "[?(@.optional)].name");
+    println!("existence filter: {:?}", r);
+    assert_eq!(r, "Alice");
+}

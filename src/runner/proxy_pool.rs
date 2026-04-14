@@ -3,6 +3,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::RwLock;
 use std::time::Instant;
 
+fn detect_proxy_type_from_port(port_str: &str, fallback: ProxyType) -> ProxyType {
+    if let Ok(port) = port_str.parse::<u16>() {
+        match port {
+            1080 | 1081 | 9050 | 9150 | 1086 | 1087 | 1088 => ProxyType::Socks5,
+            _ => fallback,
+        }
+    } else {
+        fallback
+    }
+}
+
 pub struct ProxyPool {
     proxies: Vec<ProxyEntry>,
     index: AtomicUsize,
@@ -45,9 +56,14 @@ impl ProxyPool {
         Self::from_file_with_type(path, ban_duration_secs, None)
     }
 
-    pub fn from_file_with_type(path: &str, ban_duration_secs: u64, default_type: Option<ProxyType>) -> std::io::Result<Self> {
+    pub fn from_file_with_type(
+        path: &str,
+        ban_duration_secs: u64,
+        default_type: Option<ProxyType>,
+    ) -> std::io::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        let proxies: Vec<ProxyEntry> = content.lines()
+        let proxies: Vec<ProxyEntry> = content
+            .lines()
             .filter(|l| !l.trim().is_empty())
             .filter_map(|l| parse_proxy_line(l.trim(), default_type))
             .collect();
@@ -64,16 +80,21 @@ impl ProxyPool {
 
     /// Load proxies from a file into this pool, merging with any already loaded.
     /// `default_type_str` is the pipeline-level proxy type string (e.g. "http").
-    pub fn load_from_file(&mut self, path: &str, default_type_str: Option<&str>) -> std::io::Result<()> {
+    pub fn load_from_file(
+        &mut self,
+        path: &str,
+        default_type_str: Option<&str>,
+    ) -> std::io::Result<()> {
         let default_type = default_type_str.and_then(|s| match s.to_lowercase().as_str() {
-            "https"                 => Some(ProxyType::Https),
-            "socks4"                => Some(ProxyType::Socks4),
-            "socks5"                => Some(ProxyType::Socks5),
-            "shadowsocks" | "ss"    => Some(ProxyType::Shadowsocks),
-            _                       => Some(ProxyType::Http),
+            "https" => Some(ProxyType::Https),
+            "socks4" => Some(ProxyType::Socks4),
+            "socks5" => Some(ProxyType::Socks5),
+            "shadowsocks" | "ss" => Some(ProxyType::Shadowsocks),
+            _ => Some(ProxyType::Http),
         });
         let content = std::fs::read_to_string(path)?;
-        let new_proxies: Vec<ProxyEntry> = content.lines()
+        let new_proxies: Vec<ProxyEntry> = content
+            .lines()
             .filter(|l| !l.trim().is_empty())
             .filter_map(|l| parse_proxy_line(l.trim(), default_type))
             .collect();
@@ -99,7 +120,7 @@ impl ProxyPool {
         // Acquire ban-list read lock — multiple threads can hold this simultaneously.
         // If poisoned, recover the data rather than returning None and stalling the caller.
         let bans = match self.bans.read() {
-            Ok(g)  => g,
+            Ok(g) => g,
             Err(e) => e.into_inner(),
         };
 
@@ -111,7 +132,9 @@ impl ProxyPool {
             let proxy_str = proxy.to_string();
 
             match bans.get(&proxy_str) {
-                Some(ban_time) if now.duration_since(*ban_time).as_secs() < self.ban_duration_secs => {
+                Some(ban_time)
+                    if now.duration_since(*ban_time).as_secs() < self.ban_duration_secs =>
+                {
                     // Still banned — skip
                 }
                 _ => return Some(self.proxies[idx].to_proxy_url()),
@@ -142,9 +165,13 @@ impl ProxyPool {
     pub fn active(&self) -> usize {
         let bans = self.bans.read().ok();
         let now = Instant::now();
-        let banned = bans.map(|b| {
-            b.values().filter(|t| now.duration_since(**t).as_secs() < self.ban_duration_secs).count()
-        }).unwrap_or(0);
+        let banned = bans
+            .map(|b| {
+                b.values()
+                    .filter(|t| now.duration_since(**t).as_secs() < self.ban_duration_secs)
+                    .count()
+            })
+            .unwrap_or(0);
         self.proxies.len().saturating_sub(banned)
     }
 }
@@ -152,10 +179,10 @@ impl ProxyPool {
 impl std::fmt::Display for ProxyEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let prefix = match self.proxy_type {
-            ProxyType::Http        => "http://",
-            ProxyType::Https       => "https://",
-            ProxyType::Socks4      => "socks4://",
-            ProxyType::Socks5      => "socks5://",
+            ProxyType::Http => "http://",
+            ProxyType::Https => "https://",
+            ProxyType::Socks4 => "socks4://",
+            ProxyType::Socks5 => "socks5://",
             // Shadowsocks: Display emits the raw ss:// form for logging/UI.
             // Use `to_proxy_url()` to get the actual SOCKS5 local tunnel URL.
             ProxyType::Shadowsocks => "ss://",
@@ -189,14 +216,17 @@ fn parse_proxy_line(line: &str, default_type: Option<ProxyType>) -> Option<Proxy
     // ss:// (Shadowsocks): stored with the address intact; emitted as socks5://
     // at use-time since sslocal exposes a local SOCKS5 interface.
     for (prefix, proxy_type) in &[
-        ("socks5://",      ProxyType::Socks5),
-        ("socks4://",      ProxyType::Socks4),
-        ("https://",       ProxyType::Https),
-        ("http://",        ProxyType::Http),
-        ("ss://",          ProxyType::Shadowsocks),
+        ("socks5://", ProxyType::Socks5),
+        ("socks4://", ProxyType::Socks4),
+        ("https://", ProxyType::Https),
+        ("http://", ProxyType::Http),
+        ("ss://", ProxyType::Shadowsocks),
     ] {
         if let Some(rest) = line.strip_prefix(prefix) {
-            return Some(ProxyEntry { proxy_type: *proxy_type, address: rest.to_string() });
+            return Some(ProxyEntry {
+                proxy_type: *proxy_type,
+                address: rest.to_string(),
+            });
         }
     }
 
@@ -226,30 +256,39 @@ fn parse_proxy_line(line: &str, default_type: Option<ProxyType>) -> Option<Proxy
         } else {
             format!("{}:{}@{}", user, pass, host_port)
         };
-        return Some(ProxyEntry { proxy_type: fallback, address });
+        let host_port_parts: Vec<&str> = host_port.split(':').collect();
+        let proxy_type = if host_port_parts.len() == 2 {
+            detect_proxy_type_from_port(host_port_parts[1], fallback)
+        } else {
+            fallback
+        };
+        return Some(ProxyEntry {
+            proxy_type,
+            address,
+        });
     }
 
     let parts: Vec<&str> = line.split(':').collect();
     match parts.len() {
         // host:port
         2 => Some(ProxyEntry {
-            proxy_type: fallback,
+            proxy_type: detect_proxy_type_from_port(parts[1], fallback),
             address: format!("{}:{}", parts[0], parts[1]),
         }),
         // host:port:user:pass  (OB2 standard)
         4 => Some(ProxyEntry {
-            proxy_type: fallback,
+            proxy_type: detect_proxy_type_from_port(parts[1], fallback),
             address: format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1]),
         }),
         // type:host:port:user:pass
         5 => {
             let proxy_type = match parts[0].to_lowercase().as_str() {
-                "http"                 => ProxyType::Http,
-                "https"                => ProxyType::Https,
-                "socks4"               => ProxyType::Socks4,
-                "socks5"               => ProxyType::Socks5,
-                "shadowsocks" | "ss"   => ProxyType::Shadowsocks,
-                _                      => fallback,
+                "http" => ProxyType::Http,
+                "https" => ProxyType::Https,
+                "socks4" => ProxyType::Socks4,
+                "socks5" => ProxyType::Socks5,
+                "shadowsocks" | "ss" => ProxyType::Shadowsocks,
+                _ => fallback,
             };
             Some(ProxyEntry {
                 proxy_type,

@@ -4,8 +4,8 @@ use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use crate::pipeline::{BotStatus, CaptureFilter, CaptureFilterType, OutputFormat, OutputSettings};
 use super::HitResult;
+use crate::pipeline::{BotStatus, CaptureFilter, CaptureFilterType, OutputFormat, OutputSettings};
 
 /// Manages output file writing in TXT/CSV/JSON formats
 pub struct OutputWriter {
@@ -117,7 +117,9 @@ impl OutputWriter {
                     "proxy": hit.proxy,
                 });
                 let _ = writer.writer.write_all(
-                    serde_json::to_string_pretty(&entry).unwrap_or_default().as_bytes()
+                    serde_json::to_string_pretty(&entry)
+                        .unwrap_or_default()
+                        .as_bytes(),
                 );
                 writer.json_count += 1;
             }
@@ -146,7 +148,8 @@ pub fn apply_capture_filters(
         return captures.clone();
     }
 
-    captures.iter()
+    captures
+        .iter()
         .filter(|(key, value)| {
             filters.iter().all(|f| {
                 // Check if this filter applies to this variable
@@ -159,28 +162,39 @@ pub fn apply_capture_filters(
                     CaptureFilterType::Equals => **value == f.value,
                     CaptureFilterType::StartsWith => value.starts_with(&f.value),
                     CaptureFilterType::EndsWith => value.ends_with(&f.value),
-                    CaptureFilterType::MatchesRegex => {
-                        regex::Regex::new(&f.value)
-                            .map(|re| re.is_match(value))
-                            .unwrap_or(false)
-                    }
-                    CaptureFilterType::MinLength => {
-                        f.value.parse::<usize>().map(|min| value.len() >= min).unwrap_or(true)
-                    }
-                    CaptureFilterType::MaxLength => {
-                        f.value.parse::<usize>().map(|max| value.len() <= max).unwrap_or(true)
-                    }
+                    CaptureFilterType::MatchesRegex => regex::Regex::new(&f.value)
+                        .map(|re| re.is_match(value))
+                        .unwrap_or(false),
+                    CaptureFilterType::MinLength => f
+                        .value
+                        .parse::<usize>()
+                        .map(|min| value.len() >= min)
+                        .unwrap_or(true),
+                    CaptureFilterType::MaxLength => f
+                        .value
+                        .parse::<usize>()
+                        .map(|max| value.len() <= max)
+                        .unwrap_or(true),
                     CaptureFilterType::NotEmpty => !value.is_empty(),
                 };
-                if f.negate { !matches } else { matches }
+                if f.negate {
+                    !matches
+                } else {
+                    matches
+                }
             })
         })
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect()
 }
 
-fn format_hit_line(template: &str, hit: &super::HitResult, captures: &HashMap<String, String>) -> String {
-    let captures_str = captures.iter()
+fn format_hit_line(
+    template: &str,
+    hit: &super::HitResult,
+    captures: &HashMap<String, String>,
+) -> String {
+    let captures_str = captures
+        .iter()
         .map(|(k, v)| format!("{} = {}", k, v))
         .collect::<Vec<_>>()
         .join(" | ");
@@ -204,6 +218,12 @@ fn csv_escape(s: &str) -> String {
 
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }

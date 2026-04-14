@@ -50,7 +50,9 @@ unsafe impl Sync for PluginManager {}
 
 impl PluginManager {
     pub fn new() -> Self {
-        Self { plugins: Vec::new() }
+        Self {
+            plugins: Vec::new(),
+        }
     }
 
     pub fn scan_directory(&mut self, path: &str) {
@@ -73,8 +75,8 @@ impl PluginManager {
 
     fn load_plugin(&mut self, path: &Path) -> Result<(), String> {
         unsafe {
-            let lib = libloading::Library::new(path)
-                .map_err(|e| format!("Failed to load DLL: {}", e))?;
+            let lib =
+                libloading::Library::new(path).map_err(|e| format!("Failed to load DLL: {}", e))?;
 
             // Load plugin_info
             let plugin_info_fn: libloading::Symbol<unsafe extern "C" fn() -> *const PluginInfo> =
@@ -147,7 +149,12 @@ impl PluginManager {
         for plugin in &self.plugins {
             for block_meta in &plugin.blocks {
                 if block_meta.block_type_name == type_name {
-                    return self.call_execute(&plugin.lib, block_meta.block_index, settings_json, variables_json);
+                    return self.call_execute(
+                        &plugin.lib,
+                        block_meta.block_index,
+                        settings_json,
+                        variables_json,
+                    );
                 }
             }
         }

@@ -1,10 +1,10 @@
 pub mod block;
-pub mod variable;
-pub mod engine;
 pub mod codegen;
+pub mod datadome;
+pub mod engine;
 pub mod random_data;
 pub mod tls_profiles;
-pub mod datadome;
+pub mod variable;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,9 @@ pub struct CustomInput {
     pub default_value: String,
 }
 
-fn default_input_type() -> String { "text".into() }
+fn default_input_type() -> String {
+    "text".into()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pipeline {
@@ -229,8 +231,12 @@ pub struct RunnerSettings {
     pub only_proxyless: bool,
 }
 
-fn default_gradual_delay() -> u32 { 100 }
-fn default_retry_reduction() -> u32 { 25 }
+fn default_gradual_delay() -> u32 {
+    100
+}
+fn default_retry_reduction() -> u32 {
+    25
+}
 
 impl Default for RunnerSettings {
     fn default() -> Self {
@@ -281,9 +287,15 @@ pub struct OutputSettings {
     pub capture_filters: Vec<CaptureFilter>,
 }
 
-fn default_true() -> bool { true }
-fn default_output_dir() -> String { "results".into() }
-fn default_output_format() -> String { "{data} | {captures}".into() }
+fn default_true() -> bool {
+    true
+}
+fn default_output_dir() -> String {
+    "results".into()
+}
+fn default_output_format() -> String {
+    "{data} | {captures}".into()
+}
 
 impl Default for OutputSettings {
     fn default() -> Self {
@@ -308,7 +320,9 @@ pub enum OutputFormat {
 }
 
 impl Default for OutputFormat {
-    fn default() -> Self { Self::Txt }
+    fn default() -> Self {
+        Self::Txt
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

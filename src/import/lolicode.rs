@@ -9,7 +9,10 @@ use super::ImportResult;
 // ────────────────────────────────────────────────────────────
 
 /// Parse LoliCode BLOCK:Type ... ENDBLOCK syntax
-pub(super) fn parse_lolicode_blocks(content: &str, warnings: &mut Vec<String>) -> Result<Vec<Block>, String> {
+pub(super) fn parse_lolicode_blocks(
+    content: &str,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<Block>, String> {
     let mut blocks = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
@@ -31,15 +34,21 @@ pub(super) fn parse_lolicode_blocks(content: &str, warnings: &mut Vec<String>) -
     if !preamble_lines.is_empty() {
         let preamble_code = preamble_lines.join("\n");
         // Only add if it contains actual logic (not just comments/whitespace)
-        if preamble_code.contains("ConstantString") || preamble_code.contains("MatchRegex")
-            || preamble_code.contains("data.") || preamble_code.contains("CheckCondition")
+        if preamble_code.contains("ConstantString")
+            || preamble_code.contains("MatchRegex")
+            || preamble_code.contains("data.")
+            || preamble_code.contains("CheckCondition")
         {
             let mut block = Block::new(BlockType::Script);
             block.label = "OB2 Preamble (C#)".into();
             if let BlockSettings::Script(ref mut s) = block.settings {
                 s.code = format!(
                     "// Converted from OB2 C# preamble — review and adapt for ironbullet\n{}",
-                    preamble_code.lines().map(|l| format!("// {}", l)).collect::<Vec<_>>().join("\n")
+                    preamble_code
+                        .lines()
+                        .map(|l| format!("// {}", l))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 );
             }
             blocks.push(block);
@@ -74,7 +83,9 @@ pub(super) fn parse_lolicode_blocks(content: &str, warnings: &mut Vec<String>) -
                 i += 1;
             }
 
-            if let Some(mut block) = convert_ob2_block(&block_type_str, &label, &block_lines, warnings) {
+            if let Some(mut block) =
+                convert_ob2_block(&block_type_str, &label, &block_lines, warnings)
+            {
                 if disabled {
                     block.disabled = true;
                 }
@@ -93,7 +104,12 @@ pub(super) fn parse_lolicode_blocks(content: &str, warnings: &mut Vec<String>) -
 }
 
 /// Convert a single OB2 block to a ironbullet Block
-fn convert_ob2_block(type_str: &str, label: &str, lines: &[String], warnings: &mut Vec<String>) -> Option<Block> {
+fn convert_ob2_block(
+    type_str: &str,
+    label: &str,
+    lines: &[String],
+    warnings: &mut Vec<String>,
+) -> Option<Block> {
     match type_str {
         "HttpRequest" => convert_http_request(label, lines),
         "Keycheck" => convert_keycheck(label, lines),
@@ -116,7 +132,9 @@ fn convert_ob2_block(type_str: &str, label: &str, lines: &[String], warnings: &m
         }
         "ClearCookies" => {
             let mut block = Block::new(BlockType::ClearCookies);
-            if !label.is_empty() { block.label = label.to_string(); }
+            if !label.is_empty() {
+                block.label = label.to_string();
+            }
             Some(block)
         }
         "Script" | "LoliScript" => convert_script(label, lines),
@@ -124,7 +142,10 @@ fn convert_ob2_block(type_str: &str, label: &str, lines: &[String], warnings: &m
         "CountOccurrences" | "Translate" => convert_unsupported_to_script(label, type_str, lines),
         _ => {
             // Unknown block type → add as disabled Script with a note
-            warnings.push(format!("Unsupported block type: {} — converted to disabled script", type_str));
+            warnings.push(format!(
+                "Unsupported block type: {} — converted to disabled script",
+                type_str
+            ));
             let mut block = Block::new(BlockType::Script);
             block.label = if label.is_empty() {
                 format!("Unknown: {}", type_str)
@@ -133,9 +154,14 @@ fn convert_ob2_block(type_str: &str, label: &str, lines: &[String], warnings: &m
             };
             block.disabled = true;
             if let BlockSettings::Script(ref mut s) = block.settings {
-                s.code = format!("// Unsupported OB2 block type: {}\n// Lines:\n{}",
+                s.code = format!(
+                    "// Unsupported OB2 block type: {}\n// Lines:\n{}",
                     type_str,
-                    lines.iter().map(|l| format!("// {}", l)).collect::<Vec<_>>().join("\n")
+                    lines
+                        .iter()
+                        .map(|l| format!("// {}", l))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 );
             }
             Some(block)
@@ -196,13 +222,17 @@ fn convert_http_request(label: &str, lines: &[String]) -> Option<Block> {
                 found_body = true;
                 let body_str = &trimmed[2..];
                 s.body = if body_str.ends_with('"') {
-                    body_str[..body_str.len()-1].to_string()
+                    body_str[..body_str.len() - 1].to_string()
                 } else {
                     body_str.to_string()
                 };
-            } else if found_body && trimmed.starts_with('"') && trimmed.ends_with('"') && !trimmed.contains(" = ") {
+            } else if found_body
+                && trimmed.starts_with('"')
+                && trimmed.ends_with('"')
+                && !trimmed.contains(" = ")
+            {
                 // Content type line (bare quoted string after body)
-                s.content_type = trimmed[1..trimmed.len()-1].to_string();
+                s.content_type = trimmed[1..trimmed.len() - 1].to_string();
             }
             // Silently ignore: httpLibrary, securityProtocol, useCustomCipherSuites,
             // customCipherSuites, Content-Length (OB2-specific properties)
@@ -223,10 +253,14 @@ fn convert_http_request(label: &str, lines: &[String]) -> Option<Block> {
                 s.method = real_method;
             }
             // Strip transport proxy headers, keep real headers
-            s.headers = custom_headers.into_iter()
+            s.headers = custom_headers
+                .into_iter()
                 .filter(|(k, _)| {
-                    !k.starts_with("x-tp-") && k != "x-url" && k != "x-proxy"
-                        && k != "x-identifier" && k != "x-session-id"
+                    !k.starts_with("x-tp-")
+                        && k != "x-url"
+                        && k != "x-proxy"
+                        && k != "x-identifier"
+                        && k != "x-session-id"
                 })
                 .collect();
         } else {
@@ -327,15 +361,27 @@ fn convert_parse(label: &str, lines: &[String]) -> Option<Block> {
         } else if trimmed.starts_with("rightDelim = ") {
             right_delim = extract_quoted_value(trimmed, "rightDelim = ");
         } else if trimmed.starts_with("pattern = ") || trimmed.starts_with("regex = ") {
-            let pfx = if trimmed.starts_with("pattern = ") { "pattern = " } else { "regex = " };
+            let pfx = if trimmed.starts_with("pattern = ") {
+                "pattern = "
+            } else {
+                "regex = "
+            };
             regex_pattern = extract_quoted_value(trimmed, pfx);
         } else if trimmed.starts_with("outputFormat = ") {
             regex_output = extract_quoted_value(trimmed, "outputFormat = ");
         } else if trimmed.starts_with("cssSelector = ") || trimmed.starts_with("selector = ") {
-            let pfx = if trimmed.starts_with("cssSelector = ") { "cssSelector = " } else { "selector = " };
+            let pfx = if trimmed.starts_with("cssSelector = ") {
+                "cssSelector = "
+            } else {
+                "selector = "
+            };
             css_selector = extract_quoted_value(trimmed, pfx);
         } else if trimmed.starts_with("attributeName = ") || trimmed.starts_with("attribute = ") {
-            let pfx = if trimmed.starts_with("attributeName = ") { "attributeName = " } else { "attribute = " };
+            let pfx = if trimmed.starts_with("attributeName = ") {
+                "attributeName = "
+            } else {
+                "attribute = "
+            };
             css_attribute = extract_quoted_value(trimmed, pfx);
         } else if trimmed.starts_with("MODE:") {
             mode = match &trimmed[5..] {
@@ -344,7 +390,8 @@ fn convert_parse(label: &str, lines: &[String]) -> Option<Block> {
                 "Regex" | "regex" => "Regex",
                 "CSS" | "css" => "CSS",
                 _ => "LR",
-            }.to_string();
+            }
+            .to_string();
         } else if trimmed.starts_with("=> VAR @") {
             output_var = trimmed[8..].trim().to_string();
             is_capture = false;
@@ -358,7 +405,9 @@ fn convert_parse(label: &str, lines: &[String]) -> Option<Block> {
     match mode.as_str() {
         "Json" => {
             let mut block = Block::new(BlockType::ParseJSON);
-            if !label.is_empty() { block.label = label.to_string(); }
+            if !label.is_empty() {
+                block.label = label.to_string();
+            }
             if let BlockSettings::ParseJSON(ref mut s) = block.settings {
                 s.input_var = input;
                 s.json_path = j_token;
@@ -369,7 +418,9 @@ fn convert_parse(label: &str, lines: &[String]) -> Option<Block> {
         }
         "LR" => {
             let mut block = Block::new(BlockType::ParseLR);
-            if !label.is_empty() { block.label = label.to_string(); }
+            if !label.is_empty() {
+                block.label = label.to_string();
+            }
             if let BlockSettings::ParseLR(ref mut s) = block.settings {
                 s.input_var = input;
                 s.left = left_delim;
@@ -381,11 +432,17 @@ fn convert_parse(label: &str, lines: &[String]) -> Option<Block> {
         }
         "Regex" => {
             let mut block = Block::new(BlockType::ParseRegex);
-            if !label.is_empty() { block.label = label.to_string(); }
+            if !label.is_empty() {
+                block.label = label.to_string();
+            }
             if let BlockSettings::ParseRegex(ref mut s) = block.settings {
                 s.input_var = input;
                 s.pattern = regex_pattern;
-                s.output_format = if regex_output.is_empty() { "$1".into() } else { regex_output };
+                s.output_format = if regex_output.is_empty() {
+                    "$1".into()
+                } else {
+                    regex_output
+                };
                 s.output_var = output_var;
                 s.capture = is_capture;
             }
@@ -393,11 +450,17 @@ fn convert_parse(label: &str, lines: &[String]) -> Option<Block> {
         }
         "CSS" => {
             let mut block = Block::new(BlockType::ParseCSS);
-            if !label.is_empty() { block.label = label.to_string(); }
+            if !label.is_empty() {
+                block.label = label.to_string();
+            }
             if let BlockSettings::ParseCSS(ref mut s) = block.settings {
                 s.input_var = input;
                 s.selector = css_selector;
-                s.attribute = if css_attribute.is_empty() { "innerText".into() } else { css_attribute };
+                s.attribute = if css_attribute.is_empty() {
+                    "innerText".into()
+                } else {
+                    css_attribute
+                };
                 s.output_var = output_var;
                 s.capture = is_capture;
             }
@@ -427,7 +490,11 @@ fn convert_random_string(label: &str, lines: &[String]) -> Option<Block> {
 
     // Map to RandomData block — OB2 ?m = hex char, pattern with dashes → UUID-like
     let mut block = Block::new(BlockType::RandomData);
-    block.label = if label.is_empty() { "Random String".into() } else { label.to_string() };
+    block.label = if label.is_empty() {
+        "Random String".into()
+    } else {
+        label.to_string()
+    };
 
     if let BlockSettings::RandomData(ref mut s) = block.settings {
         // Detect pattern type: if all ?m and dashes → hex string / UUID-like
@@ -471,7 +538,11 @@ fn convert_constant_string(label: &str, lines: &[String]) -> Option<Block> {
     }
 
     let mut block = Block::new(BlockType::SetVariable);
-    block.label = if label.is_empty() { "Constant".into() } else { label.to_string() };
+    block.label = if label.is_empty() {
+        "Constant".into()
+    } else {
+        label.to_string()
+    };
 
     if let BlockSettings::SetVariable(ref mut s) = block.settings {
         s.name = output_var;
@@ -493,12 +564,15 @@ fn convert_string_fn(label: &str, lines: &[String], fn_type: StringFnType) -> Op
         let trimmed = line.trim();
         if trimmed.starts_with("input = ") {
             input_var = extract_value(trimmed, "input = ");
-            if input_var.starts_with('@') { input_var = input_var[1..].to_string(); }
+            if input_var.starts_with('@') {
+                input_var = input_var[1..].to_string();
+            }
             // If input is a simple <varName> interpolation, extract just the var name
-            if input_var.starts_with('<') && input_var.ends_with('>')
-                && !input_var[1..input_var.len()-1].contains('<')
+            if input_var.starts_with('<')
+                && input_var.ends_with('>')
+                && !input_var[1..input_var.len() - 1].contains('<')
             {
-                input_var = input_var[1..input_var.len()-1].to_string();
+                input_var = input_var[1..input_var.len() - 1].to_string();
             }
         } else if trimmed.starts_with("replaceWhat = ") {
             replace_what = extract_quoted_value(trimmed, "replaceWhat = ");
@@ -514,7 +588,11 @@ fn convert_string_fn(label: &str, lines: &[String], fn_type: StringFnType) -> Op
     }
 
     let mut block = Block::new(BlockType::StringFunction);
-    block.label = if label.is_empty() { format!("{:?}", fn_type) } else { label.to_string() };
+    block.label = if label.is_empty() {
+        format!("{:?}", fn_type)
+    } else {
+        label.to_string()
+    };
 
     if let BlockSettings::StringFunction(ref mut s) = block.settings {
         s.function_type = fn_type;
@@ -541,14 +619,20 @@ fn convert_list_fn(label: &str, lines: &[String], fn_type: ListFnType) -> Option
     for line in lines {
         let trimmed = line.trim();
         if trimmed.starts_with("input = ") || trimmed.starts_with("list = ") {
-            let prefix = if trimmed.starts_with("input = ") { "input = " } else { "list = " };
+            let prefix = if trimmed.starts_with("input = ") {
+                "input = "
+            } else {
+                "list = "
+            };
             let raw = trimmed[prefix.len()..].trim();
             if raw.starts_with('[') {
                 // Inline JSON array: list = ["item1", "item2", ...]
                 inline_list = raw.to_string();
             } else {
                 input_var = extract_value(trimmed, prefix);
-                if input_var.starts_with('@') { input_var = input_var[1..].to_string(); }
+                if input_var.starts_with('@') {
+                    input_var = input_var[1..].to_string();
+                }
             }
         } else if trimmed.starts_with("=> VAR @") {
             output_var = trimmed[8..].trim().to_string();
@@ -560,7 +644,11 @@ fn convert_list_fn(label: &str, lines: &[String], fn_type: ListFnType) -> Option
     }
 
     let mut block = Block::new(BlockType::ListFunction);
-    block.label = if label.is_empty() { format!("{:?}", fn_type) } else { label.to_string() };
+    block.label = if label.is_empty() {
+        format!("{:?}", fn_type)
+    } else {
+        label.to_string()
+    };
 
     if let BlockSettings::ListFunction(ref mut s) = block.settings {
         s.function_type = fn_type;
@@ -577,7 +665,11 @@ fn convert_list_fn(label: &str, lines: &[String], fn_type: ListFnType) -> Option
 
 fn convert_script(label: &str, lines: &[String]) -> Option<Block> {
     let mut block = Block::new(BlockType::Script);
-    block.label = if label.is_empty() { "Script".into() } else { label.to_string() };
+    block.label = if label.is_empty() {
+        "Script".into()
+    } else {
+        label.to_string()
+    };
 
     if let BlockSettings::Script(ref mut s) = block.settings {
         s.code = lines.join("\n");
@@ -588,7 +680,11 @@ fn convert_script(label: &str, lines: &[String]) -> Option<Block> {
 
 fn convert_delay(label: &str, lines: &[String]) -> Option<Block> {
     let mut block = Block::new(BlockType::Delay);
-    block.label = if label.is_empty() { "Delay".into() } else { label.to_string() };
+    block.label = if label.is_empty() {
+        "Delay".into()
+    } else {
+        label.to_string()
+    };
 
     for line in lines {
         let trimmed = line.trim();
@@ -632,7 +728,11 @@ fn convert_unsupported_to_script(label: &str, block_type: &str, lines: &[String]
             "// OB2 {} block — review and implement manually{}\n{}",
             block_type,
             output_info,
-            lines.iter().map(|l| format!("// {}", l)).collect::<Vec<_>>().join("\n")
+            lines
+                .iter()
+                .map(|l| format!("// {}", l))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
         if !parsed_output_var.is_empty() {
             s.output_var = parsed_output_var;
@@ -645,7 +745,9 @@ fn convert_unsupported_to_script(label: &str, block_type: &str, lines: &[String]
 /// Convert crypto function blocks (Md5Hash, SHA256, etc.)
 fn convert_crypto_fn(label: &str, lines: &[String], type_str: &str) -> Option<Block> {
     let mut block = Block::new(BlockType::CryptoFunction);
-    if !label.is_empty() { block.label = label.to_string(); }
+    if !label.is_empty() {
+        block.label = label.to_string();
+    }
 
     let mut input_var = String::new();
     let mut output_var = "HASH".to_string();
@@ -655,7 +757,9 @@ fn convert_crypto_fn(label: &str, lines: &[String], type_str: &str) -> Option<Bl
         let trimmed = line.trim();
         if trimmed.starts_with("input = ") {
             input_var = extract_value(trimmed, "input = ");
-            if input_var.starts_with('@') { input_var = input_var[1..].to_string(); }
+            if input_var.starts_with('@') {
+                input_var = input_var[1..].to_string();
+            }
         } else if trimmed.starts_with("=> VAR @") {
             output_var = trimmed[8..].trim().to_string();
             is_capture = false;
@@ -690,7 +794,11 @@ pub fn import_lolicode(content: &str) -> Result<ImportResult, String> {
     // Use the full BLOCK: parser if the content has BLOCK: directives
     if content.contains("BLOCK:") {
         pipeline.blocks = parse_lolicode_blocks(content, &mut warnings)?;
-        return Ok(ImportResult { pipeline, warnings, security_issues: Vec::new() });
+        return Ok(ImportResult {
+            pipeline,
+            warnings,
+            security_issues: Vec::new(),
+        });
     }
 
     // Fallback: legacy line-by-line scanning for older LoliCode format
@@ -733,5 +841,9 @@ pub fn import_lolicode(content: &str) -> Result<ImportResult, String> {
     }
 
     pipeline.blocks = blocks;
-    Ok(ImportResult { pipeline, warnings, security_issues: Vec::new() })
+    Ok(ImportResult {
+        pipeline,
+        warnings,
+        security_issues: Vec::new(),
+    })
 }

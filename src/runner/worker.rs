@@ -4,13 +4,13 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use uuid::Uuid;
 
+use super::data_pool::DataPool;
+use super::output::OutputWriter;
+use super::proxy_pool::ProxyPool;
+use super::{HitResult, ResultEntry, RunnerStatsInner, RESULT_FEED_CAP};
 use crate::pipeline::engine::ExecutionContext;
 use crate::pipeline::{BotStatus, Pipeline, ProxyMode};
 use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
-use super::data_pool::DataPool;
-use super::proxy_pool::ProxyPool;
-use super::output::OutputWriter;
-use super::{HitResult, ResultEntry, RunnerStatsInner, RESULT_FEED_CAP};
 
 pub(crate) async fn run_worker(
     pipeline: Pipeline,
@@ -128,8 +128,8 @@ pub(crate) async fn run_worker(
         // RESPONSECODE, LASTRESPONSE, LASTHEADERS are set by the HTTP block engine after every request.
         // HTTP blocks store RESPONSECODE / LASTRESPONSE / LASTHEADERS via set_data(),
         // so they live in the data namespace and must be accessed with the "data." prefix.
-        let resp_status  = ctx.variables.get("data.RESPONSECODE").unwrap_or_default();
-        let resp_body    = ctx.variables.get("data.LASTRESPONSE").unwrap_or_default();
+        let resp_status = ctx.variables.get("data.RESPONSECODE").unwrap_or_default();
+        let resp_body = ctx.variables.get("data.LASTRESPONSE").unwrap_or_default();
         let resp_headers = ctx.variables.get("data.LASTHEADERS").unwrap_or_default();
 
         match ctx.status {
@@ -149,7 +149,9 @@ pub(crate) async fn run_worker(
                 }
                 let _ = hits_tx.send(hit).await;
                 if let Ok(mut feed) = result_feed.try_lock() {
-                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                    if feed.len() >= RESULT_FEED_CAP {
+                        feed.pop_front();
+                    }
                     feed.push_back(ResultEntry {
                         data_line: data_line.clone(),
                         status: "SUCCESS".into(),
@@ -164,7 +166,9 @@ pub(crate) async fn run_worker(
             BotStatus::Fail => {
                 stats.fails.fetch_add(1, Ordering::Relaxed);
                 if let Ok(mut feed) = result_feed.try_lock() {
-                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                    if feed.len() >= RESULT_FEED_CAP {
+                        feed.pop_front();
+                    }
                     feed.push_back(ResultEntry {
                         data_line: data_line.clone(),
                         status: "FAIL".into(),
@@ -191,7 +195,9 @@ pub(crate) async fn run_worker(
                     stats.retries.fetch_add(1, Ordering::Relaxed);
                     data_pool.return_line(data_line.clone(), retry_count + 1);
                     if let Ok(mut feed) = result_feed.try_lock() {
-                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        if feed.len() >= RESULT_FEED_CAP {
+                            feed.pop_front();
+                        }
                         feed.push_back(ResultEntry {
                             data_line: data_line.clone(),
                             status: "BAN".into(),
@@ -207,13 +213,18 @@ pub(crate) async fn run_worker(
                     data_pool.stash_error(data_line.clone());
                     stats.errors.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut feed) = result_feed.try_lock() {
-                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        if feed.len() >= RESULT_FEED_CAP {
+                            feed.pop_front();
+                        }
                         feed.push_back(ResultEntry {
                             data_line: data_line.clone(),
                             status: "BAN".into(),
                             proxy: proxy.clone(),
                             captures: Default::default(),
-                            error: Some("Max retries exceeded (all proxies banned for this credential)".into()),
+                            error: Some(
+                                "Max retries exceeded (all proxies banned for this credential)"
+                                    .into(),
+                            ),
                             ts_ms,
                             block_results: ctx.block_results.clone(),
                         });
@@ -224,10 +235,13 @@ pub(crate) async fn run_worker(
                 // Treat transient network errors (timeout, connection refused, proxy errors)
                 // as retryable — these are proxy-side failures, not credential failures.
                 // The credential should be re-queued rather than discarded as an error.
-                let is_network_error = result.as_ref().err().map(|e| {
-                    let msg = e.to_string().to_lowercase();
-                    // Timeout errors
-                    msg.contains("timed out") ||
+                let is_network_error = result
+                    .as_ref()
+                    .err()
+                    .map(|e| {
+                        let msg = e.to_string().to_lowercase();
+                        // Timeout errors
+                        msg.contains("timed out") ||
                     msg.contains("request timed out") ||
                     msg.contains("context deadline exceeded") ||
                     msg.contains("i/o timeout") ||
@@ -255,13 +269,16 @@ pub(crate) async fn run_worker(
                     // Windows port exhaustion
                     msg.contains("wsaeaddrinuse") ||
                     msg.contains("only one usage of each socket address")
-                }).unwrap_or(false);
+                    })
+                    .unwrap_or(false);
                 let is_retry_status = matches!(ctx.status, BotStatus::Retry) || is_network_error;
                 if is_retry_status && retry_count < max_retries {
                     stats.retries.fetch_add(1, Ordering::Relaxed);
                     data_pool.return_line(data_line.clone(), retry_count + 1);
                     if let Ok(mut feed) = result_feed.try_lock() {
-                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        if feed.len() >= RESULT_FEED_CAP {
+                            feed.pop_front();
+                        }
                         feed.push_back(ResultEntry {
                             data_line: data_line.clone(),
                             status: "RETRY".into(),
@@ -283,16 +300,21 @@ pub(crate) async fn run_worker(
                         if let Some(ref msg) = err_msg {
                             err_caps.insert("_error".to_string(), msg.clone());
                         }
-                        ow.write_hit(&HitResult {
-                            data_line: data_line.clone(),
-                            captures: err_caps,
-                            proxy: proxy.clone(),
-                            status: resp_status.clone(),
-                            ..Default::default()
-                        }, BotStatus::Error);
+                        ow.write_hit(
+                            &HitResult {
+                                data_line: data_line.clone(),
+                                captures: err_caps,
+                                proxy: proxy.clone(),
+                                status: resp_status.clone(),
+                                ..Default::default()
+                            },
+                            BotStatus::Error,
+                        );
                     }
                     if let Ok(mut feed) = result_feed.try_lock() {
-                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        if feed.len() >= RESULT_FEED_CAP {
+                            feed.pop_front();
+                        }
                         feed.push_back(ResultEntry {
                             data_line: data_line.clone(),
                             status: "ERROR".into(),
@@ -323,7 +345,9 @@ pub(crate) async fn run_worker(
                 }
                 let _ = hits_tx.send(hit).await;
                 if let Ok(mut feed) = result_feed.try_lock() {
-                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                    if feed.len() >= RESULT_FEED_CAP {
+                        feed.pop_front();
+                    }
                     feed.push_back(ResultEntry {
                         data_line: data_line.clone(),
                         status: "CUSTOM".into(),
@@ -353,7 +377,9 @@ pub(crate) async fn run_worker(
                 }
                 let _ = hits_tx.send(hit).await;
                 if let Ok(mut feed) = result_feed.try_lock() {
-                    if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                    if feed.len() >= RESULT_FEED_CAP {
+                        feed.pop_front();
+                    }
                     feed.push_back(ResultEntry {
                         data_line: data_line.clone(),
                         status: "TO_CHECK".into(),
@@ -376,16 +402,21 @@ pub(crate) async fn run_worker(
                         if let Some(ref msg) = err_msg {
                             err_caps.insert("_error".to_string(), msg.clone());
                         }
-                        ow.write_hit(&HitResult {
-                            data_line: data_line.clone(),
-                            captures: err_caps,
-                            proxy: proxy.clone(),
-                            status: resp_status.clone(),
-                            ..Default::default()
-                        }, BotStatus::Error);
+                        ow.write_hit(
+                            &HitResult {
+                                data_line: data_line.clone(),
+                                captures: err_caps,
+                                proxy: proxy.clone(),
+                                status: resp_status.clone(),
+                                ..Default::default()
+                            },
+                            BotStatus::Error,
+                        );
                     }
                     if let Ok(mut feed) = result_feed.try_lock() {
-                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        if feed.len() >= RESULT_FEED_CAP {
+                            feed.pop_front();
+                        }
                         feed.push_back(ResultEntry {
                             data_line: data_line.clone(),
                             status: "ERROR".into(),
@@ -400,7 +431,9 @@ pub(crate) async fn run_worker(
                     // Result succeeded but no KeyCheck matched — count as Fail
                     stats.fails.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut feed) = result_feed.try_lock() {
-                        if feed.len() >= RESULT_FEED_CAP { feed.pop_front(); }
+                        if feed.len() >= RESULT_FEED_CAP {
+                            feed.pop_front();
+                        }
                         feed.push_back(ResultEntry {
                             data_line: data_line.clone(),
                             status: "FAIL".into(),

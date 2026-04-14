@@ -16,7 +16,16 @@ pub struct CaptchaSolverSettings {
 
 impl Default for CaptchaSolverSettings {
     fn default() -> Self {
-        Self { solver_service: "capsolver".into(), api_key: String::new(), site_key: String::new(), page_url: String::new(), captcha_type: "RecaptchaV2".into(), output_var: "CAPTCHA_TOKEN".into(), timeout_ms: 120000, capture: false }
+        Self {
+            solver_service: "capsolver".into(),
+            api_key: String::new(),
+            site_key: String::new(),
+            page_url: String::new(),
+            captcha_type: "RecaptchaV2".into(),
+            output_var: "CAPTCHA_TOKEN".into(),
+            timeout_ms: 120000,
+            capture: false,
+        }
     }
 }
 
@@ -33,7 +42,13 @@ pub struct CloudflareBypassSettings {
 
 impl Default for CloudflareBypassSettings {
     fn default() -> Self {
-        Self { url: String::new(), flaresolverr_url: "http://localhost:8191/v1".into(), max_timeout_ms: 60000, output_var: "CF_COOKIES".into(), capture: false }
+        Self {
+            url: String::new(),
+            flaresolverr_url: "http://localhost:8191/v1".into(),
+            max_timeout_ms: 60000,
+            output_var: "CF_COOKIES".into(),
+            capture: false,
+        }
     }
 }
 
@@ -51,7 +66,14 @@ pub struct LaravelCsrfSettings {
 
 impl Default for LaravelCsrfSettings {
     fn default() -> Self {
-        Self { url: String::new(), csrf_selector: "input[name=\"_token\"]".into(), cookie_name: "XSRF-TOKEN".into(), output_var: "CSRF_TOKEN".into(), timeout_ms: 10000, capture: false }
+        Self {
+            url: String::new(),
+            csrf_selector: "input[name=\"_token\"]".into(),
+            cookie_name: "XSRF-TOKEN".into(),
+            output_var: "CSRF_TOKEN".into(),
+            timeout_ms: 10000,
+            capture: false,
+        }
     }
 }
 
@@ -79,7 +101,12 @@ impl Default for RandomUserAgentSettings {
     fn default() -> Self {
         Self {
             mode: UserAgentMode::Random,
-            browser_filter: vec!["Chrome".into(), "Firefox".into(), "Safari".into(), "Edge".into()],
+            browser_filter: vec![
+                "Chrome".into(),
+                "Firefox".into(),
+                "Safari".into(),
+                "Edge".into(),
+            ],
             platform_filter: vec!["Desktop".into(), "Mobile".into()],
             custom_list: String::new(),
             output_var: "USER_AGENT".into(),
@@ -218,10 +245,18 @@ pub struct RandomDataSettings {
     pub date_max: String,
 }
 
-fn default_string_length() -> u32 { 16 }
-fn default_string_charset() -> String { "alphanumeric".into() }
-fn default_number_max() -> i64 { 100 }
-fn default_date_format() -> String { "%Y-%m-%d".into() }
+fn default_string_length() -> u32 {
+    16
+}
+fn default_string_charset() -> String {
+    "alphanumeric".into()
+}
+fn default_number_max() -> i64 {
+    100
+}
+fn default_date_format() -> String {
+    "%Y-%m-%d".into()
+}
 
 impl Default for RandomDataSettings {
     fn default() -> Self {
@@ -256,7 +291,9 @@ pub struct DataDomeSensorSettings {
     pub capture: bool,
 }
 
-fn default_dd_output() -> String { "DD_SENSOR".into() }
+fn default_dd_output() -> String {
+    "DD_SENSOR".into()
+}
 
 impl Default for DataDomeSensorSettings {
     fn default() -> Self {
@@ -283,7 +320,9 @@ pub struct PluginBlockSettings {
     pub capture: bool,
 }
 
-fn default_plugin_output() -> String { "PLUGIN_RESULT".into() }
+fn default_plugin_output() -> String {
+    "PLUGIN_RESULT".into()
+}
 
 impl Default for PluginBlockSettings {
     fn default() -> Self {

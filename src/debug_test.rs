@@ -1,9 +1,9 @@
 // Temporary debug test module
 #[cfg(test)]
 mod tests {
-    use crate::pipeline::Pipeline;
-    use crate::pipeline::block::*;
     use crate::export::rust_codegen;
+    use crate::pipeline::block::*;
+    use crate::pipeline::Pipeline;
 
     /// Test: Simulate adding blocks one by one and generating code each time
     /// This mimics exactly what the frontend does when user adds blocks
@@ -39,19 +39,30 @@ mod tests {
         pipeline.blocks.push(Block::new(BlockType::CaptchaSolver));
         let code = rust_codegen::generate_rust_code(&pipeline);
         println!("4 blocks (+Captcha): {} chars", code.len());
-        assert!(code.contains("capsolver") || code.contains("createTask"), "Should have captcha code");
+        assert!(
+            code.contains("capsolver") || code.contains("createTask"),
+            "Should have captcha code"
+        );
 
         // Add CloudflareBypass
-        pipeline.blocks.push(Block::new(BlockType::CloudflareBypass));
+        pipeline
+            .blocks
+            .push(Block::new(BlockType::CloudflareBypass));
         let code = rust_codegen::generate_rust_code(&pipeline);
         println!("5 blocks (+CF Bypass): {} chars", code.len());
-        assert!(code.contains("FlareSolverr") || code.contains("flaresolverr"), "Should have CF bypass code");
+        assert!(
+            code.contains("FlareSolverr") || code.contains("flaresolverr"),
+            "Should have CF bypass code"
+        );
 
         // Add LaravelCsrf
         pipeline.blocks.push(Block::new(BlockType::LaravelCsrf));
         let code = rust_codegen::generate_rust_code(&pipeline);
         println!("6 blocks (+Laravel): {} chars", code.len());
-        assert!(code.contains("csrf") || code.contains("CSRF"), "Should have CSRF code");
+        assert!(
+            code.contains("csrf") || code.contains("CSRF"),
+            "Should have CSRF code"
+        );
 
         // Add KeyCheck
         pipeline.blocks.push(Block::new(BlockType::KeyCheck));
@@ -73,7 +84,9 @@ mod tests {
         pipeline.blocks.push(Block::new(BlockType::HttpRequest));
         pipeline.blocks.push(Block::new(BlockType::FtpRequest));
         pipeline.blocks.push(Block::new(BlockType::CaptchaSolver));
-        pipeline.blocks.push(Block::new(BlockType::CloudflareBypass));
+        pipeline
+            .blocks
+            .push(Block::new(BlockType::CloudflareBypass));
 
         // Step 2: Serialize the pipeline (like frontend would receive from pipeline_loaded)
         let pipeline_json = serde_json::to_value(&pipeline).unwrap();
@@ -106,10 +119,22 @@ mod tests {
         println!("{}", code);
 
         // Verify all block types are represented
-        assert!(code.contains("client.get"), "HTTP Request should generate wreq code");
-        assert!(code.contains("TcpStream::connect") || code.contains("FTP"), "FTP should generate code");
-        assert!(code.contains("capsolver") || code.contains("createTask"), "Captcha should generate code");
-        assert!(code.contains("FlareSolverr") || code.contains("flaresolverr"), "CF should generate code");
+        assert!(
+            code.contains("client.get"),
+            "HTTP Request should generate wreq code"
+        );
+        assert!(
+            code.contains("TcpStream::connect") || code.contains("FTP"),
+            "FTP should generate code"
+        );
+        assert!(
+            code.contains("capsolver") || code.contains("createTask"),
+            "Captcha should generate code"
+        );
+        assert!(
+            code.contains("FlareSolverr") || code.contains("flaresolverr"),
+            "CF should generate code"
+        );
     }
 
     /// Test: Verify Block serialization format matches frontend expectations
@@ -155,14 +180,24 @@ mod tests {
 
             // The type tag should match the enum variant name
             let expected_tag = format!("{:?}", bt);
-            assert_eq!(type_tag.unwrap(), expected_tag,
+            assert_eq!(
+                type_tag.unwrap(),
+                expected_tag,
                 "{:?} type tag mismatch: got '{}', expected '{}'",
-                bt, type_tag.unwrap(), expected_tag);
+                bt,
+                type_tag.unwrap(),
+                expected_tag
+            );
 
             // Verify the block roundtrips through JSON
             let json_str = serde_json::to_string(&block).unwrap();
             let back: Result<Block, _> = serde_json::from_str(&json_str);
-            assert!(back.is_ok(), "{:?} failed roundtrip: {}", bt, back.unwrap_err());
+            assert!(
+                back.is_ok(),
+                "{:?} failed roundtrip: {}",
+                bt,
+                back.unwrap_err()
+            );
         }
     }
 
@@ -226,11 +261,17 @@ mod tests {
         let result: Result<Pipeline, _> = serde_json::from_str(json);
         match &result {
             Ok(p) => {
-                println!("Pipeline with crypto.randomUUID format: {} blocks", p.blocks.len());
+                println!(
+                    "Pipeline with crypto.randomUUID format: {} blocks",
+                    p.blocks.len()
+                );
                 let code = rust_codegen::generate_rust_code(p);
                 println!("Generated {} chars:\n{}", code.len(), code);
                 assert!(code.contains("client.get"), "HTTP should produce code");
-                assert!(code.contains("flaresolverr") || code.contains("FlareSolverr"), "CF bypass should produce code");
+                assert!(
+                    code.contains("flaresolverr") || code.contains("FlareSolverr"),
+                    "CF bypass should produce code"
+                );
             }
             Err(e) => panic!("FAIL: {}", e),
         }
@@ -262,8 +303,8 @@ mod tests {
     async fn test_keycheck_stop_on_fail() {
         // All block types are re-exported via `pub use settings_*::*` in block/mod.rs
         use crate::pipeline::block::*;
-        use crate::pipeline::BotStatus;
         use crate::pipeline::engine::ExecutionContext;
+        use crate::pipeline::BotStatus;
         use crate::sidecar::native::create_native_backend;
         use uuid::Uuid;
 
@@ -322,8 +363,10 @@ mod tests {
                 None,
                 "A: MARKER2 should NOT be set — stop_on_fail skipped block 3"
             );
-            println!("[A] stop_on_fail=true  + Fail → MARKER2={:?} (expected None) ✓",
-                ctx.variables.get("MARKER2"));
+            println!(
+                "[A] stop_on_fail=true  + Fail → MARKER2={:?} (expected None) ✓",
+                ctx.variables.get("MARKER2")
+            );
         }
 
         // ── Case B: stop_on_fail=false, STATUS="FAIL" ────────────────────────
@@ -338,8 +381,10 @@ mod tests {
                 Some("set"),
                 "B: MARKER2 should be set — old behaviour continues after Fail"
             );
-            println!("[B] stop_on_fail=false + Fail → MARKER2={:?} (expected Some(\"set\")) ✓",
-                ctx.variables.get("MARKER2"));
+            println!(
+                "[B] stop_on_fail=false + Fail → MARKER2={:?} (expected Some(\"set\")) ✓",
+                ctx.variables.get("MARKER2")
+            );
         }
 
         // ── Case C: stop_on_fail=true, but KeyCheck doesn't fire (STATUS != "FAIL") ──
@@ -361,8 +406,10 @@ mod tests {
                 Some("set"),
                 "C: MARKER2 should be set — KeyCheck didn't match (no early exit)"
             );
-            println!("[C] stop_on_fail=true  + no match → MARKER2={:?} (expected Some(\"set\")) ✓",
-                ctx.variables.get("MARKER2"));
+            println!(
+                "[C] stop_on_fail=true  + no match → MARKER2={:?} (expected Some(\"set\")) ✓",
+                ctx.variables.get("MARKER2")
+            );
         }
 
         println!("\n=== stop_on_fail test: all 3 cases passed ✓ ===");
@@ -372,8 +419,8 @@ mod tests {
     #[tokio::test]
     async fn test_keycheck_variable_trace() {
         use crate::pipeline::block::*;
-        use crate::pipeline::BotStatus;
         use crate::pipeline::engine::ExecutionContext;
+        use crate::pipeline::BotStatus;
         use crate::sidecar::native::create_native_backend;
         use uuid::Uuid;
 
@@ -390,17 +437,15 @@ mod tests {
         // Block 2: KeyCheck — data.RESPONSECODE == 200 → Success
         let mut kc = Block::new(BlockType::KeyCheck);
         kc.settings = BlockSettings::KeyCheck(KeyCheckSettings {
-            keychains: vec![
-                Keychain {
-                    result: BotStatus::Success,
-                    conditions: vec![KeyCondition {
-                        source: "data.RESPONSECODE".into(),
-                        comparison: Comparison::EqualTo,
-                        value: "200".into(),
-                    }],
-                    mode: KeychainMode::And,
-                },
-            ],
+            keychains: vec![Keychain {
+                result: BotStatus::Success,
+                conditions: vec![KeyCondition {
+                    source: "data.RESPONSECODE".into(),
+                    comparison: Comparison::EqualTo,
+                    value: "200".into(),
+                }],
+                mode: KeychainMode::And,
+            }],
             stop_on_fail: false,
         });
 
@@ -413,22 +458,35 @@ mod tests {
         let mut kv: Vec<_> = snap.iter().collect();
         kv.sort_by_key(|(k, _)| k.clone());
         for (k, v) in &kv {
-            let display = if v.len() > 80 { format!("{}...", &v[..80]) } else { v.to_string() };
+            let display = if v.len() > 80 {
+                format!("{}...", &v[..80])
+            } else {
+                v.to_string()
+            };
             println!("  {:40} = {}", k, display);
         }
         println!("\nfinal status  : {:?}", ctx.status);
-        println!("pipeline result: {:?}", result.map(|_| "Ok").map_err(|e| e.to_string()));
+        println!(
+            "pipeline result: {:?}",
+            result.map(|_| "Ok").map_err(|e| e.to_string())
+        );
 
         // Verify backward-compat variables are present
-        assert!(snap.contains_key("data.RESPONSECODE"),
-            "data.RESPONSECODE missing! Got keys: {:?}", snap.keys().collect::<Vec<_>>());
+        assert!(
+            snap.contains_key("data.RESPONSECODE"),
+            "data.RESPONSECODE missing! Got keys: {:?}",
+            snap.keys().collect::<Vec<_>>()
+        );
         assert!(snap.contains_key("data.ADDRESS"), "data.ADDRESS missing!");
         assert!(snap.contains_key("data.SOURCE"), "data.SOURCE missing!");
 
         // Verify KeyCheck classified correctly
-        assert_eq!(ctx.status, BotStatus::Success,
+        assert_eq!(
+            ctx.status,
+            BotStatus::Success,
             "KeyCheck data.RESPONSECODE=200 → Success FAILED. data.RESPONSECODE={:?}",
-            snap.get("data.RESPONSECODE"));
+            snap.get("data.RESPONSECODE")
+        );
 
         println!("=== VARIABLE TRACE PASSED ✓ ===");
     }
@@ -486,8 +544,11 @@ mod tests {
         // The user-reported case: nested wildcards
         // data.servers[].servers[].is_trial → true, false, true
         let trials = evaluate_json_path(&root, "data.servers[].servers[].is_trial");
-        assert_eq!(trials, "true, false, true",
-            "nested wildcard extraction failed: got '{}'", trials);
+        assert_eq!(
+            trials, "true, false, true",
+            "nested wildcard extraction failed: got '{}'",
+            trials
+        );
 
         // Nested wildcards — host extraction
         let hosts = evaluate_json_path(&root, "data.servers[].servers[].host");
@@ -504,8 +565,8 @@ mod tests {
     #[tokio::test]
     async fn test_keycheck_to_check_status() {
         use crate::pipeline::block::*;
-        use crate::pipeline::BotStatus;
         use crate::pipeline::engine::ExecutionContext;
+        use crate::pipeline::BotStatus;
         use crate::sidecar::native::create_native_backend;
         use uuid::Uuid;
 
@@ -538,8 +599,12 @@ mod tests {
         let mut ctx = ExecutionContext::new(Uuid::new_v4().to_string());
         ctx.execute_blocks(&blocks, &sidecar_tx).await.unwrap();
 
-        assert_eq!(ctx.status, BotStatus::ToCheck,
-            "KeyCheck result=ToCheck should set context status to ToCheck, got {:?}", ctx.status);
+        assert_eq!(
+            ctx.status,
+            BotStatus::ToCheck,
+            "KeyCheck result=ToCheck should set context status to ToCheck, got {:?}",
+            ctx.status
+        );
 
         println!("=== KEYCHECK TO_CHECK STATUS PASSED ✓ ===");
     }

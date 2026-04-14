@@ -3,8 +3,8 @@
 ## What's New in This Release?
 
 **Critical Bug Fixes:**
-1. ✅ **Issue #56:** SOCKS5 proxies now work in Jobs mode (auto-detection from port numbers)
-2. ✅ **Memory Leak:** Fixed unbounded memory growth with Shadowsocks proxies
+1. **Issue #56:** SOCKS5 proxies now work in Jobs mode (auto-detection from port numbers)
+2. **Memory Leak:** Fixed unbounded memory growth with Shadowsocks proxies
 
 ---
 

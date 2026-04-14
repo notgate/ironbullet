@@ -220,7 +220,7 @@
 				<label class={labelCls}>Shell Command</label>
 				<VariableInput value={block.settings.ssh_cmd || ''} placeholder="whoami" class={inputCls}
 					oninput={(e) => updateSettings('ssh_cmd', (e.target as HTMLInputElement).value)} />
-				<p class="text-[9px] text-muted-foreground mt-0.5">Note: Full execution requires ssh2 crate. Banner exchange is performed.</p>
+				<p class="text-[9px] text-muted-foreground mt-0.5">Exec uses full SSH authentication and runs the command after a successful login.</p>
 			</div>
 		{/if}
 		<div class="flex gap-2">

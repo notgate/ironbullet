@@ -102,8 +102,12 @@ pub(super) fn parse_custom_headers(line: &str) -> Vec<(String, String)> {
                     in_quote = !in_quote;
                 }
                 if !in_quote {
-                    if chars[i] == '(' { depth += 1; }
-                    if chars[i] == ')' { depth -= 1; }
+                    if chars[i] == '(' {
+                        depth += 1;
+                    }
+                    if chars[i] == ')' {
+                        depth -= 1;
+                    }
                 }
                 i += 1;
             }
@@ -165,7 +169,10 @@ pub(super) fn parse_stringkey(line: &str) -> Option<KeyCondition> {
 
     // Find source (first token, may start with @)
     let (source_raw, rest) = after.split_once(' ')?;
-    let source = source_raw.strip_prefix('@').unwrap_or(source_raw).to_string();
+    let source = source_raw
+        .strip_prefix('@')
+        .unwrap_or(source_raw)
+        .to_string();
 
     // Find comparison operator and value
     let (comparison_str, value_raw) = rest.trim().split_once(' ')?;
@@ -185,14 +192,20 @@ pub(super) fn parse_stringkey(line: &str) -> Option<KeyCondition> {
 
     let value = value_raw.trim().trim_matches('"').to_string();
 
-    Some(KeyCondition { source, comparison, value })
+    Some(KeyCondition {
+        source,
+        comparison,
+        value,
+    })
 }
 
 /// Extract the domain from a URL
 pub(super) fn extract_domain(url: &str) -> Option<String> {
     let url = url.trim();
     // Handle variable URLs like <varName>
-    if url.starts_with('<') { return None; }
+    if url.starts_with('<') {
+        return None;
+    }
     let after_scheme = if let Some(pos) = url.find("://") {
         &url[pos + 3..]
     } else {
@@ -200,7 +213,9 @@ pub(super) fn extract_domain(url: &str) -> Option<String> {
     };
     let host_port = after_scheme.split('/').next()?;
     let host = host_port.split(':').next()?;
-    if host.is_empty() || host.contains('<') { return None; }
+    if host.is_empty() || host.contains('<') {
+        return None;
+    }
     Some(host.to_lowercase())
 }
 

@@ -12,10 +12,14 @@ pub enum JobType {
 }
 
 impl Default for JobType {
-    fn default() -> Self { JobType::Config }
+    fn default() -> Self {
+        JobType::Config
+    }
 }
 
-fn default_proxy_check_url() -> String { "http://www.google.com".into() }
+fn default_proxy_check_url() -> String {
+    "http://www.google.com".into()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
@@ -154,4 +158,3 @@ impl Default for Job {
         }
     }
 }
-

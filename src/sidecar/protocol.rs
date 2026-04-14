@@ -50,7 +50,12 @@ pub struct SidecarRequest {
 impl SidecarRequest {
     /// Convenience constructor — fill only the fields you care about; everything else is None / default.
     pub fn http(id: String, action: String, session: String) -> Self {
-        Self { id, action, session, ..Self::default() }
+        Self {
+            id,
+            action,
+            session,
+            ..Self::default()
+        }
     }
 }
 

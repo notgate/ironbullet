@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::pipeline::Pipeline;
+use serde::{Deserialize, Serialize};
 
 /// .rfx config file format
 #[derive(Debug, Clone, Serialize, Deserialize)]

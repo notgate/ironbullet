@@ -1,4 +1,5 @@
 mod block_tree;
+pub mod browser_proxy;
 mod handlers_block;
 mod handlers_config;
 mod handlers_file;
@@ -6,19 +7,18 @@ mod handlers_job;
 mod handlers_plugin;
 mod handlers_runner;
 mod handlers_update;
-pub mod browser_proxy;
 
+use dunce;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use dunce;
 
 use ironbullet::config::{self, GuiConfig};
 use ironbullet::pipeline::Pipeline;
-use ironbullet::runner::{RunnerOrchestrator, HitResult};
-use ironbullet::runner::job_manager::JobManager;
-use ironbullet::sidecar::SidecarManager;
 use ironbullet::plugin::manager::PluginManager;
+use ironbullet::runner::job_manager::JobManager;
+use ironbullet::runner::{HitResult, RunnerOrchestrator};
+use ironbullet::sidecar::SidecarManager;
 
 /// IPC command from frontend
 #[derive(Deserialize)]
@@ -100,12 +100,15 @@ impl AppState {
         // Load last-opened pipeline from disk so the startup restore tab has real content.
         // Using Pipeline::default() here caused the dedup check in openInNewTab to switch
         // to an empty tab when the user re-opened the same file from Collections (#57).
-        let mut pipeline = pipeline_path.as_deref()
+        let mut pipeline = pipeline_path
+            .as_deref()
             .and_then(|path| std::fs::read_to_string(path).ok())
             .and_then(|raw| {
-                serde_json::from_str::<Pipeline>(&raw).ok()
-                    .or_else(|| serde_json::from_str::<ironbullet::export::format::RfxConfig>(&raw)
-                        .ok().map(|c| c.pipeline))
+                serde_json::from_str::<Pipeline>(&raw).ok().or_else(|| {
+                    serde_json::from_str::<ironbullet::export::format::RfxConfig>(&raw)
+                        .ok()
+                        .map(|c| c.pipeline)
+                })
             })
             .unwrap_or_default();
         // Merge global proxy groups from config into pipeline (so they persist across config switches)
@@ -150,18 +153,27 @@ fn resolve_sidecar_path(configured: &str) -> String {
             // and CreateProcess rejects them with os error 123.
             let next_to_exe = dir.join(sidecar_name);
             if next_to_exe.exists() {
-                return dunce::canonicalize(&next_to_exe).unwrap_or(next_to_exe).display().to_string();
+                return dunce::canonicalize(&next_to_exe)
+                    .unwrap_or(next_to_exe)
+                    .display()
+                    .to_string();
             }
 
             // 2. exe_dir/../../sidecar/ — dev layout (target/release/ → project/sidecar/)
             let dev = dir.join("../../sidecar").join(sidecar_name);
             if dev.exists() {
-                return dunce::canonicalize(&dev).unwrap_or(dev).display().to_string();
+                return dunce::canonicalize(&dev)
+                    .unwrap_or(dev)
+                    .display()
+                    .to_string();
             }
             // 3. exe_dir/../sidecar/ — alt dev layout
             let alt = dir.join("../sidecar").join(sidecar_name);
             if alt.exists() {
-                return dunce::canonicalize(&alt).unwrap_or(alt).display().to_string();
+                return dunce::canonicalize(&alt)
+                    .unwrap_or(alt)
+                    .display()
+                    .to_string();
             }
         }
     }
@@ -431,12 +443,19 @@ pub fn handle_ipc_cmd(
         }
 
         "clipboard_copy" => {
-            let text = data.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let text = data
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let ok = arboard::Clipboard::new()
                 .and_then(|mut cb| cb.set_text(&text))
                 .is_ok();
             let resp = IpcResponse::ok("clipboard_copy", serde_json::json!({ "ok": ok }));
-            let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());
+            let js = format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            );
             eval_js(js);
             None
         }
@@ -446,14 +465,20 @@ pub fn handle_ipc_cmd(
                 .and_then(|mut cb| cb.get_text())
                 .unwrap_or_default();
             let resp = IpcResponse::ok("clipboard_paste", serde_json::json!({ "text": text }));
-            let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());
+            let js = format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            );
             eval_js(js);
             None
         }
 
         "get_app_info" => {
             let resp = handlers_update::get_app_info();
-            let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());
+            let js = format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            );
             eval_js(js);
             None
         }
@@ -468,7 +493,8 @@ pub fn handle_ipc_cmd(
         }
 
         "open_url" => {
-            let url = data.get("url")
+            let url = data
+                .get("url")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -495,8 +521,14 @@ pub fn handle_ipc_cmd(
             let path = chrome
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let resp = IpcResponse::ok("check_chrome", serde_json::json!({ "found": found, "path": path }));
-            let js = format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default());
+            let resp = IpcResponse::ok(
+                "check_chrome",
+                serde_json::json!({ "found": found, "path": path }),
+            );
+            let js = format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            );
             eval_js(js);
             None
         }
@@ -504,12 +536,23 @@ pub fn handle_ipc_cmd(
         // Inspector: apply captured request to an HTTP block from a detached panel window.
         // The panel can't mutate the main window's pipeline directly, so it sends this IPC.
         "inspector_apply_to_block" => {
-            let block_id = data.get("block_id").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let headers: Vec<(String, String)> = data.get("headers")
+            let block_id = data
+                .get("block_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let headers: Vec<(String, String)> = data
+                .get("headers")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default();
-            let url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let body = data.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let url = data
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let body = data
+                .get("body")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             let rt = tokio::runtime::Handle::try_current();
             if let Ok(handle) = rt {
@@ -519,21 +562,37 @@ pub fn handle_ipc_cmd(
                     let mut s = state2.lock().await;
                     // Find target block ID: prefer the selected block if it's an HttpRequest
                     let target_id: Option<uuid::Uuid> = {
-                        let by_selection = block_id.as_deref()
+                        let by_selection = block_id
+                            .as_deref()
                             .and_then(|id| uuid::Uuid::parse_str(id).ok())
-                            .and_then(|uid| s.pipeline.blocks.iter()
-                                .find(|b| b.id == uid && matches!(b.settings, BlockSettings::HttpRequest(_)))
-                                .map(|b| b.id));
-                        by_selection.or_else(|| s.pipeline.blocks.iter()
-                            .find(|b| matches!(b.settings, BlockSettings::HttpRequest(_)))
-                            .map(|b| b.id))
+                            .and_then(|uid| {
+                                s.pipeline
+                                    .blocks
+                                    .iter()
+                                    .find(|b| {
+                                        b.id == uid
+                                            && matches!(b.settings, BlockSettings::HttpRequest(_))
+                                    })
+                                    .map(|b| b.id)
+                            });
+                        by_selection.or_else(|| {
+                            s.pipeline
+                                .blocks
+                                .iter()
+                                .find(|b| matches!(b.settings, BlockSettings::HttpRequest(_)))
+                                .map(|b| b.id)
+                        })
                     };
                     if let Some(tid) = target_id {
                         for block in s.pipeline.blocks.iter_mut() {
-                            if block.id != tid { continue; }
+                            if block.id != tid {
+                                continue;
+                            }
                             if let BlockSettings::HttpRequest(ref mut settings) = block.settings {
                                 for (k, v) in &headers {
-                                    if let Some(entry) = settings.headers.iter_mut()
+                                    if let Some(entry) = settings
+                                        .headers
+                                        .iter_mut()
                                         .find(|(ek, _)| ek.eq_ignore_ascii_case(k))
                                     {
                                         entry.1 = v.clone();
@@ -541,8 +600,14 @@ pub fn handle_ipc_cmd(
                                         settings.headers.push((k.clone(), v.clone()));
                                     }
                                 }
-                                if !url.is_empty() { settings.url = url.clone(); }
-                                if let Some(ref b) = body { if !b.is_empty() { settings.body = b.clone(); } }
+                                if !url.is_empty() {
+                                    settings.url = url.clone();
+                                }
+                                if let Some(ref b) = body {
+                                    if !b.is_empty() {
+                                        settings.body = b.clone();
+                                    }
+                                }
                             }
                             break;
                         }
@@ -554,8 +619,16 @@ pub fn handle_ipc_cmd(
 
         // Save inspector transcript to the network/ folder beside the exe
         "save_inspector_transcript" => {
-            let filename = data.get("filename").and_then(|v| v.as_str()).unwrap_or("transcript.json").to_string();
-            let content  = data.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let filename = data
+                .get("filename")
+                .and_then(|v| v.as_str())
+                .unwrap_or("transcript.json")
+                .to_string();
+            let content = data
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             if !filename.is_empty() && !content.is_empty() {
                 let rt = tokio::runtime::Handle::try_current();
                 if let Ok(handle) = rt {
@@ -600,19 +673,26 @@ pub fn find_chrome_executable() -> Option<std::path::PathBuf> {
             r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
             r"C:\Program Files\Chromium\Application\chrome.exe",
             r"C:\Program Files (x86)\Chromium\Application\chrome.exe",
-        ].iter().copied()
-            .chain(user_paths.iter().map(|s| s.as_str()))
-            .collect();
+        ]
+        .iter()
+        .copied()
+        .chain(user_paths.iter().map(|s| s.as_str()))
+        .collect();
         for path in &fixed {
             let p = std::path::Path::new(path);
-            if p.exists() { return Some(p.to_path_buf()); }
+            if p.exists() {
+                return Some(p.to_path_buf());
+            }
         }
         // PATH fallback on Windows — use CREATE_NO_WINDOW to suppress console flash
         for name in &["chrome.exe", "chromium.exe"] {
             #[cfg(target_os = "windows")]
             let result = {
                 use std::os::windows::process::CommandExt;
-                std::process::Command::new("where").arg(name).creation_flags(0x08000000).output()
+                std::process::Command::new("where")
+                    .arg(name)
+                    .creation_flags(0x08000000)
+                    .output()
             };
             #[cfg(not(target_os = "windows"))]
             let result = std::process::Command::new("where").arg(name).output();
@@ -621,7 +701,9 @@ pub fn find_chrome_executable() -> Option<std::path::PathBuf> {
                     let s = String::from_utf8_lossy(&out.stdout);
                     if let Some(first) = s.lines().next() {
                         let p = std::path::PathBuf::from(first.trim());
-                        if p.exists() { return Some(p); }
+                        if p.exists() {
+                            return Some(p);
+                        }
                     }
                 }
             }
@@ -638,7 +720,9 @@ pub fn find_chrome_executable() -> Option<std::path::PathBuf> {
         ];
         for path in fixed {
             let p = std::path::Path::new(path);
-            if p.exists() { return Some(p.to_path_buf()); }
+            if p.exists() {
+                return Some(p.to_path_buf());
+            }
         }
     }
 
@@ -661,7 +745,9 @@ pub fn find_chrome_executable() -> Option<std::path::PathBuf> {
         ];
         for path in fixed {
             let p = std::path::Path::new(path);
-            if p.exists() { return Some(p.to_path_buf()); }
+            if p.exists() {
+                return Some(p.to_path_buf());
+            }
         }
     }
 
@@ -669,13 +755,19 @@ pub fn find_chrome_executable() -> Option<std::path::PathBuf> {
     #[cfg(not(target_os = "windows"))]
     {
         let names: &[&str] = &[
-            "google-chrome", "google-chrome-stable", "chromium-browser", "chromium", "chrome",
+            "google-chrome",
+            "google-chrome-stable",
+            "chromium-browser",
+            "chromium",
+            "chrome",
         ];
         for name in names {
             if let Ok(out) = std::process::Command::new("which").arg(name).output() {
                 if out.status.success() {
                     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    if !s.is_empty() { return Some(std::path::PathBuf::from(s)); }
+                    if !s.is_empty() {
+                        return Some(std::path::PathBuf::from(s));
+                    }
                 }
             }
         }

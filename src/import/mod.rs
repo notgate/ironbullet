@@ -47,7 +47,12 @@ pub enum SecuritySeverity {
 /// Import from raw file bytes — auto-detects format (ZIP for .opk, text for .loli/.json/.svb)
 pub fn import_config_bytes(bytes: &[u8]) -> Result<ImportResult, String> {
     // Check for ZIP magic bytes (PK\x03\x04)
-    let mut result = if bytes.len() >= 4 && bytes[0] == b'P' && bytes[1] == b'K' && bytes[2] == 3 && bytes[3] == 4 {
+    let mut result = if bytes.len() >= 4
+        && bytes[0] == b'P'
+        && bytes[1] == b'K'
+        && bytes[2] == 3
+        && bytes[3] == 4
+    {
         import_opk(bytes)?
     } else {
         let content = std::str::from_utf8(bytes)

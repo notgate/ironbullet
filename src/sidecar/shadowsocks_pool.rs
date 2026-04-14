@@ -67,17 +67,35 @@ use shadowsocks::{
     ServerAddr,
 };
 use shadowsocks_service::{
-    config::{Config, ConfigType, LocalConfig, LocalInstanceConfig, ProtocolType, ServerInstanceConfig},
+    config::{
+        Config, ConfigType, LocalConfig, LocalInstanceConfig, ProtocolType, ServerInstanceConfig,
+    },
     local::Server,
 };
-use tokio::task::JoinHandle;
+use tokio::{runtime::Handle, sync::oneshot, task::JoinHandle};
 
 /// Global singleton pool — initialised once per process.
 static POOL: std::sync::OnceLock<ShadowsocksPool> = std::sync::OnceLock::new();
 
+enum SsTaskHandle {
+    Tokio(JoinHandle<()>),
+    ThreadRuntime(oneshot::Sender<()>),
+}
+
+impl SsTaskHandle {
+    fn abort(self) {
+        match self {
+            SsTaskHandle::Tokio(handle) => handle.abort(),
+            SsTaskHandle::ThreadRuntime(shutdown_tx) => {
+                let _ = shutdown_tx.send(());
+            }
+        }
+    }
+}
+
 struct SsEntry {
     local_url: String,
-    task_handle: JoinHandle<()>,
+    task_handle: SsTaskHandle,
 }
 
 pub struct ShadowsocksPool {
@@ -88,7 +106,9 @@ pub struct ShadowsocksPool {
 
 impl ShadowsocksPool {
     fn new() -> Self {
-        Self { map: Mutex::new(HashMap::new()) }
+        Self {
+            map: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Get-or-create the local SOCKS5 proxy URL for a given `ss://` URI.
@@ -133,41 +153,26 @@ impl ShadowsocksPool {
 
         // Build shadowsocks Config
         let ss_server_addr = ServerAddr::from((parsed.host.as_str(), parsed.port));
-        let svr_cfg = ServerConfig::new(
-            ss_server_addr,
-            parsed.password.clone(),
-            parsed.method,
-        ).map_err(|e| format!("bad SS server config: {e}"))?;
+        let svr_cfg = ServerConfig::new(ss_server_addr, parsed.password.clone(), parsed.method)
+            .map_err(|e| format!("bad SS server config: {e}"))?;
 
         let mut config = Config::new(ConfigType::Local);
-        config.server.push(ServerInstanceConfig::with_server_config(svr_cfg));
+        config
+            .server
+            .push(ServerInstanceConfig::with_server_config(svr_cfg));
 
         let mut local_cfg = LocalConfig::new(ProtocolType::Socks);
         local_cfg.addr = Some(ServerAddr::SocketAddr(listen_addr));
         local_cfg.mode = Mode::TcpOnly;
-        config.local.push(LocalInstanceConfig::with_local_config(local_cfg));
+        config
+            .local
+            .push(LocalInstanceConfig::with_local_config(local_cfg));
 
-        // Spawn the local SS server on the tokio runtime.
-        // We do NOT call block_in_place here — doing so while the AppState Mutex
-        // is held starves every other IPC handler and causes the grey-screen freeze
-        // described in issue #43. The worker already retries on ECONNREFUSED, so
-        // the brief window before the listener binds (typically < 20 ms) is safe.
-        //
-        // FIX: Capture the JoinHandle so we can abort the task if the server dies
-        // or is no longer needed. This prevents unbounded task accumulation.
-        let task_handle = tokio::spawn(async move {
-            match Server::new(config).await {
-                Ok(server) => {
-                    if let Err(e) = server.run().await {
-                        eprintln!("[ss-pool] server for port {} exited: {e}", port);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[ss-pool] failed to start local SS server on port {port}: {e}");
-                }
-            }
-            eprintln!("[ss-pool] task for port {} terminated", port);
-        });
+        // Spawn the local SS server on the current tokio runtime when available.
+        // Some unit tests call this path outside any runtime, so fall back to a
+        // dedicated background thread with its own runtime instead of panicking.
+        // We still keep the call non-blocking for the UI path.
+        let task_handle = spawn_ss_server(config, port);
 
         let mut guard = self.map.lock().unwrap();
         // Double-check in case another thread raced us
@@ -176,10 +181,13 @@ impl ShadowsocksPool {
             task_handle.abort();
             return Ok(existing.local_url.clone());
         }
-        guard.insert(ss_url.to_string(), SsEntry {
-            local_url: local_url.clone(),
-            task_handle,
-        });
+        guard.insert(
+            ss_url.to_string(),
+            SsEntry {
+                local_url: local_url.clone(),
+                task_handle,
+            },
+        );
         Ok(local_url)
     }
 }
@@ -229,13 +237,59 @@ pub fn shutdown_all() {
     }
 }
 
+fn spawn_ss_server(config: Config, port: u16) -> SsTaskHandle {
+    let run_server = async move {
+        match Server::new(config).await {
+            Ok(server) => {
+                if let Err(e) = server.run().await {
+                    eprintln!("[ss-pool] server for port {} exited: {e}", port);
+                }
+            }
+            Err(e) => {
+                eprintln!("[ss-pool] failed to start local SS server on port {port}: {e}");
+            }
+        }
+        eprintln!("[ss-pool] task for port {} terminated", port);
+    };
+
+    if Handle::try_current().is_ok() {
+        return SsTaskHandle::Tokio(tokio::spawn(run_server));
+    }
+
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    std::thread::spawn(move || {
+        match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => {
+                rt.block_on(async move {
+                    tokio::select! {
+                        _ = run_server => {}
+                        _ = async {
+                            let _ = shutdown_rx.await;
+                        } => {
+                            eprintln!("[ss-pool] shutdown requested for port {}", port);
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                eprintln!("[ss-pool] failed to create fallback runtime for port {port}: {e}");
+            }
+        }
+    });
+
+    SsTaskHandle::ThreadRuntime(shutdown_tx)
+}
+
 // ── URI parsing ─────────────────────────────────────────────────────────────
 
 struct ParsedSsUri {
-    method:   CipherKind,
+    method: CipherKind,
     password: String,
-    host:     String,
-    port:     u16,
+    host: String,
+    port: u16,
 }
 
 /// Parse `ss://method:password@host:port` or `ss://BASE64@host:port` (SIP002).
@@ -244,14 +298,17 @@ fn parse_ss_uri(uri: &str) -> Result<ParsedSsUri, String> {
     let rest = uri.strip_prefix("ss://").unwrap_or(uri);
 
     // Split on the last '@' to get userinfo@hostinfo
-    let at = rest.rfind('@').ok_or_else(|| format!("missing '@' in ss URI: {uri}"))?;
+    let at = rest
+        .rfind('@')
+        .ok_or_else(|| format!("missing '@' in ss URI: {uri}"))?;
     let userinfo = &rest[..at];
     let hostinfo = &rest[at + 1..];
 
     // Parse host:port
     let (host, port) = if let Some(colon) = hostinfo.rfind(':') {
         let h = hostinfo[..colon].to_string();
-        let p: u16 = hostinfo[colon + 1..].parse()
+        let p: u16 = hostinfo[colon + 1..]
+            .parse()
             .map_err(|_| format!("invalid port in ss URI: {uri}"))?;
         (h, p)
     } else {
@@ -261,13 +318,19 @@ fn parse_ss_uri(uri: &str) -> Result<ParsedSsUri, String> {
     // Parse method:password (or BASE64-encoded method:password per SIP002)
     let (method_str, password) = if let Some(colon) = userinfo.find(':') {
         // Cleartext: method:password
-        (userinfo[..colon].to_string(), userinfo[colon + 1..].to_string())
+        (
+            userinfo[..colon].to_string(),
+            userinfo[colon + 1..].to_string(),
+        )
     } else {
         // Try BASE64 decode (SIP002: base64url(method:password))
         let decoded = base64_decode(userinfo)
             .ok_or_else(|| format!("cannot decode userinfo in ss URI: {uri}"))?;
         if let Some(colon) = decoded.find(':') {
-            (decoded[..colon].to_string(), decoded[colon + 1..].to_string())
+            (
+                decoded[..colon].to_string(),
+                decoded[colon + 1..].to_string(),
+            )
         } else {
             return Err(format!("decoded ss userinfo has no ':': {decoded}"));
         }
@@ -276,14 +339,21 @@ fn parse_ss_uri(uri: &str) -> Result<ParsedSsUri, String> {
     let method: CipherKind = method_str.parse()
         .map_err(|_| format!("unknown SS cipher '{}' — supported: aes-128-gcm, aes-256-gcm, chacha20-ietf-poly1305, aes-128-gcm-2022, ...", method_str))?;
 
-    Ok(ParsedSsUri { method, password, host, port })
+    Ok(ParsedSsUri {
+        method,
+        password,
+        host,
+        port,
+    })
 }
 
 fn base64_decode(s: &str) -> Option<String> {
     // Try standard and URL-safe base64
     let padded = {
         let mut p = s.to_string();
-        while p.len() % 4 != 0 { p.push('='); }
+        while p.len() % 4 != 0 {
+            p.push('=');
+        }
         p
     };
     // Simple base64 decode using std only (no dep) — map url-safe chars first
@@ -303,7 +373,9 @@ fn base64_decode_standard(s: &str) -> Option<String> {
     let mut bits = 0u32;
     for c in s.bytes() {
         let val = map[c as usize];
-        if val == 255 { return None; }
+        if val == 255 {
+            return None;
+        }
         buf = (buf << 6) | val as u32;
         bits += 6;
         if bits >= 8 {
@@ -337,5 +409,6 @@ fn port_is_alive(port: u16) -> bool {
     TcpStream::connect_timeout(
         &addr.parse().expect("valid loopback addr"),
         Duration::from_millis(100),
-    ).is_ok()
+    )
+    .is_ok()
 }

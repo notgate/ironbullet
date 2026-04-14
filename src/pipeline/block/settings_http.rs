@@ -19,10 +19,14 @@ pub enum TlsClient {
 }
 
 impl Default for TlsClient {
-    fn default() -> Self { TlsClient::RustTLS }
+    fn default() -> Self {
+        TlsClient::RustTLS
+    }
 }
 
-fn default_tls_client() -> TlsClient { TlsClient::RustTLS }
+fn default_tls_client() -> TlsClient {
+    TlsClient::RustTLS
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpRequestSettings {
@@ -87,7 +91,9 @@ pub struct HttpRequestSettings {
     pub wreq_emulation: String,
 }
 
-fn default_ssl_verify() -> bool { true }
+fn default_ssl_verify() -> bool {
+    true
+}
 
 fn default_response_var() -> String {
     "SOURCE".to_string()

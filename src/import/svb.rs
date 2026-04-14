@@ -17,7 +17,8 @@ pub(super) fn import_svb(content: &str) -> Result<ImportResult, String> {
     let settings_str = if let Some(script_pos) = script_start {
         let settings_block = &content[..script_pos];
         // Strip [SETTINGS] header
-        settings_block.trim_start()
+        settings_block
+            .trim_start()
             .strip_prefix("[SETTINGS]")
             .unwrap_or(settings_block)
             .trim()
@@ -42,7 +43,11 @@ pub(super) fn import_svb(content: &str) -> Result<ImportResult, String> {
         return Err("No blocks found in SVB script".into());
     }
 
-    Ok(ImportResult { pipeline, warnings, security_issues: Vec::new() })
+    Ok(ImportResult {
+        pipeline,
+        warnings,
+        security_issues: Vec::new(),
+    })
 }
 
 /// Map SVB settings JSON fields to Pipeline settings
@@ -65,12 +70,19 @@ pub(super) fn apply_svb_settings(pipeline: &mut Pipeline, json_str: &str) {
             pipeline.runner_settings.threads = bots as u32;
         }
     }
-    if json.get("NeedsProxies").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if json
+        .get("NeedsProxies")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         pipeline.proxy_settings.proxy_mode = ProxyMode::Rotate;
     }
 
     // Wordlist type → data slices
-    let wl = json.get("AllowedWordlist1").and_then(|v| v.as_str()).unwrap_or("");
+    let wl = json
+        .get("AllowedWordlist1")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     match wl {
         "MailPass" | "Credentials" | "" => {
             pipeline.data_settings.separator = ':';
@@ -87,7 +99,10 @@ pub(super) fn apply_svb_settings(pipeline: &mut Pipeline, json_str: &str) {
 }
 
 /// Parse the [SCRIPT] section of a SVB file into blocks
-pub(super) fn parse_svb_script(content: &str, warnings: &mut Vec<String>) -> Result<Vec<Block>, String> {
+pub(super) fn parse_svb_script(
+    content: &str,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<Block>, String> {
     let lines: Vec<&str> = content.lines().collect();
     let mut blocks = Vec::new();
     let mut i = 0;
@@ -123,7 +138,8 @@ pub(super) fn parse_svb_script(content: &str, warnings: &mut Vec<String>) -> Res
             }
             i += 1;
         } else if cmd.starts_with("FUNCTION ") {
-            let (block_opt, next_i) = parse_svb_function(&label, disabled, cmd, &lines, i + 1, warnings);
+            let (block_opt, next_i) =
+                parse_svb_function(&label, disabled, cmd, &lines, i + 1, warnings);
             if let Some(block) = block_opt {
                 blocks.push(block);
             }
@@ -186,9 +202,17 @@ pub(super) fn parse_svb_prefix(line: &str) -> (String, bool, &str) {
 // SVB REQUEST parser
 // ────────────────────────────────────────────────────────────
 
-fn parse_svb_request(label: &str, disabled: bool, cmd: &str, lines: &[&str], start: usize) -> (Block, usize) {
+fn parse_svb_request(
+    label: &str,
+    disabled: bool,
+    cmd: &str,
+    lines: &[&str],
+    start: usize,
+) -> (Block, usize) {
     let mut block = Block::new(BlockType::HttpRequest);
-    if !label.is_empty() { block.label = label.to_string(); }
+    if !label.is_empty() {
+        block.label = label.to_string();
+    }
     block.disabled = disabled;
 
     // Parse "REQUEST METHOD "url" [AutoRedirect=FALSE]"
@@ -219,7 +243,9 @@ fn parse_svb_request(label: &str, disabled: bool, cmd: &str, lines: &[&str], sta
         if trimmed.is_empty() {
             // Check if next non-empty line is indented (still part of this block)
             let mut j = i + 1;
-            while j < lines.len() && lines[j].trim().is_empty() { j += 1; }
+            while j < lines.len() && lines[j].trim().is_empty() {
+                j += 1;
+            }
             if j < lines.len() && (lines[j].starts_with(' ') || lines[j].starts_with('\t')) {
                 i += 1;
                 continue;
@@ -276,7 +302,9 @@ fn parse_svb_request(label: &str, disabled: bool, cmd: &str, lines: &[&str], sta
 
 fn parse_svb_keycheck(label: &str, disabled: bool, lines: &[&str], start: usize) -> (Block, usize) {
     let mut block = Block::new(BlockType::KeyCheck);
-    if !label.is_empty() { block.label = label.to_string(); }
+    if !label.is_empty() {
+        block.label = label.to_string();
+    }
     block.disabled = disabled;
 
     if let BlockSettings::KeyCheck(ref mut s) = block.settings {
@@ -291,7 +319,9 @@ fn parse_svb_keycheck(label: &str, disabled: bool, lines: &[&str], start: usize)
             if trimmed.is_empty() {
                 // Check if next non-empty line is indented
                 let mut j = i + 1;
-                while j < lines.len() && lines[j].trim().is_empty() { j += 1; }
+                while j < lines.len() && lines[j].trim().is_empty() {
+                    j += 1;
+                }
                 if j < lines.len() && (lines[j].starts_with(' ') || lines[j].starts_with('\t')) {
                     i += 1;
                     continue;
@@ -389,7 +419,11 @@ pub(super) fn parse_svb_key(after_key: &str) -> Option<KeyCondition> {
             _ => Comparison::Contains,
         };
         let (value, _) = svb_extract_quoted(value_part.trim());
-        return Some(KeyCondition { source, comparison, value });
+        return Some(KeyCondition {
+            source,
+            comparison,
+            value,
+        });
     }
 
     // Not a var ref — simple KEY "value" with trailing junk
@@ -419,7 +453,9 @@ fn parse_svb_parse_line(label: &str, disabled: bool, cmd: &str) -> Option<Block>
         let (is_capture, output_var) = parse_svb_output(rest);
 
         let mut block = Block::new(BlockType::ParseLR);
-        if !label.is_empty() { block.label = label.to_string(); }
+        if !label.is_empty() {
+            block.label = label.to_string();
+        }
         block.disabled = disabled;
         if let BlockSettings::ParseLR(ref mut s) = block.settings {
             s.input_var = source;
@@ -435,7 +471,9 @@ fn parse_svb_parse_line(label: &str, disabled: bool, cmd: &str) -> Option<Block>
         let (is_capture, output_var) = parse_svb_output(rest);
 
         let mut block = Block::new(BlockType::ParseJSON);
-        if !label.is_empty() { block.label = label.to_string(); }
+        if !label.is_empty() {
+            block.label = label.to_string();
+        }
         block.disabled = disabled;
         if let BlockSettings::ParseJSON(ref mut s) = block.settings {
             s.input_var = source;
@@ -447,7 +485,11 @@ fn parse_svb_parse_line(label: &str, disabled: bool, cmd: &str) -> Option<Block>
     } else {
         // Unknown parse mode → Script
         let mut block = Block::new(BlockType::Script);
-        block.label = if label.is_empty() { "Parse".into() } else { label.to_string() };
+        block.label = if label.is_empty() {
+            "Parse".into()
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::Script(ref mut s) = block.settings {
             s.code = format!("// SVB PARSE with unknown mode\n// {}", cmd);
@@ -461,7 +503,11 @@ fn parse_svb_parse_line(label: &str, disabled: bool, cmd: &str) -> Option<Block>
 // ────────────────────────────────────────────────────────────
 
 fn parse_svb_function(
-    label: &str, disabled: bool, cmd: &str, lines: &[&str], start: usize,
+    label: &str,
+    disabled: bool,
+    cmd: &str,
+    lines: &[&str],
+    start: usize,
     warnings: &mut Vec<String>,
 ) -> (Option<Block>, usize) {
     let after = cmd.strip_prefix("FUNCTION ").unwrap_or("").trim();
@@ -470,7 +516,11 @@ fn parse_svb_function(
     if after.starts_with("GetRandomUA") {
         let (_, output_var) = parse_svb_output(after);
         let mut block = Block::new(BlockType::RandomUserAgent);
-        block.label = if label.is_empty() { "Random UA".into() } else { label.to_string() };
+        block.label = if label.is_empty() {
+            "Random UA".into()
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::RandomUserAgent(ref mut s) = block.settings {
             s.output_var = output_var;
@@ -485,14 +535,22 @@ fn parse_svb_function(
         let (_, output_var) = parse_svb_output(rest);
 
         let mut block = Block::new(BlockType::RandomData);
-        block.label = if label.is_empty() { "Random String".into() } else { label.to_string() };
+        block.label = if label.is_empty() {
+            "Random String".into()
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::RandomData(ref mut s) = block.settings {
             s.data_type = RandomDataType::String;
             s.output_var = output_var;
             // Count pattern chars: ?u = upper, ?l = lower, ?d = digit, ?h = hex
             let char_count = pattern.matches('?').count();
-            s.string_length = if char_count > 0 { char_count as u32 } else { pattern.len() as u32 };
+            s.string_length = if char_count > 0 {
+                char_count as u32
+            } else {
+                pattern.len() as u32
+            };
             if pattern.contains("?h") {
                 s.string_charset = "custom".into();
                 s.custom_chars = "0123456789abcdef".into();
@@ -510,7 +568,11 @@ fn parse_svb_function(
         let (is_capture, output_var) = parse_svb_output(rest);
 
         let mut block = Block::new(BlockType::SetVariable);
-        block.label = if label.is_empty() { "Constant".into() } else { label.to_string() };
+        block.label = if label.is_empty() {
+            "Constant".into()
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::SetVariable(ref mut s) = block.settings {
             s.name = output_var;
@@ -528,9 +590,17 @@ fn parse_svb_function(
         let (is_capture, output_var) = parse_svb_output(rest);
         let input_var = extract_svb_simple_var(&input_raw);
 
-        let fn_type = if is_upper { StringFnType::ToUpper } else { StringFnType::ToLower };
+        let fn_type = if is_upper {
+            StringFnType::ToUpper
+        } else {
+            StringFnType::ToLower
+        };
         let mut block = Block::new(BlockType::StringFunction);
-        block.label = if label.is_empty() { format!("{:?}", fn_type) } else { label.to_string() };
+        block.label = if label.is_empty() {
+            format!("{:?}", fn_type)
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::StringFunction(ref mut s) = block.settings {
             s.function_type = fn_type;
@@ -551,7 +621,11 @@ fn parse_svb_function(
         let input_var = extract_svb_simple_var(&input_raw);
 
         let mut block = Block::new(BlockType::StringFunction);
-        block.label = if label.is_empty() { "Replace".into() } else { label.to_string() };
+        block.label = if label.is_empty() {
+            "Replace".into()
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::StringFunction(ref mut s) = block.settings {
             s.function_type = StringFnType::Replace;
@@ -576,7 +650,11 @@ fn parse_svb_function(
         let input_var = extract_svb_simple_var(&input_raw);
 
         let mut block = Block::new(BlockType::Script);
-        block.label = if label.is_empty() { "Split".into() } else { label.to_string() };
+        block.label = if label.is_empty() {
+            "Split".into()
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::Script(ref mut s) = block.settings {
             s.code = format!(
@@ -595,7 +673,11 @@ fn parse_svb_function(
         let input_var = extract_svb_simple_var(&input_raw);
 
         let mut block = Block::new(BlockType::Script);
-        block.label = if label.is_empty() { "Unescape".into() } else { label.to_string() };
+        block.label = if label.is_empty() {
+            "Unescape".into()
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::Script(ref mut s) = block.settings {
             s.code = format!(
@@ -615,7 +697,11 @@ fn parse_svb_function(
         let input_var = extract_svb_simple_var(&input_raw);
 
         let mut block = Block::new(BlockType::Script);
-        block.label = if label.is_empty() { "Unix Time to Date".into() } else { label.to_string() };
+        block.label = if label.is_empty() {
+            "Unix Time to Date".into()
+        } else {
+            label.to_string()
+        };
         block.disabled = disabled;
         if let BlockSettings::Script(ref mut s) = block.settings {
             s.code = format!(
@@ -635,7 +721,11 @@ fn parse_svb_function(
     let fn_name = after.split_whitespace().next().unwrap_or("unknown");
     warnings.push(format!("Unknown SVB function: {}", fn_name));
     let mut block = Block::new(BlockType::Script);
-    block.label = if label.is_empty() { format!("SVB: {}", fn_name) } else { label.to_string() };
+    block.label = if label.is_empty() {
+        format!("SVB: {}", fn_name)
+    } else {
+        label.to_string()
+    };
     block.disabled = disabled;
     if let BlockSettings::Script(ref mut s) = block.settings {
         s.code = format!("// Unknown SVB FUNCTION: {}", after);
@@ -645,7 +735,10 @@ fn parse_svb_function(
 
 /// Parse SVB FUNCTION Translate (multi-line KEY/VALUE lookup table)
 fn parse_svb_translate(
-    label: &str, disabled: bool, lines: &[&str], start: usize,
+    label: &str,
+    disabled: bool,
+    lines: &[&str],
+    start: usize,
     _warnings: &mut Vec<String>,
 ) -> (Option<Block>, usize) {
     let mut i = start;
@@ -659,7 +752,9 @@ fn parse_svb_translate(
         let trimmed = raw.trim();
         if trimmed.is_empty() {
             let mut j = i + 1;
-            while j < lines.len() && lines[j].trim().is_empty() { j += 1; }
+            while j < lines.len() && lines[j].trim().is_empty() {
+                j += 1;
+            }
             if j < lines.len() && (lines[j].starts_with(' ') || lines[j].starts_with('\t')) {
                 i += 1;
                 continue;
@@ -694,16 +789,24 @@ fn parse_svb_translate(
     }
 
     let mut block = Block::new(BlockType::Script);
-    block.label = if label.is_empty() { "Translate".into() } else { label.to_string() };
+    block.label = if label.is_empty() {
+        "Translate".into()
+    } else {
+        label.to_string()
+    };
     block.disabled = disabled;
     if let BlockSettings::Script(ref mut s) = block.settings {
-        let table = entries.iter()
+        let table = entries
+            .iter()
             .map(|(k, v)| format!("//   \"{}\" => \"{}\"", k, v))
             .collect::<Vec<_>>()
             .join("\n");
         s.code = format!(
             "// SVB Translate: lookup table on <{}> → {}\n// Entries ({}):\n{}",
-            input_var, output_var, entries.len(), table
+            input_var,
+            output_var,
+            entries.len(),
+            table
         );
     }
 
@@ -771,27 +874,47 @@ fn parse_svb_if(cmd: &str, lines: &[&str], start: usize) -> (Block, usize) {
         // Parse inner command as a block
         if inner_cmd.starts_with("SET ") {
             if let Some(inner_block) = parse_svb_set(&inner_label, inner_disabled, inner_cmd) {
-                if in_else { false_blocks.push(inner_block); }
-                else { true_blocks.push(inner_block); }
+                if in_else {
+                    false_blocks.push(inner_block);
+                } else {
+                    true_blocks.push(inner_block);
+                }
             }
         } else if inner_cmd.starts_with("FUNCTION ") {
             // Simple inline function (no multi-line in IF blocks)
             let mut dummy_warnings = Vec::new();
-            let (block_opt, _) = parse_svb_function(&inner_label, inner_disabled, inner_cmd, lines, i + 1, &mut dummy_warnings);
+            let (block_opt, _) = parse_svb_function(
+                &inner_label,
+                inner_disabled,
+                inner_cmd,
+                lines,
+                i + 1,
+                &mut dummy_warnings,
+            );
             if let Some(inner_block) = block_opt {
-                if in_else { false_blocks.push(inner_block); }
-                else { true_blocks.push(inner_block); }
+                if in_else {
+                    false_blocks.push(inner_block);
+                } else {
+                    true_blocks.push(inner_block);
+                }
             }
         } else {
             // Generic inner content → Script
             let mut inner_block = Block::new(BlockType::Script);
-            inner_block.label = if inner_label.is_empty() { "Script".into() } else { inner_label };
+            inner_block.label = if inner_label.is_empty() {
+                "Script".into()
+            } else {
+                inner_label
+            };
             inner_block.disabled = inner_disabled;
             if let BlockSettings::Script(ref mut s) = inner_block.settings {
                 s.code = format!("// {}", inner_cmd);
             }
-            if in_else { false_blocks.push(inner_block); }
-            else { true_blocks.push(inner_block); }
+            if in_else {
+                false_blocks.push(inner_block);
+            } else {
+                true_blocks.push(inner_block);
+            }
         }
 
         i += 1;
@@ -829,7 +952,11 @@ fn parse_svb_set(label: &str, disabled: bool, cmd: &str) -> Option<Block> {
     let (value, _) = svb_extract_quoted(rest);
 
     let mut block = Block::new(BlockType::SetVariable);
-    block.label = if label.is_empty() { "Set Variable".into() } else { label.to_string() };
+    block.label = if label.is_empty() {
+        "Set Variable".into()
+    } else {
+        label.to_string()
+    };
     block.disabled = disabled;
     if let BlockSettings::SetVariable(ref mut s) = block.settings {
         s.name = name;
@@ -845,7 +972,11 @@ fn parse_svb_set(label: &str, disabled: bool, cmd: &str) -> Option<Block> {
 
 fn parse_svb_utility(label: &str, disabled: bool, cmd: &str) -> Block {
     let mut block = Block::new(BlockType::Script);
-    block.label = if label.is_empty() { "Utility".into() } else { label.to_string() };
+    block.label = if label.is_empty() {
+        "Utility".into()
+    } else {
+        label.to_string()
+    };
     block.disabled = disabled;
     if let BlockSettings::Script(ref mut s) = block.settings {
         s.code = format!("// SVB UTILITY — review and implement manually\n// {}", cmd);
@@ -895,8 +1026,12 @@ pub(super) fn convert_svb_source_name(name: &str) -> String {
 /// Convert SVB source reference (from PARSE) to ironbullet variable name
 /// `<SOURCE>` → data.SOURCE, `<COOKIES(name)>` → data.COOKIES["name"], `<varName>` → varName
 pub(super) fn convert_svb_source_ref(source: &str) -> String {
-    if source == "<SOURCE>" { return "data.SOURCE".to_string(); }
-    if source == "<RESPONSECODE>" { return "data.RESPONSECODE".to_string(); }
+    if source == "<SOURCE>" {
+        return "data.SOURCE".to_string();
+    }
+    if source == "<RESPONSECODE>" {
+        return "data.RESPONSECODE".to_string();
+    }
 
     // <COOKIES(name)> → data.COOKIES["name"]
     if source.starts_with("<COOKIES(") && source.ends_with(")>") {
@@ -929,10 +1064,8 @@ pub(super) fn convert_svb_var_refs(text: &str) -> String {
 /// `<varName>` → varName, `<input.USER>` → input.USER, other → as-is
 pub(super) fn extract_svb_simple_var(input: &str) -> String {
     let input = convert_svb_var_refs(input);
-    if input.starts_with('<') && input.ends_with('>')
-        && !input[1..input.len()-1].contains('<')
-    {
-        input[1..input.len()-1].to_string()
+    if input.starts_with('<') && input.ends_with('>') && !input[1..input.len() - 1].contains('<') {
+        input[1..input.len() - 1].to_string()
     } else {
         input
     }
@@ -944,12 +1077,26 @@ pub(super) fn parse_svb_output(s: &str) -> (bool, String) {
     if let Some(pos) = s.find("-> VAR ") {
         let rest = &s[pos + 7..];
         let (name, _) = svb_extract_quoted(rest.trim());
-        return (false, if name.is_empty() { "RESULT".into() } else { name });
+        return (
+            false,
+            if name.is_empty() {
+                "RESULT".into()
+            } else {
+                name
+            },
+        );
     }
     if let Some(pos) = s.find("-> CAP ") {
         let rest = &s[pos + 7..];
         let (name, _) = svb_extract_quoted(rest.trim());
-        return (true, if name.is_empty() { "RESULT".into() } else { name });
+        return (
+            true,
+            if name.is_empty() {
+                "RESULT".into()
+            } else {
+                name
+            },
+        );
     }
     (false, "RESULT".to_string())
 }

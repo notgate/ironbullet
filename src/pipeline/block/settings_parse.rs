@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-fn default_parse_input() -> String { "data.SOURCE".to_string() }
-fn default_parse_cookie_input() -> String { "data.COOKIES".to_string() }
+fn default_parse_input() -> String {
+    "data.SOURCE".to_string()
+}
+fn default_parse_cookie_input() -> String {
+    "data.COOKIES".to_string()
+}
 
 // ── Parse LR ──
 
@@ -172,14 +176,26 @@ pub enum ParseMode {
 }
 
 impl Default for ParseMode {
-    fn default() -> Self { ParseMode::LR }
+    fn default() -> Self {
+        ParseMode::LR
+    }
 }
 
-fn default_parse_mode() -> ParseMode { ParseMode::LR }
-fn default_output_format() -> String { "$1".into() }
-fn default_attribute() -> String { "innerText".into() }
-fn default_lambda() -> String { "x => x.split(',')[0]".into() }
-fn default_parse_output_var() -> String { "PARSED".into() }
+fn default_parse_mode() -> ParseMode {
+    ParseMode::LR
+}
+fn default_output_format() -> String {
+    "$1".into()
+}
+fn default_attribute() -> String {
+    "innerText".into()
+}
+fn default_lambda() -> String {
+    "x => x.split(',')[0]".into()
+}
+fn default_parse_output_var() -> String {
+    "PARSED".into()
+}
 
 /// Unified parse block that replaces ParseLR / ParseRegex / ParseJSON /
 /// ParseCSS / ParseXPath / ParseCookie / LambdaParser.
@@ -247,11 +263,17 @@ impl Default for ParseSettings {
             input_var: default_parse_input(),
             output_var: "PARSED".into(),
             capture: false,
-            left: String::new(), right: String::new(),
-            recursive: false, case_insensitive: false,
-            pattern: String::new(), output_format: "$1".into(), multi_line: false,
+            left: String::new(),
+            right: String::new(),
+            recursive: false,
+            case_insensitive: false,
+            pattern: String::new(),
+            output_format: "$1".into(),
+            multi_line: false,
             json_path: String::new(),
-            selector: String::new(), attribute: "innerText".into(), index: 0,
+            selector: String::new(),
+            attribute: "innerText".into(),
+            index: 0,
             xpath: String::new(),
             cookie_name: String::new(),
             lambda_expression: "x => x.split(',')[0]".into(),

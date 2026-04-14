@@ -18,14 +18,20 @@ struct SessionInfo {
 }
 
 impl SessionPool {
-    pub fn new(sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>) -> Self {
+    pub fn new(
+        sidecar_tx: mpsc::Sender<(SidecarRequest, oneshot::Sender<SidecarResponse>)>,
+    ) -> Self {
         Self {
             sidecar_tx,
             sessions: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    pub async fn create_session(&self, browser: &str, proxy: Option<&str>) -> crate::error::Result<String> {
+    pub async fn create_session(
+        &self,
+        browser: &str,
+        proxy: Option<&str>,
+    ) -> crate::error::Result<String> {
         let session_id = Uuid::new_v4().to_string();
 
         let req = SidecarRequest {
@@ -44,16 +50,19 @@ impl SessionPool {
             follow_redirects: Some(true),
             max_redirects: Some(8),
             ssl_verify: None,
-                    custom_ciphers: None,
+            custom_ciphers: None,
 
             ..Default::default()
         };
 
         let (resp_tx, resp_rx) = oneshot::channel();
-        self.sidecar_tx.send((req, resp_tx)).await
+        self.sidecar_tx
+            .send((req, resp_tx))
+            .await
             .map_err(|_| crate::error::AppError::Sidecar("Channel closed".into()))?;
 
-        let resp = resp_rx.await
+        let resp = resp_rx
+            .await
             .map_err(|_| crate::error::AppError::Sidecar("Response channel closed".into()))?;
 
         if let Some(err) = resp.error {
@@ -62,10 +71,13 @@ impl SessionPool {
             }
         }
 
-        self.sessions.lock().await.insert(session_id.clone(), SessionInfo {
-            browser: browser.to_string(),
-            proxy: proxy.map(|s| s.to_string()),
-        });
+        self.sessions.lock().await.insert(
+            session_id.clone(),
+            SessionInfo {
+                browser: browser.to_string(),
+                proxy: proxy.map(|s| s.to_string()),
+            },
+        );
 
         Ok(session_id)
     }
@@ -87,7 +99,7 @@ impl SessionPool {
             follow_redirects: None,
             max_redirects: None,
             ssl_verify: None,
-                    custom_ciphers: None,
+            custom_ciphers: None,
 
             ..Default::default()
         };

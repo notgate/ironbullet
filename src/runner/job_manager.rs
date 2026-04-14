@@ -5,19 +5,23 @@ use chrono::Utc;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
-use crate::pipeline::{ProxyMode, ProxySettings, ProxySourceType};
-use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 use super::data_pool::DataPool;
 use super::job::{DataSourceType, Job, JobState, StartCondition};
-use super::proxy_pool::{ProxyPool, ProxyEntry, ProxyType};
+use super::proxy_pool::{ProxyEntry, ProxyPool, ProxyType};
 use super::{HitResult, RunnerOrchestrator, RunnerStats};
+use crate::pipeline::{ProxyMode, ProxySettings, ProxySourceType};
+use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 
 /// Build a ProxyPool and resolve the effective ProxyMode.
 /// Returns (pool, effective_mode) — the mode accounts for group-level overrides
 /// so Sticky groups auto-elevate even when the top-level mode is None (#58/#59).
 fn build_proxy_pool(settings: &ProxySettings) -> (ProxyPool, ProxyMode) {
     let (sources, effective_mode) = if !settings.active_group.is_empty() {
-        if let Some(g) = settings.proxy_groups.iter().find(|g| g.name == settings.active_group) {
+        if let Some(g) = settings
+            .proxy_groups
+            .iter()
+            .find(|g| g.name == settings.active_group)
+        {
             let mode = if matches!(settings.proxy_mode, ProxyMode::None) {
                 g.mode.clone()
             } else {
@@ -38,38 +42,47 @@ fn build_proxy_pool(settings: &ProxySettings) -> (ProxyPool, ProxyMode) {
     let mut entries: Vec<ProxyEntry> = Vec::new();
     for src in sources {
         let raw_lines: Vec<String> = match src.source_type {
-            ProxySourceType::File => {
-                std::fs::read_to_string(&src.value)
-                    .map(|c| c.lines()
+            ProxySourceType::File => std::fs::read_to_string(&src.value)
+                .map(|c| {
+                    c.lines()
                         .filter(|l| !l.trim().is_empty())
                         .map(|l| l.trim().to_string())
-                        .collect())
-                    .unwrap_or_default()
-            }
-            ProxySourceType::Inline => {
-                src.value.lines()
-                    .filter(|l| !l.trim().is_empty())
-                    .map(|l| l.trim().to_string())
-                    .collect()
-            }
+                        .collect()
+                })
+                .unwrap_or_default(),
+            ProxySourceType::Inline => src
+                .value
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| l.trim().to_string())
+                .collect(),
             ProxySourceType::Url => {
                 // URL sources need async; skip for now (they're resolved at runtime)
                 Vec::new()
             }
         };
         // Resolve the source-level default type override (e.g. socks5 for a plain ip:port list)
-        let default_type = src.default_proxy_type.as_deref()
-            .and_then(|t| match t.to_lowercase().as_str() {
-                "http"   => Some(ProxyType::Http),
-                "https"  => Some(ProxyType::Https),
-                "socks4" => Some(ProxyType::Socks4),
-                "socks5" => Some(ProxyType::Socks5),
-                _        => None,
-            });
-        entries.extend(raw_lines.into_iter().filter_map(|l| parse_proxy_for_pool(&l, default_type)));
+        let default_type =
+            src.default_proxy_type
+                .as_deref()
+                .and_then(|t| match t.to_lowercase().as_str() {
+                    "http" => Some(ProxyType::Http),
+                    "https" => Some(ProxyType::Https),
+                    "socks4" => Some(ProxyType::Socks4),
+                    "socks5" => Some(ProxyType::Socks5),
+                    _ => None,
+                });
+        entries.extend(
+            raw_lines
+                .into_iter()
+                .filter_map(|l| parse_proxy_for_pool(&l, default_type)),
+        );
     }
 
-    (ProxyPool::new(entries, settings.ban_duration_secs), effective_mode)
+    (
+        ProxyPool::new(entries, settings.ban_duration_secs),
+        effective_mode,
+    )
 }
 
 /// Detect proxy type from port number for untyped host:port lines.
@@ -100,9 +113,15 @@ fn detect_proxy_type_from_port(port_str: &str, fallback: ProxyType) -> ProxyType
 /// Debugger but fail in Jobs mode (plain host:port was defaulting to HTTP).
 fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<ProxyEntry> {
     // Strip SIP002 / URL fragment labels (e.g. `ss://...@host:port#Dubai%2C%20UAE`)
-    let line = if let Some(pos) = line.find('#') { &line[..pos] } else { line };
+    let line = if let Some(pos) = line.find('#') {
+        &line[..pos]
+    } else {
+        line
+    };
     let line = line.trim();
-    if line.is_empty() { return None; }
+    if line.is_empty() {
+        return None;
+    }
 
     let (proxy_type, address) = if line.starts_with("ss://") {
         // Shadowsocks — spin up (or reuse) a local SOCKS5 tunnel and use that.
@@ -131,7 +150,10 @@ fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<P
             4 => {
                 let fallback = default_type.unwrap_or(ProxyType::Http);
                 let detected_type = detect_proxy_type_from_port(parts[1], fallback);
-                (detected_type, format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1]))
+                (
+                    detected_type,
+                    format!("{}:{}@{}:{}", parts[2], parts[3], parts[0], parts[1]),
+                )
             }
             // type:host:port:user:pass
             5 => {
@@ -141,23 +163,29 @@ fn parse_proxy_for_pool(line: &str, default_type: Option<ProxyType>) -> Option<P
                     "socks5" => ProxyType::Socks5,
                     _ => ProxyType::Http,
                 };
-                (pt, format!("{}:{}@{}:{}", parts[3], parts[4], parts[1], parts[2]))
+                (
+                    pt,
+                    format!("{}:{}@{}:{}", parts[3], parts[4], parts[1], parts[2]),
+                )
             }
             _ => return None,
         }
     };
-    Some(ProxyEntry { proxy_type, address })
+    Some(ProxyEntry {
+        proxy_type,
+        address,
+    })
 }
 
 pub struct ProxyCheckHandle {
-    pub processed:      Arc<std::sync::atomic::AtomicUsize>,
-    pub hits:           Arc<std::sync::atomic::AtomicUsize>,
-    pub fails:          Arc<std::sync::atomic::AtomicUsize>,
-    pub errors:         Arc<std::sync::atomic::AtomicUsize>,
+    pub processed: Arc<std::sync::atomic::AtomicUsize>,
+    pub hits: Arc<std::sync::atomic::AtomicUsize>,
+    pub fails: Arc<std::sync::atomic::AtomicUsize>,
+    pub errors: Arc<std::sync::atomic::AtomicUsize>,
     pub active_threads: Arc<std::sync::atomic::AtomicUsize>,
-    pub total:          usize,
-    pub running:        Arc<std::sync::atomic::AtomicBool>,
-    pub start_ms:       u64,
+    pub total: usize,
+    pub running: Arc<std::sync::atomic::AtomicBool>,
+    pub start_ms: u64,
 }
 
 impl ProxyCheckHandle {
@@ -169,17 +197,21 @@ impl ProxyCheckHandle {
             .as_millis() as u64;
         let elapsed_secs = (now.saturating_sub(self.start_ms)) as f64 / 1000.0;
         let processed = self.processed.load(Ordering::Relaxed);
-        let cpm = if elapsed_secs > 0.0 { processed as f64 / elapsed_secs * 60.0 } else { 0.0 };
+        let cpm = if elapsed_secs > 0.0 {
+            processed as f64 / elapsed_secs * 60.0
+        } else {
+            0.0
+        };
         RunnerStats {
-            total:          self.total,
+            total: self.total,
             processed,
-            consumed:       processed,
-            hits:           self.hits.load(Ordering::Relaxed),
-            fails:          self.fails.load(Ordering::Relaxed),
-            bans:           0,
-            retries:        0,
-            errors:         self.errors.load(Ordering::Relaxed),
-            to_check:       0,
+            consumed: processed,
+            hits: self.hits.load(Ordering::Relaxed),
+            fails: self.fails.load(Ordering::Relaxed),
+            bans: 0,
+            retries: 0,
+            errors: self.errors.load(Ordering::Relaxed),
+            to_check: 0,
             cpm,
             active_threads: self.active_threads.load(Ordering::Relaxed),
             elapsed_secs,
@@ -215,7 +247,9 @@ impl JobManager {
     }
 
     pub fn remove_job(&mut self, id: Uuid) -> bool {
-        if let Some(runner) = self.runners.get(&id) { runner.stop(); }
+        if let Some(runner) = self.runners.get(&id) {
+            runner.stop();
+        }
         if let Some(h) = self.proxy_handles.get(&id) {
             h.running.store(false, std::sync::atomic::Ordering::SeqCst);
         }
@@ -230,7 +264,9 @@ impl JobManager {
     pub fn list_jobs(&mut self) -> &[Job] {
         // Refresh live stats for all running jobs before serializing so the UI
         // always sees current hits/fails/errors without a separate poll call.
-        let running_ids: Vec<Uuid> = self.jobs.iter()
+        let running_ids: Vec<Uuid> = self
+            .jobs
+            .iter()
             .filter(|j| j.state == super::job::JobState::Running)
             .map(|j| j.id)
             .collect();
@@ -245,14 +281,18 @@ impl JobManager {
     }
 
     pub fn get_job_stats(&self, id: Uuid) -> Option<RunnerStats> {
-        if let Some(r) = self.runners.get(&id) { return Some(r.get_stats()); }
+        if let Some(r) = self.runners.get(&id) {
+            return Some(r.get_stats());
+        }
         self.proxy_handles.get(&id).map(|h| h.get_stats())
     }
 
     /// Like get_job_stats but includes recent_results (block-level debug log).
     /// Only call this from get_job_debug_log — never from jobs_list broadcasts.
     pub fn get_job_stats_full(&self, id: Uuid) -> Option<RunnerStats> {
-        if let Some(r) = self.runners.get(&id) { return Some(r.get_stats_full()); }
+        if let Some(r) = self.runners.get(&id) {
+            return Some(r.get_stats_full());
+        }
         self.proxy_handles.get(&id).map(|h| h.get_stats())
     }
 
@@ -263,7 +303,8 @@ impl JobManager {
     /// Return only hits newer than `since_index` (0-based).
     /// Used by the frontend for incremental updates instead of re-sending the full list.
     pub fn get_job_hits_since(&self, id: Uuid, since_index: usize) -> Vec<HitResult> {
-        self.job_hits.get(&id)
+        self.job_hits
+            .get(&id)
             .map(|hits| hits[since_index.min(hits.len())..].to_vec())
             .unwrap_or_default()
     }
@@ -281,17 +322,25 @@ impl JobManager {
     pub fn pause_job(&mut self, id: Uuid) -> bool {
         if let Some(runner) = self.runners.get(&id) {
             runner.pause();
-            if let Some(job) = self.get_job_mut(id) { job.state = JobState::Paused; }
+            if let Some(job) = self.get_job_mut(id) {
+                job.state = JobState::Paused;
+            }
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn resume_job(&mut self, id: Uuid) -> bool {
         if let Some(runner) = self.runners.get(&id) {
             runner.resume();
-            if let Some(job) = self.get_job_mut(id) { job.state = JobState::Running; }
+            if let Some(job) = self.get_job_mut(id) {
+                job.state = JobState::Running;
+            }
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Stop a job.  Returns whether a job was found.
@@ -310,14 +359,18 @@ impl JobManager {
             job.state = JobState::Stopped;
             job.completed = Some(Utc::now());
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Returns true if any config job is currently Running.
     /// Used to decide whether to tear down the shared sidecar process on stop.
     pub fn any_config_job_running(&self) -> bool {
         use crate::runner::job::JobType;
-        self.jobs.iter().any(|j| j.job_type == JobType::Config && j.state == JobState::Running)
+        self.jobs
+            .iter()
+            .any(|j| j.job_type == JobType::Config && j.state == JobState::Running)
     }
 
     pub fn start_job(
@@ -331,19 +384,20 @@ impl JobManager {
 
         // Load data from source
         let data_lines = match job.data_source.source_type {
-            DataSourceType::File => {
-                match std::fs::read_to_string(&job.data_source.value) {
-                    Ok(content) => content.lines()
-                        .filter(|l| !l.trim().is_empty())
-                        .map(|l| l.to_string())
-                        .collect::<Vec<_>>(),
-                    Err(e) => {
-                        eprintln!("[job] start_job: cannot read file '{}': {}",
-                            job.data_source.value, e);
-                        Vec::new()
-                    }
+            DataSourceType::File => match std::fs::read_to_string(&job.data_source.value) {
+                Ok(content) => content
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| l.to_string())
+                    .collect::<Vec<_>>(),
+                Err(e) => {
+                    eprintln!(
+                        "[job] start_job: cannot read file '{}': {}",
+                        job.data_source.value, e
+                    );
+                    Vec::new()
                 }
-            }
+            },
             DataSourceType::Folder => {
                 // Read all .txt / .csv files in the folder, concatenate their lines
                 let mut all_lines: Vec<String> = Vec::new();
@@ -351,30 +405,35 @@ impl JobManager {
                     let mut paths: Vec<_> = rd
                         .filter_map(|e| e.ok())
                         .map(|e| e.path())
-                        .filter(|p| p.is_file() && matches!(
-                            p.extension().and_then(|s| s.to_str()),
-                            Some("txt") | Some("csv") | Some("lst") | Some("dat")
-                        ))
+                        .filter(|p| {
+                            p.is_file()
+                                && matches!(
+                                    p.extension().and_then(|s| s.to_str()),
+                                    Some("txt") | Some("csv") | Some("lst") | Some("dat")
+                                )
+                        })
                         .collect();
                     paths.sort();
                     for path in paths {
                         if let Ok(content) = std::fs::read_to_string(&path) {
                             all_lines.extend(
-                                content.lines()
+                                content
+                                    .lines()
                                     .filter(|l| !l.trim().is_empty())
-                                    .map(|l| l.to_string())
+                                    .map(|l| l.to_string()),
                             );
                         }
                     }
                 }
                 all_lines
             }
-            DataSourceType::Inline => {
-                job.data_source.value.lines()
-                    .filter(|l| !l.trim().is_empty())
-                    .map(|l| l.to_string())
-                    .collect::<Vec<_>>()
-            }
+            DataSourceType::Inline => job
+                .data_source
+                .value
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>(),
             _ => Vec::new(),
         };
 
@@ -387,8 +446,13 @@ impl JobManager {
             return None;
         }
 
-        let data_pool = DataPool::new(data_lines);
-        let proxy_settings_ref = if !matches!(job.proxy_source.settings.proxy_mode, ProxyMode::None) {
+        let data_pool = DataPool::with_limits(
+            data_lines,
+            job.pipeline.runner_settings.skip as usize,
+            job.pipeline.runner_settings.take as usize,
+        );
+        let proxy_settings_ref = if !matches!(job.proxy_source.settings.proxy_mode, ProxyMode::None)
+        {
             &job.proxy_source.settings
         } else {
             &job.pipeline.proxy_settings
@@ -472,13 +536,15 @@ impl JobManager {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
         let job = self.jobs.iter_mut().find(|j| j.id == id)?;
-        if job.job_type != JobType::ProxyCheck { return None; }
+        if job.job_type != JobType::ProxyCheck {
+            return None;
+        }
 
-        let proxy_list_path  = job.proxy_check_list.clone();
-        let check_url        = job.proxy_check_url.clone();
-        let thread_count     = job.thread_count.max(1);
+        let proxy_list_path = job.proxy_check_list.clone();
+        let check_url = job.proxy_check_url.clone();
+        let thread_count = job.thread_count.max(1);
         let proxy_check_type = job.proxy_check_type.clone();
-        job.state   = JobState::Running;
+        job.state = JobState::Running;
         job.started = Some(Utc::now());
 
         let proxies: Vec<String> = if proxy_list_path.is_empty() {
@@ -493,23 +559,29 @@ impl JobManager {
         };
 
         let total = proxies.len();
-        eprintln!("[proxy_check] starting: {} proxies, {} threads, url={}", total, thread_count, check_url);
+        eprintln!(
+            "[proxy_check] starting: {} proxies, {} threads, url={}",
+            total, thread_count, check_url
+        );
 
         // Guard: empty proxy list → refuse to start
         if total == 0 {
-            eprintln!("[proxy_check] proxy list '{}' resolved to 0 proxies — aborting start", proxy_list_path);
+            eprintln!(
+                "[proxy_check] proxy list '{}' resolved to 0 proxies — aborting start",
+                proxy_list_path
+            );
             job.state = JobState::Waiting;
             job.started = None;
             return None;
         }
 
         // ── Atomic stats shared with every spawned task ────────────────────
-        let processed_ctr      = Arc::new(AtomicUsize::new(0));
-        let hits_ctr           = Arc::new(AtomicUsize::new(0));
-        let fails_ctr          = Arc::new(AtomicUsize::new(0));
-        let errors_ctr         = Arc::new(AtomicUsize::new(0));
+        let processed_ctr = Arc::new(AtomicUsize::new(0));
+        let hits_ctr = Arc::new(AtomicUsize::new(0));
+        let fails_ctr = Arc::new(AtomicUsize::new(0));
+        let errors_ctr = Arc::new(AtomicUsize::new(0));
         let active_threads_ctr = Arc::new(AtomicUsize::new(0));
-        let running_flag       = Arc::new(AtomicBool::new(true));
+        let running_flag = Arc::new(AtomicBool::new(true));
 
         let start_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -517,36 +589,41 @@ impl JobManager {
             .as_millis() as u64;
 
         // Store the handle so get_job_stats / stop_job / remove_job can access it
-        self.proxy_handles.insert(id, ProxyCheckHandle {
-            processed:      processed_ctr.clone(),
-            hits:           hits_ctr.clone(),
-            fails:          fails_ctr.clone(),
-            errors:         errors_ctr.clone(),
-            active_threads: active_threads_ctr.clone(),
-            total,
-            running:        running_flag.clone(),
-            start_ms,
-        });
+        self.proxy_handles.insert(
+            id,
+            ProxyCheckHandle {
+                processed: processed_ctr.clone(),
+                hits: hits_ctr.clone(),
+                fails: fails_ctr.clone(),
+                errors: errors_ctr.clone(),
+                active_threads: active_threads_ctr.clone(),
+                total,
+                running: running_flag.clone(),
+                start_ms,
+            },
+        );
 
         let (hits_tx, hits_rx) = tokio::sync::mpsc::channel::<HitResult>(4096);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(thread_count));
 
         for proxy in proxies {
-            let tx            = hits_tx.clone();
-            let url           = check_url.clone();
-            let sem           = semaphore.clone();
-            let running       = running_flag.clone();
-            let processed     = processed_ctr.clone();
-            let hits          = hits_ctr.clone();
-            let fails         = fails_ctr.clone();
-            let errors        = errors_ctr.clone();
-            let active        = active_threads_ctr.clone();
-            let check_type    = proxy_check_type.clone();
+            let tx = hits_tx.clone();
+            let url = check_url.clone();
+            let sem = semaphore.clone();
+            let running = running_flag.clone();
+            let processed = processed_ctr.clone();
+            let hits = hits_ctr.clone();
+            let fails = fails_ctr.clone();
+            let errors = errors_ctr.clone();
+            let active = active_threads_ctr.clone();
+            let check_type = proxy_check_type.clone();
 
             handle.spawn(async move {
                 let _permit = sem.acquire().await.ok();
 
-                if !running.load(Ordering::Relaxed) { return; }
+                if !running.load(Ordering::Relaxed) {
+                    return;
+                }
 
                 let has_scheme = proxy.starts_with("http://")
                     || proxy.starts_with("https://")
@@ -559,15 +636,17 @@ impl JobManager {
                     let scheme = match check_type.to_lowercase().as_str() {
                         "socks5" => "socks5",
                         "socks4" => "socks4",
-                        "https"  => "https",
-                        _        => "http",
+                        "https" => "https",
+                        _ => "http",
                     };
                     format!("{}://{}", scheme, proxy)
                 };
 
                 let client_result = reqwest::Client::builder()
-                    .proxy(reqwest::Proxy::all(&proxy_url)
-                        .unwrap_or_else(|_| reqwest::Proxy::all("http://127.0.0.1:1").unwrap()))
+                    .proxy(
+                        reqwest::Proxy::all(&proxy_url)
+                            .unwrap_or_else(|_| reqwest::Proxy::all("http://127.0.0.1:1").unwrap()),
+                    )
                     .connect_timeout(std::time::Duration::from_secs(10))
                     .timeout(std::time::Duration::from_secs(15))
                     .build();
@@ -578,7 +657,14 @@ impl JobManager {
                         processed.fetch_add(1, Ordering::Relaxed);
                         let mut captures = std::collections::HashMap::new();
                         captures.insert("status".into(), "error".into());
-                        let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None, ..Default::default() }).await;
+                        let _ = tx
+                            .send(HitResult {
+                                data_line: proxy,
+                                captures,
+                                proxy: None,
+                                ..Default::default()
+                            })
+                            .await;
                     }
                     Ok(client) => {
                         active.fetch_add(1, Ordering::Relaxed);
@@ -602,7 +688,14 @@ impl JobManager {
                             }
                         }
 
-                        let _ = tx.send(HitResult { data_line: proxy, captures, proxy: None, ..Default::default() }).await;
+                        let _ = tx
+                            .send(HitResult {
+                                data_line: proxy,
+                                captures,
+                                proxy: None,
+                                ..Default::default()
+                            })
+                            .await;
                     }
                 }
             });

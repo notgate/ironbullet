@@ -4,7 +4,10 @@ use uuid::Uuid;
 use super::*;
 
 impl ExecutionContext {
-    pub(super) async fn execute_browser_open(&mut self, settings: &BrowserOpenSettings) -> crate::error::Result<()> {
+    pub(super) async fn execute_browser_open(
+        &mut self,
+        settings: &BrowserOpenSettings,
+    ) -> crate::error::Result<()> {
         use chromiumoxide::browser::Browser;
 
         // ----------------------------------------------------------------
@@ -19,17 +22,23 @@ impl ExecutionContext {
         // ----------------------------------------------------------------
 
         // Pick a random-ish port in the ephemeral range
-        let cdp_port: u16 = 9222 + (std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .subsec_nanos() % 1000) as u16;
+        let cdp_port: u16 = 9222
+            + (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos()
+                % 1000) as u16;
 
         // Resolve Chrome executable
-        let chrome_exe = self.chrome_executable_path.clone()
+        let chrome_exe = self
+            .chrome_executable_path
+            .clone()
             .or_else(find_chrome_exe)
-            .ok_or_else(|| crate::error::AppError::Pipeline(
-                "Chrome not found. Set chrome path in Settings → Paths.".to_string()
-            ))?;
+            .ok_or_else(|| {
+                crate::error::AppError::Pipeline(
+                    "Chrome not found. Set chrome path in Settings → Paths.".to_string(),
+                )
+            })?;
 
         // Build args
         let mut chrome_args: Vec<String> = vec![
@@ -56,7 +65,12 @@ impl ExecutionContext {
             "--use-mock-keychain".to_string(),
             "--no-sandbox".to_string(),
             "--disable-setuid-sandbox".to_string(),
-            format!("--user-data-dir={}", std::env::temp_dir().join(format!("ib-chrome-{}", cdp_port)).display()),
+            format!(
+                "--user-data-dir={}",
+                std::env::temp_dir()
+                    .join(format!("ib-chrome-{}", cdp_port))
+                    .display()
+            ),
         ];
 
         if settings.headless {
@@ -68,7 +82,11 @@ impl ExecutionContext {
         // Proxy
         let effective_proxy = if !settings.proxy.is_empty() {
             let p = self.variables.interpolate(&settings.proxy);
-            if p.is_empty() { self.proxy.clone() } else { Some(p) }
+            if p.is_empty() {
+                self.proxy.clone()
+            } else {
+                Some(p)
+            }
         } else {
             self.proxy.clone()
         };
@@ -98,12 +116,17 @@ impl ExecutionContext {
         cmd.stdin(std::process::Stdio::null());
         // Suppress console window on Windows (CREATE_NO_WINDOW = 0x08000000)
         #[cfg(all(target_os = "windows", not(target_env = "gnu")))]
-        { use std::os::windows::process::CommandExt; cmd.creation_flags(0x08000000); }
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
 
-        let _chrome_child = cmd.spawn()
-            .map_err(|e| crate::error::AppError::Pipeline(
-                format!("Failed to spawn Chrome: {}\nPath: {:?}", e, chrome_exe)
-            ))?;
+        let _chrome_child = cmd.spawn().map_err(|e| {
+            crate::error::AppError::Pipeline(format!(
+                "Failed to spawn Chrome: {}\nPath: {:?}",
+                e, chrome_exe
+            ))
+        })?;
 
         // Store child so it's dropped (and Chrome killed) when ExecutionContext drops
         self.chrome_child = Some(_chrome_child);
@@ -119,13 +142,16 @@ impl ExecutionContext {
             loop {
                 if tokio::time::Instant::now() > deadline {
                     return Err(crate::error::AppError::Pipeline(
-                        "Chrome started but did not open its debug port within 15 seconds.".to_string()
+                        "Chrome started but did not open its debug port within 15 seconds."
+                            .to_string(),
                     ));
                 }
                 match http_client.get(&version_url).send().await {
                     Ok(resp) => {
                         if let Ok(json) = resp.json::<serde_json::Value>().await {
-                            if let Some(ws) = json.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) {
+                            if let Some(ws) =
+                                json.get("webSocketDebuggerUrl").and_then(|v| v.as_str())
+                            {
                                 break ws.to_string();
                             }
                         }
@@ -146,18 +172,22 @@ impl ExecutionContext {
         .map_err(|e| crate::error::AppError::Pipeline(format!("Browser connect failed: {}", e)))?;
 
         // Drive CDP events in background — must stay alive for all browser commands to work
-        tokio::spawn(async move {
-            while handler.next().await.is_some() {}
-        });
+        tokio::spawn(async move { while handler.next().await.is_some() {} });
 
         self.browser = BrowserHandle(Some(browser));
         self.page = PageHandle(None);
         Ok(())
     }
 
-    pub(super) async fn execute_navigate_to(&mut self, settings: &NavigateToSettings, block_id_for_nav: Uuid, block_label_for_nav: String) -> crate::error::Result<()> {
-        let browser = self.browser.0.as_ref()
-            .ok_or_else(|| crate::error::AppError::Pipeline("No browser open. Use BrowserOpen first.".into()))?;
+    pub(super) async fn execute_navigate_to(
+        &mut self,
+        settings: &NavigateToSettings,
+        block_id_for_nav: Uuid,
+        block_label_for_nav: String,
+    ) -> crate::error::Result<()> {
+        let browser = self.browser.0.as_ref().ok_or_else(|| {
+            crate::error::AppError::Pipeline("No browser open. Use BrowserOpen first.".into())
+        })?;
 
         let url = self.variables.interpolate(&settings.url);
         let nav_start = std::time::Instant::now();
@@ -169,20 +199,27 @@ impl ExecutionContext {
             let page_for_cookies = if let Some(ref existing) = self.page.0 {
                 existing.clone()
             } else {
-                browser.new_page("about:blank").await
-                    .map_err(|e| crate::error::AppError::Pipeline(format!("New page failed: {}", e)))?
+                browser.new_page("about:blank").await.map_err(|e| {
+                    crate::error::AppError::Pipeline(format!("New page failed: {}", e))
+                })?
             };
-            let domain = reqwest::Url::parse(&url).ok()
+            let domain = reqwest::Url::parse(&url)
+                .ok()
                 .and_then(|u| u.host_str().map(|h| h.to_string()))
                 .unwrap_or_default();
-            for line in cookie_str.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
+            for line in cookie_str
+                .lines()
+                .map(|l| l.trim())
+                .filter(|l| !l.is_empty())
+            {
                 if let Some((name, value)) = line.split_once('=') {
-                    let params = chromiumoxide::cdp::browser_protocol::network::SetCookieParams::builder()
-                        .name(name.trim())
-                        .value(value.trim())
-                        .domain(domain.clone())
-                        .build()
-                        .unwrap();
+                    let params =
+                        chromiumoxide::cdp::browser_protocol::network::SetCookieParams::builder()
+                            .name(name.trim())
+                            .value(value.trim())
+                            .domain(domain.clone())
+                            .build()
+                            .unwrap();
                     let _ = page_for_cookies.execute(params).await;
                 }
             }
@@ -210,7 +247,9 @@ impl ExecutionContext {
                 browser.new_page("about:blank"),
             )
             .await
-            .map_err(|_| crate::error::AppError::Pipeline("Browser new page timed out".to_string()))?
+            .map_err(|_| {
+                crate::error::AppError::Pipeline("Browser new page timed out".to_string())
+            })?
             .map_err(|e| crate::error::AppError::Pipeline(format!("New page failed: {}", e)))?;
 
             // Navigate to target URL; ignore navigation errors (e.g. waiting rooms that
@@ -224,13 +263,16 @@ impl ExecutionContext {
         let _ = tokio::time::timeout(
             std::time::Duration::from_millis(2000),
             page.wait_for_navigation(),
-        ).await;
+        )
+        .await;
         let nav_elapsed = nav_start.elapsed().as_millis() as u64;
 
         // Store page content in variables
         let content = page.content().await.unwrap_or_default();
         self.variables.set_data("SOURCE", content.clone());
-        let current_url = page.url().await
+        let current_url = page
+            .url()
+            .await
             .map(|u| u.map(|u| u.to_string()).unwrap_or_default())
             .unwrap_or_default();
         self.variables.set_data("ADDRESS", current_url.clone());
@@ -249,10 +291,15 @@ impl ExecutionContext {
 
         // Add to network log so NetworkViewer shows browser navigations
         let cookies_sent: Vec<(String, String)> = if !settings.custom_cookies.is_empty() {
-            self.variables.interpolate(&settings.custom_cookies).lines()
+            self.variables
+                .interpolate(&settings.custom_cookies)
+                .lines()
                 .map(|l| l.trim())
                 .filter(|l| !l.is_empty())
-                .filter_map(|l| l.split_once('=').map(|(k, v)| (k.trim().to_string(), v.trim().to_string())))
+                .filter_map(|l| {
+                    l.split_once('=')
+                        .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+                })
                 .collect()
         } else {
             Vec::new()
@@ -273,15 +320,22 @@ impl ExecutionContext {
         Ok(())
     }
 
-    pub(super) async fn execute_click_element(&mut self, settings: &ClickElementSettings) -> crate::error::Result<()> {
-        let page = self.page.0.as_ref()
-            .ok_or_else(|| crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into()))?;
+    pub(super) async fn execute_click_element(
+        &mut self,
+        settings: &ClickElementSettings,
+    ) -> crate::error::Result<()> {
+        let page = self.page.0.as_ref().ok_or_else(|| {
+            crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into())
+        })?;
 
         let selector = self.variables.interpolate(&settings.selector);
-        let element = page.find_element(&selector).await
-            .map_err(|e| crate::error::AppError::Pipeline(format!("Element not found '{}': {}", selector, e)))?;
+        let element = page.find_element(&selector).await.map_err(|e| {
+            crate::error::AppError::Pipeline(format!("Element not found '{}': {}", selector, e))
+        })?;
 
-        element.click().await
+        element
+            .click()
+            .await
             .map_err(|e| crate::error::AppError::Pipeline(format!("Click failed: {}", e)))?;
 
         if settings.wait_for_navigation {
@@ -294,42 +348,66 @@ impl ExecutionContext {
         Ok(())
     }
 
-    pub(super) async fn execute_type_text(&mut self, settings: &TypeTextSettings) -> crate::error::Result<()> {
-        let page = self.page.0.as_ref()
-            .ok_or_else(|| crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into()))?;
+    pub(super) async fn execute_type_text(
+        &mut self,
+        settings: &TypeTextSettings,
+    ) -> crate::error::Result<()> {
+        let page = self.page.0.as_ref().ok_or_else(|| {
+            crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into())
+        })?;
 
         let selector = self.variables.interpolate(&settings.selector);
         let text = self.variables.interpolate(&settings.text);
 
-        let element = page.find_element(&selector).await
-            .map_err(|e| crate::error::AppError::Pipeline(format!("Element not found '{}': {}", selector, e)))?;
+        let element = page.find_element(&selector).await.map_err(|e| {
+            crate::error::AppError::Pipeline(format!("Element not found '{}': {}", selector, e))
+        })?;
 
         if settings.clear_first {
-            element.click().await
-                .map_err(|e| crate::error::AppError::Pipeline(format!("Click for clear failed: {}", e)))?;
+            element.click().await.map_err(|e| {
+                crate::error::AppError::Pipeline(format!("Click for clear failed: {}", e))
+            })?;
             // Select all and delete to clear
-            page.execute(chromiumoxide::cdp::browser_protocol::input::DispatchKeyEventParams::builder()
-                .r#type(chromiumoxide::cdp::browser_protocol::input::DispatchKeyEventType::KeyDown)
-                .key("a".to_string())
-                .modifiers(2) // Ctrl
-                .build().unwrap()
-            ).await.ok();
-            page.execute(chromiumoxide::cdp::browser_protocol::input::DispatchKeyEventParams::builder()
-                .r#type(chromiumoxide::cdp::browser_protocol::input::DispatchKeyEventType::KeyDown)
-                .key("Backspace".to_string())
-                .build().unwrap()
-            ).await.ok();
+            page.execute(
+                chromiumoxide::cdp::browser_protocol::input::DispatchKeyEventParams::builder()
+                    .r#type(
+                        chromiumoxide::cdp::browser_protocol::input::DispatchKeyEventType::KeyDown,
+                    )
+                    .key("a".to_string())
+                    .modifiers(2) // Ctrl
+                    .build()
+                    .unwrap(),
+            )
+            .await
+            .ok();
+            page.execute(
+                chromiumoxide::cdp::browser_protocol::input::DispatchKeyEventParams::builder()
+                    .r#type(
+                        chromiumoxide::cdp::browser_protocol::input::DispatchKeyEventType::KeyDown,
+                    )
+                    .key("Backspace".to_string())
+                    .build()
+                    .unwrap(),
+            )
+            .await
+            .ok();
         }
 
-        element.type_str(&text).await
+        element
+            .type_str(&text)
+            .await
             .map_err(|e| crate::error::AppError::Pipeline(format!("Type text failed: {}", e)))?;
 
         Ok(())
     }
 
-    pub(super) async fn execute_wait_for_element(&mut self, settings: &WaitForElementSettings) -> crate::error::Result<()> {
-        let page = self.page.0.as_ref()
-            .ok_or_else(|| crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into()))?;
+    pub(super) async fn execute_wait_for_element(
+        &mut self,
+        settings: &WaitForElementSettings,
+    ) -> crate::error::Result<()> {
+        let page = self.page.0.as_ref().ok_or_else(|| {
+            crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into())
+        })?;
 
         let selector = self.variables.interpolate(&settings.selector);
         let timeout = std::time::Duration::from_millis(settings.timeout_ms);
@@ -346,9 +424,10 @@ impl ExecutionContext {
                 }
                 Err(_) => {
                     if start.elapsed() > timeout {
-                        return Err(crate::error::AppError::Pipeline(
-                            format!("Timeout waiting for element '{}' ({}ms)", selector, settings.timeout_ms)
-                        ));
+                        return Err(crate::error::AppError::Pipeline(format!(
+                            "Timeout waiting for element '{}' ({}ms)",
+                            selector, settings.timeout_ms
+                        )));
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 }
@@ -358,45 +437,71 @@ impl ExecutionContext {
         Ok(())
     }
 
-    pub(super) async fn execute_get_element_text(&mut self, settings: &GetElementTextSettings) -> crate::error::Result<()> {
-        let page = self.page.0.as_ref()
-            .ok_or_else(|| crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into()))?;
+    pub(super) async fn execute_get_element_text(
+        &mut self,
+        settings: &GetElementTextSettings,
+    ) -> crate::error::Result<()> {
+        let page = self.page.0.as_ref().ok_or_else(|| {
+            crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into())
+        })?;
 
         let selector = self.variables.interpolate(&settings.selector);
-        let element = page.find_element(&selector).await
-            .map_err(|e| crate::error::AppError::Pipeline(format!("Element not found '{}': {}", selector, e)))?;
+        let element = page.find_element(&selector).await.map_err(|e| {
+            crate::error::AppError::Pipeline(format!("Element not found '{}': {}", selector, e))
+        })?;
 
         let value = if settings.attribute.is_empty() || settings.attribute == "innerText" {
-            element.inner_text().await
+            element
+                .inner_text()
+                .await
                 .map_err(|e| crate::error::AppError::Pipeline(format!("Get text failed: {}", e)))?
                 .unwrap_or_default()
         } else {
-            element.attribute(&settings.attribute).await
-                .map_err(|e| crate::error::AppError::Pipeline(format!("Get attribute failed: {}", e)))?
+            element
+                .attribute(&settings.attribute)
+                .await
+                .map_err(|e| {
+                    crate::error::AppError::Pipeline(format!("Get attribute failed: {}", e))
+                })?
                 .unwrap_or_default()
         };
 
-        self.variables.set_user(&settings.output_var, value, settings.capture);
+        self.variables
+            .set_user(&settings.output_var, value, settings.capture);
         Ok(())
     }
 
-    pub(super) async fn execute_screenshot(&mut self, settings: &ScreenshotSettings) -> crate::error::Result<()> {
-        let page = self.page.0.as_ref()
-            .ok_or_else(|| crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into()))?;
+    pub(super) async fn execute_screenshot(
+        &mut self,
+        settings: &ScreenshotSettings,
+    ) -> crate::error::Result<()> {
+        let page = self.page.0.as_ref().ok_or_else(|| {
+            crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into())
+        })?;
 
         let bytes = if !settings.selector.is_empty() {
             let selector = self.variables.interpolate(&settings.selector);
-            let element = page.find_element(&selector).await
-                .map_err(|e| crate::error::AppError::Pipeline(format!("Element not found: {}", e)))?;
-            element.screenshot(chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat::Png).await
-                .map_err(|e| crate::error::AppError::Pipeline(format!("Screenshot failed: {}", e)))?
+            let element = page.find_element(&selector).await.map_err(|e| {
+                crate::error::AppError::Pipeline(format!("Element not found: {}", e))
+            })?;
+            element
+                .screenshot(
+                    chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat::Png,
+                )
+                .await
+                .map_err(|e| {
+                    crate::error::AppError::Pipeline(format!("Screenshot failed: {}", e))
+                })?
         } else {
             page.screenshot(
                 chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotParams::builder()
-                    .format(chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat::Png)
-                    .build()
-            ).await
-                .map_err(|e| crate::error::AppError::Pipeline(format!("Screenshot failed: {}", e)))?
+                    .format(
+                        chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat::Png,
+                    )
+                    .build(),
+            )
+            .await
+            .map_err(|e| crate::error::AppError::Pipeline(format!("Screenshot failed: {}", e)))?
         };
 
         use base64::Engine;
@@ -405,12 +510,18 @@ impl ExecutionContext {
         Ok(())
     }
 
-    pub(super) async fn execute_js(&mut self, settings: &ExecuteJsSettings) -> crate::error::Result<()> {
-        let page = self.page.0.as_ref()
-            .ok_or_else(|| crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into()))?;
+    pub(super) async fn execute_js(
+        &mut self,
+        settings: &ExecuteJsSettings,
+    ) -> crate::error::Result<()> {
+        let page = self.page.0.as_ref().ok_or_else(|| {
+            crate::error::AppError::Pipeline("No page open. Use NavigateTo first.".into())
+        })?;
 
         let code = self.variables.interpolate(&settings.code);
-        let result = page.evaluate_expression(&code).await
+        let result = page
+            .evaluate_expression(&code)
+            .await
             .map_err(|e| crate::error::AppError::Pipeline(format!("JS execution failed: {}", e)))?;
 
         let value = match result.value() {
@@ -421,7 +532,8 @@ impl ExecutionContext {
             None => String::new(),
         };
 
-        self.variables.set_user(&settings.output_var, value, settings.capture);
+        self.variables
+            .set_user(&settings.output_var, value, settings.capture);
         Ok(())
     }
 }
@@ -441,22 +553,33 @@ fn find_chrome_exe() -> Option<std::path::PathBuf> {
             r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
             r"C:\Program Files\Chromium\Application\chrome.exe",
         ];
-        for p in fixed.iter().copied().chain(paths.iter().map(|s| s.as_str())) {
+        for p in fixed
+            .iter()
+            .copied()
+            .chain(paths.iter().map(|s| s.as_str()))
+        {
             let path = std::path::Path::new(p);
-            if path.exists() { return Some(path.to_path_buf()); }
+            if path.exists() {
+                return Some(path.to_path_buf());
+            }
         }
         // where.exe fallback
         for name in &["chrome.exe", "chromium.exe"] {
             let mut where_cmd = std::process::Command::new("where");
             where_cmd.arg(name);
             #[cfg(not(target_env = "gnu"))]
-            { use std::os::windows::process::CommandExt; where_cmd.creation_flags(0x08000000); }
+            {
+                use std::os::windows::process::CommandExt;
+                where_cmd.creation_flags(0x08000000);
+            }
             if let Ok(out) = where_cmd.output() {
                 if out.status.success() {
                     let s = String::from_utf8_lossy(&out.stdout);
                     if let Some(first) = s.lines().next() {
                         let p = std::path::PathBuf::from(first.trim());
-                        if p.exists() { return Some(p); }
+                        if p.exists() {
+                            return Some(p);
+                        }
                     }
                 }
             }
@@ -465,12 +588,19 @@ fn find_chrome_exe() -> Option<std::path::PathBuf> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        for name in &["google-chrome", "chromium-browser", "chromium", "google-chrome-stable"] {
+        for name in &[
+            "google-chrome",
+            "chromium-browser",
+            "chromium",
+            "google-chrome-stable",
+        ] {
             if let Ok(out) = std::process::Command::new("which").arg(name).output() {
                 if out.status.success() {
                     let s = String::from_utf8_lossy(&out.stdout);
                     let p = std::path::PathBuf::from(s.trim());
-                    if p.exists() { return Some(p); }
+                    if p.exists() {
+                        return Some(p);
+                    }
                 }
             }
         }

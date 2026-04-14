@@ -4,10 +4,10 @@ pub mod session;
 pub mod shadowsocks_pool;
 pub mod wreq_client;
 
-use std::process::Stdio;
-use dunce;
-use std::sync::Arc;
 use dashmap::DashMap;
+use dunce;
+use std::process::Stdio;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
@@ -47,8 +47,14 @@ impl SidecarManager {
         // Resolve sidecar path relative to the exe directory if the raw path doesn't exist.
         // Handles the common case where sidecar_path is just "reqflow-sidecar.exe" but
         // the process CWD differs from the exe directory (common on Windows).
-        let sidecar_name = if cfg!(target_os = "windows") { "reqflow-sidecar.exe" } else { "reqflow-sidecar" };
-        let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf()));
+        let sidecar_name = if cfg!(target_os = "windows") {
+            "reqflow-sidecar.exe"
+        } else {
+            "reqflow-sidecar"
+        };
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|p| p.to_path_buf()));
 
         let path = {
             let p = std::path::PathBuf::from(sidecar_path);
@@ -62,14 +68,18 @@ impl SidecarManager {
                 let by_name = dir.join(
                     std::path::Path::new(sidecar_path)
                         .file_name()
-                        .unwrap_or_else(|| std::ffi::OsStr::new(sidecar_name))
+                        .unwrap_or_else(|| std::ffi::OsStr::new(sidecar_name)),
                 );
                 if by_name.exists() {
                     dunce::simplified(&by_name).to_path_buf()
                 } else {
                     // Try canonical sidecar name next to exe
                     let canonical = dir.join(sidecar_name);
-                    if canonical.exists() { dunce::simplified(&canonical).to_path_buf() } else { p }
+                    if canonical.exists() {
+                        dunce::simplified(&canonical).to_path_buf()
+                    } else {
+                        p
+                    }
                 }
             } else {
                 p
@@ -83,7 +93,9 @@ impl SidecarManager {
                  Executable directory: {}",
                 path.display(),
                 sidecar_name,
-                exe_dir.map(|d| d.display().to_string()).unwrap_or_else(|| "<unknown>".into())
+                exe_dir
+                    .map(|d| d.display().to_string())
+                    .unwrap_or_else(|| "<unknown>".into())
             )));
         }
 
@@ -93,15 +105,16 @@ impl SidecarManager {
         // os error 123 (invalid path syntax) if the process CWD is a UNC or network path.
         // Prefer the exe directory as a safe absolute fallback.
         let sidecar_dir_owned;
-        let sidecar_dir = if let Some(parent) = path.parent().filter(|p| p != &std::path::Path::new("")) {
-            parent
-        } else {
-            sidecar_dir_owned = std::env::current_exe()
-                .ok()
-                .and_then(|e| e.parent().map(|p| p.to_path_buf()))
-                .unwrap_or_else(|| std::path::PathBuf::from("."));
-            sidecar_dir_owned.as_path()
-        };
+        let sidecar_dir =
+            if let Some(parent) = path.parent().filter(|p| p != &std::path::Path::new("")) {
+                parent
+            } else {
+                sidecar_dir_owned = std::env::current_exe()
+                    .ok()
+                    .and_then(|e| e.parent().map(|p| p.to_path_buf()))
+                    .unwrap_or_else(|| std::path::PathBuf::from("."));
+                sidecar_dir_owned.as_path()
+            };
 
         let mut cmd = Command::new(&path);
         cmd.current_dir(sidecar_dir)
@@ -116,21 +129,36 @@ impl SidecarManager {
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
-        let mut child = cmd.spawn()
-            .map_err(|e| crate::error::AppError::Sidecar(format!(
+        let mut child = cmd.spawn().map_err(|e| {
+            crate::error::AppError::Sidecar(format!(
                 "Failed to spawn sidecar '{}': {}\n\
                  (file exists={}, is_executable={})",
-                sidecar_path, e,
+                sidecar_path,
+                e,
                 path.exists(),
-                path.metadata().map(|_m| {
-                    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; _m.permissions().mode() & 0o111 != 0 }
-                    #[cfg(not(unix))] { true }
-                }).unwrap_or(false)
-            )))?;
+                path.metadata()
+                    .map(|_m| {
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            _m.permissions().mode() & 0o111 != 0
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            true
+                        }
+                    })
+                    .unwrap_or(false)
+            ))
+        })?;
 
-        let stdin = child.stdin.take()
+        let stdin = child
+            .stdin
+            .take()
             .ok_or_else(|| crate::error::AppError::Sidecar("No stdin".into()))?;
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| crate::error::AppError::Sidecar("No stdout".into()))?;
 
         // Writer channel — micro-batching: drain all pending messages before flushing.
@@ -141,14 +169,22 @@ impl SidecarManager {
         let mut stdin = stdin;
         tokio::spawn(async move {
             while let Some(line) = writer_rx.recv().await {
-                if stdin.write_all(line.as_bytes()).await.is_err() { break; }
-                if stdin.write_all(b"\n").await.is_err() { break; }
+                if stdin.write_all(line.as_bytes()).await.is_err() {
+                    break;
+                }
+                if stdin.write_all(b"\n").await.is_err() {
+                    break;
+                }
                 // Drain any additional pending messages before flushing once
                 loop {
                     match writer_rx.try_recv() {
                         Ok(next) => {
-                            if stdin.write_all(next.as_bytes()).await.is_err() { return; }
-                            if stdin.write_all(b"\n").await.is_err() { return; }
+                            if stdin.write_all(next.as_bytes()).await.is_err() {
+                                return;
+                            }
+                            if stdin.write_all(b"\n").await.is_err() {
+                                return;
+                            }
                         }
                         Err(_) => break, // Channel empty — flush what we have
                     }
@@ -184,7 +220,8 @@ impl SidecarManager {
 
         // Request multiplexer channel — register correlation then enqueue write.
         // DashMap insert is non-blocking so this loop is never delayed by another thread's lookup.
-        let (req_tx, mut req_rx) = mpsc::channel::<(SidecarRequest, oneshot::Sender<SidecarResponse>)>(4096);
+        let (req_tx, mut req_rx) =
+            mpsc::channel::<(SidecarRequest, oneshot::Sender<SidecarResponse>)>(4096);
         let writer_tx2 = writer_tx.clone();
         let pending2 = self.pending.clone();
         tokio::spawn(async move {

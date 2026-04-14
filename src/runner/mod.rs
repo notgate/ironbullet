@@ -1,9 +1,9 @@
-pub mod worker;
 pub mod data_pool;
-pub mod proxy_pool;
-pub mod output;
 pub mod job;
 pub mod job_manager;
+pub mod output;
+pub mod proxy_pool;
+pub mod worker;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -184,8 +184,12 @@ impl RunnerOrchestrator {
             delay_ms
         };
 
-        eprintln!("[runner] starting {} threads (gradual={}, delay={}ms)",
-            self.thread_count, gradual, if gradual { effective_delay_ms } else { 0 });
+        eprintln!(
+            "[runner] starting {} threads (gradual={}, delay={}ms)",
+            self.thread_count,
+            gradual,
+            if gradual { effective_delay_ms } else { 0 }
+        );
 
         let mut handles = Vec::new();
 
@@ -226,7 +230,8 @@ impl RunnerOrchestrator {
                     chrome_executable_path,
                     result_feed,
                     custom_inputs,
-                ).await;
+                )
+                .await;
             });
             handles.push(handle);
         }
@@ -270,13 +275,22 @@ impl RunnerOrchestrator {
             .unwrap_or_default()
             .as_millis() as u64;
         let start = self.stats.start_time_ms.load(Ordering::Relaxed);
-        let elapsed_secs = if start > 0 { (now - start) as f64 / 1000.0 } else { 0.0 };
+        let elapsed_secs = if start > 0 {
+            (now - start) as f64 / 1000.0
+        } else {
+            0.0
+        };
         let processed = self.stats.processed.load(Ordering::Relaxed);
-        let cpm = if elapsed_secs > 0.0 { processed as f64 / elapsed_secs * 60.0 } else { 0.0 };
+        let cpm = if elapsed_secs > 0.0 {
+            processed as f64 / elapsed_secs * 60.0
+        } else {
+            0.0
+        };
 
         let recent_results = if include_results {
             // Snapshot the live feed (non-blocking try_lock; return empty if contended)
-            self.result_feed.try_lock()
+            self.result_feed
+                .try_lock()
                 .map(|feed| feed.iter().cloned().collect::<Vec<_>>())
                 .unwrap_or_default()
         } else {

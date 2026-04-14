@@ -2,9 +2,9 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use ironbullet::pipeline::engine::ExecutionContext;
-use ironbullet::runner::{RunnerOrchestrator, HitResult};
 use ironbullet::runner::data_pool::DataPool;
 use ironbullet::runner::proxy_pool::{ProxyPool, ProxyType};
+use ironbullet::runner::{HitResult, RunnerOrchestrator};
 
 use super::{resolve_sidecar_path, AppState, IpcResponse};
 
@@ -18,13 +18,18 @@ pub(super) fn debug_pipeline(
         handle.spawn(async move {
             let s = state.lock().await;
             // If the frontend sends a full pipeline snapshot, use it (keeps settings in sync)
-            let frontend_pipeline = data.get("pipeline")
-                .and_then(|v| serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok());
-            let mut blocks = frontend_pipeline.as_ref().map(|p| p.blocks.clone()).unwrap_or_else(|| s.pipeline.blocks.clone());
+            let frontend_pipeline = data.get("pipeline").and_then(|v| {
+                serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok()
+            });
+            let mut blocks = frontend_pipeline
+                .as_ref()
+                .map(|p| p.blocks.clone())
+                .unwrap_or_else(|| s.pipeline.blocks.clone());
             // If block_ids is provided, restrict execution to only those blocks (Debug Block feature)
             if let Some(ids_val) = data.get("block_ids") {
                 if let Some(ids) = ids_val.as_array() {
-                    let ids: std::collections::HashSet<String> = ids.iter()
+                    let ids: std::collections::HashSet<String> = ids
+                        .iter()
                         .filter_map(|v| v.as_str().map(|s| s.to_string()))
                         .collect();
                     if !ids.is_empty() {
@@ -32,13 +37,20 @@ pub(super) fn debug_pipeline(
                     }
                 }
             }
-            let data_settings = frontend_pipeline.as_ref().map(|p| p.data_settings.clone()).unwrap_or_else(|| s.pipeline.data_settings.clone());
+            let data_settings = frontend_pipeline
+                .as_ref()
+                .map(|p| p.data_settings.clone())
+                .unwrap_or_else(|| s.pipeline.data_settings.clone());
             let pm = s.plugin_manager.clone();
             let chrome_exe = {
                 let cfg_path = s.config.chrome_executable_path.clone();
                 if !cfg_path.is_empty() {
                     let p = std::path::PathBuf::from(&cfg_path);
-                    if p.exists() { Some(p) } else { super::find_chrome_executable() }
+                    if p.exists() {
+                        Some(p)
+                    } else {
+                        super::find_chrome_executable()
+                    }
                 } else {
                     super::find_chrome_executable()
                 }
@@ -72,21 +84,42 @@ pub(super) fn debug_pipeline(
 
             // Send last result as debug_step (backward compat)
             let result = ctx.block_results.last().cloned();
-            let resp = IpcResponse::ok("debug_step", serde_json::to_value(&result).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "debug_step",
+                serde_json::to_value(&result).unwrap_or_default(),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
 
             // Always send all block results for the response viewer
-            let resp = IpcResponse::ok("debug_results", serde_json::to_value(&ctx.block_results).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "debug_results",
+                serde_json::to_value(&ctx.block_results).unwrap_or_default(),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
 
             // Send network log for network viewer
-            let resp = IpcResponse::ok("network_log", serde_json::to_value(&ctx.network_log).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "network_log",
+                serde_json::to_value(&ctx.network_log).unwrap_or_default(),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
 
             // If there was an error, also send it as a log message
             if let Err(e) = exec_result {
                 let resp = IpcResponse::err("debug_step", format!("Pipeline error: {}", e));
-                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                eval_js(format!(
+                    "window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()
+                ));
             }
         });
     }
@@ -110,8 +143,14 @@ pub(super) fn start_runner(
                 match s.sidecar.start(&sidecar_path).await {
                     Ok(_) => {}
                     Err(e) => {
-                        let resp = IpcResponse::err("runner_error", format!("Failed to start sidecar: {}", e));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp = IpcResponse::err(
+                            "runner_error",
+                            format!("Failed to start sidecar: {}", e),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                         return;
                     }
                 }
@@ -122,64 +161,112 @@ pub(super) fn start_runner(
             let sidecar_tx = match s.sidecar.start(&sidecar_path).await {
                 Ok(tx) => tx,
                 Err(e) => {
-                    let resp = IpcResponse::err("runner_error", format!("Failed to start sidecar: {}", e));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp =
+                        IpcResponse::err("runner_error", format!("Failed to start sidecar: {}", e));
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                     return;
                 }
             };
 
+            // Use the frontend pipeline snapshot when available so runner settings and
+            // proxy settings match what the user sees in the current tab.
+            let pipeline_snapshot = data
+                .get("pipeline")
+                .and_then(|v| {
+                    serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok()
+                })
+                .unwrap_or_else(|| s.pipeline.clone());
+            let runner_settings = &pipeline_snapshot.runner_settings;
+
             // Load data from wordlist file
-            let wordlist_path = data.get("wordlist_path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let wordlist_path = data
+                .get("wordlist_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let data_pool = if !wordlist_path.is_empty() {
-                match DataPool::from_file(&wordlist_path, true) {
+                match DataPool::from_file_with_limits(
+                    &wordlist_path,
+                    true,
+                    runner_settings.skip as usize,
+                    runner_settings.take as usize,
+                ) {
                     Ok(dp) => dp,
                     Err(e) => {
-                        let resp = IpcResponse::err("runner_error", format!("Failed to load wordlist '{}': {}", wordlist_path, e));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp = IpcResponse::err(
+                            "runner_error",
+                            format!("Failed to load wordlist '{}': {}", wordlist_path, e),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                         return;
                     }
                 }
             } else {
                 // Try inline data from the data field
-                let lines: Vec<String> = data.get("data_lines")
+                let lines: Vec<String> = data
+                    .get("data_lines")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    })
                     .unwrap_or_default();
-                DataPool::new(lines)
+                DataPool::with_limits(
+                    lines,
+                    runner_settings.skip as usize,
+                    runner_settings.take as usize,
+                )
             };
 
-            // Use frontend pipeline snapshot if provided so proxy_settings is current.
-            let pipeline_for_proxy = data.get("pipeline")
-                .and_then(|v| serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok())
-                .unwrap_or_else(|| s.pipeline.clone());
-            let ban_secs = pipeline_for_proxy.proxy_settings.ban_duration_secs as u64;
+            let ban_secs = pipeline_snapshot.proxy_settings.ban_duration_secs as u64;
 
             // Load proxies:
             // 1. Explicit proxy_path from the job (flat file) — highest priority
             // 2. Active proxy group's sources from pipeline proxy_settings
             // 3. Global proxy_sources from pipeline proxy_settings
             // 4. Empty pool (proxyless)
-            let proxy_path = data.get("proxy_path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let proxy_path = data
+                .get("proxy_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let proxy_pool = if !proxy_path.is_empty() {
                 match ProxyPool::from_file(&proxy_path, ban_secs) {
                     Ok(pp) => pp,
                     Err(e) => {
-                        let resp = IpcResponse::err("runner_error", format!("Failed to load proxies '{}': {}", proxy_path, e));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp = IpcResponse::err(
+                            "runner_error",
+                            format!("Failed to load proxies '{}': {}", proxy_path, e),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                         return;
                     }
                 }
             } else {
                 // Try to load from pipeline proxy groups / sources
-                let ps = &pipeline_for_proxy.proxy_settings;
+                let ps = &pipeline_snapshot.proxy_settings;
                 // Gather all source paths from the active group (or all groups if no active)
                 let sources: Vec<_> = if !ps.active_group.is_empty() {
-                    ps.proxy_groups.iter()
+                    ps.proxy_groups
+                        .iter()
                         .filter(|g| g.name == ps.active_group)
                         .flat_map(|g| g.sources.iter())
                         .collect()
                 } else if !ps.proxy_groups.is_empty() {
-                    ps.proxy_groups.iter().flat_map(|g| g.sources.iter()).collect()
+                    ps.proxy_groups
+                        .iter()
+                        .flat_map(|g| g.sources.iter())
+                        .collect()
                 } else {
                     ps.proxy_sources.iter().collect()
                 };
@@ -191,7 +278,10 @@ pub(super) fn start_runner(
                         if matches!(src.source_type, ProxySourceType::File) {
                             let default_type = src.default_proxy_type.as_deref();
                             if let Err(e) = pool.load_from_file(&src.value, default_type) {
-                                eprintln!("[runner] warning: failed to load proxy source '{}': {}", src.value, e);
+                                eprintln!(
+                                    "[runner] warning: failed to load proxy source '{}': {}",
+                                    src.value, e
+                                );
                             }
                         }
                         // URL sources could be fetched here in future — skip for now
@@ -205,8 +295,11 @@ pub(super) fn start_runner(
             let (hits_tx, mut hits_rx) = tokio::sync::mpsc::channel::<HitResult>(1024);
 
             // Use frontend pipeline snapshot if provided (keeps runner_settings, proxy_settings, etc. in sync)
-            let pipeline = data.get("pipeline")
-                .and_then(|v| serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok())
+            let pipeline = data
+                .get("pipeline")
+                .and_then(|v| {
+                    serde_json::from_value::<ironbullet::pipeline::Pipeline>(v.clone()).ok()
+                })
                 .unwrap_or_else(|| s.pipeline.clone());
             let proxy_mode = pipeline.proxy_settings.proxy_mode.clone();
             let pm = s.plugin_manager.clone();
@@ -215,7 +308,11 @@ pub(super) fn start_runner(
                 let cfg_path = s.config.chrome_executable_path.clone();
                 if !cfg_path.is_empty() {
                     let p = std::path::PathBuf::from(&cfg_path);
-                    if p.exists() { Some(p) } else { super::find_chrome_executable() }
+                    if p.exists() {
+                        Some(p)
+                    } else {
+                        super::find_chrome_executable()
+                    }
                 } else {
                     super::find_chrome_executable()
                 }
@@ -246,7 +343,10 @@ pub(super) fn start_runner(
             {
                 let ejs = eval_js.lock().await;
                 let resp = IpcResponse::ok("runner_started", serde_json::json!(null));
-                ejs(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                ejs(format!(
+                    "window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()
+                ));
             }
 
             // Spawn hit collector -- streams each hit to frontend
@@ -261,7 +361,10 @@ pub(super) fn start_runner(
                     });
                     let resp = IpcResponse::ok("runner_hit", hit_data);
                     let ejs = eval_js2.lock().await;
-                    ejs(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    ejs(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                     drop(ejs);
                     let mut s = state2.lock().await;
                     s.hits.push(hit);
@@ -275,15 +378,16 @@ pub(super) fn start_runner(
                 // Runner finished -- notify frontend
                 let ejs = eval_js3.lock().await;
                 let resp = IpcResponse::ok("runner_stopped", serde_json::json!(null));
-                ejs(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                ejs(format!(
+                    "window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()
+                ));
             });
         });
     }
 }
 
-pub(super) fn pause_runner(
-    state: Arc<Mutex<AppState>>,
-) {
+pub(super) fn pause_runner(state: Arc<Mutex<AppState>>) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
@@ -295,9 +399,7 @@ pub(super) fn pause_runner(
     }
 }
 
-pub(super) fn resume_runner(
-    state: Arc<Mutex<AppState>>,
-) {
+pub(super) fn resume_runner(state: Arc<Mutex<AppState>>) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
@@ -309,9 +411,7 @@ pub(super) fn resume_runner(
     }
 }
 
-pub(super) fn stop_runner(
-    state: Arc<Mutex<AppState>>,
-) {
+pub(super) fn stop_runner(state: Arc<Mutex<AppState>>) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
@@ -336,8 +436,14 @@ pub(super) fn get_runner_stats(
             } else {
                 None
             };
-            let resp = IpcResponse::ok("runner_stats", serde_json::to_value(&stats).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "runner_stats",
+                serde_json::to_value(&stats).unwrap_or_default(),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -354,8 +460,13 @@ pub(super) fn check_proxies(
             let mut all_sources = s.pipeline.proxy_settings.proxy_sources.clone();
             // Also gather sources from active proxy group
             if !s.pipeline.proxy_settings.active_group.is_empty() {
-                if let Some(group) = s.pipeline.proxy_settings.proxy_groups.iter()
-                    .find(|g| g.name == s.pipeline.proxy_settings.active_group) {
+                if let Some(group) = s
+                    .pipeline
+                    .proxy_settings
+                    .proxy_groups
+                    .iter()
+                    .find(|g| g.name == s.pipeline.proxy_settings.active_group)
+                {
                     all_sources = group.sources.clone();
                 }
             }
@@ -365,16 +476,19 @@ pub(super) fn check_proxies(
             // Load proxies from sources using proper parsing (handles SOCKS5, auth, etc.)
             let mut proxy_pool = ProxyPool::empty();
             for src in &all_sources {
-                let default_type = src.default_proxy_type.as_deref().and_then(|s| match s.to_lowercase().as_str() {
-                    "https"       => Some(ProxyType::Https),
-                    "socks4"      => Some(ProxyType::Socks4),
-                    "socks5"      => Some(ProxyType::Socks5),
-                    "shadowsocks" | "ss" => Some(ProxyType::Shadowsocks),
-                    _             => Some(ProxyType::Http),
+                let default_type = src.default_proxy_type.as_deref().and_then(|s| {
+                    match s.to_lowercase().as_str() {
+                        "https" => Some(ProxyType::Https),
+                        "socks4" => Some(ProxyType::Socks4),
+                        "socks5" => Some(ProxyType::Socks5),
+                        "shadowsocks" | "ss" => Some(ProxyType::Shadowsocks),
+                        _ => Some(ProxyType::Http),
+                    }
                 });
                 match src.source_type {
                     ironbullet::pipeline::ProxySourceType::File => {
-                        let _ = proxy_pool.load_from_file(&src.value, src.default_proxy_type.as_deref());
+                        let _ = proxy_pool
+                            .load_from_file(&src.value, src.default_proxy_type.as_deref());
                     }
                     ironbullet::pipeline::ProxySourceType::Inline => {
                         // Parse inline proxies line by line
@@ -408,12 +522,14 @@ pub(super) fn check_proxies(
                             .timeout(std::time::Duration::from_secs(8))
                             .build()
                             .map_err(|e| e.to_string())?;
-                        client.get("https://httpbin.org/ip")
+                        client
+                            .get("https://httpbin.org/ip")
                             .send()
                             .await
                             .map_err(|e| e.to_string())?;
                         Ok::<_, String>(())
-                    }.await;
+                    }
+                    .await;
 
                     match check_result {
                         Ok(_) => alive += 1,
@@ -422,20 +538,23 @@ pub(super) fn check_proxies(
                 }
             }
 
-            let resp = IpcResponse::ok("proxy_check_result", serde_json::json!({
-                "alive": alive,
-                "dead": dead,
-                "total": total,
-            }));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "proxy_check_result",
+                serde_json::json!({
+                    "alive": alive,
+                    "dead": dead,
+                    "total": total,
+                }),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
 
-pub(super) fn probe_url(
-    data: serde_json::Value,
-    eval_js: impl Fn(String) + Send + 'static,
-) {
+pub(super) fn probe_url(data: serde_json::Value, eval_js: impl Fn(String) + Send + 'static) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
@@ -536,19 +655,44 @@ pub(super) fn site_inspect(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let url    = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let method = data.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_string();
-            let proxy  = data.get("proxy").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let body   = data.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let browser = data.get("browser").and_then(|v| v.as_str()).unwrap_or("chrome").to_string();
+            let url = data
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let method = data
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("GET")
+                .to_string();
+            let proxy = data
+                .get("proxy")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let body = data
+                .get("body")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let browser = data
+                .get("browser")
+                .and_then(|v| v.as_str())
+                .unwrap_or("chrome")
+                .to_string();
             // Extra headers the user typed in the inspector
-            let extra_headers: Vec<[String; 2]> = data.get("headers")
+            let extra_headers: Vec<[String; 2]> = data
+                .get("headers")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default();
 
             if url.is_empty() {
-                let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({ "error": "No URL provided" }));
-                eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                let resp = IpcResponse::ok(
+                    "site_inspect_result",
+                    serde_json::json!({ "error": "No URL provided" }),
+                );
+                eval_js(format!(
+                    "window.__ipc_callback({})",
+                    serde_json::to_string(&resp).unwrap_or_default()
+                ));
                 return;
             }
 
@@ -563,77 +707,115 @@ pub(super) fn site_inspect(
 
                 // Create session
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
-                let _ = tx.send((ironbullet::sidecar::protocol::SidecarRequest {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    action: "new_session".into(),
-                    session: session_id.clone(),
-                    browser: Some(browser.clone()),
-                    proxy: proxy.clone(),
-                    follow_redirects: Some(true),
-                    max_redirects: Some(8),
-                    ssl_verify: None,
-                    ja3: None, http2fp: None, url: None, method: None,
-                    headers: None, body: None, timeout: None,
-                    custom_ciphers: None, return_request_headers: None,
-                    proxy_insecure: None,
-                }, resp_tx)).await;
+                let _ = tx
+                    .send((
+                        ironbullet::sidecar::protocol::SidecarRequest {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            action: "new_session".into(),
+                            session: session_id.clone(),
+                            browser: Some(browser.clone()),
+                            proxy: proxy.clone(),
+                            follow_redirects: Some(true),
+                            max_redirects: Some(8),
+                            ssl_verify: None,
+                            ja3: None,
+                            http2fp: None,
+                            url: None,
+                            method: None,
+                            headers: None,
+                            body: None,
+                            timeout: None,
+                            custom_ciphers: None,
+                            return_request_headers: None,
+                            proxy_insecure: None,
+                        },
+                        resp_tx,
+                    ))
+                    .await;
                 let _ = resp_rx.await;
 
                 // Make the request
                 let (resp_tx2, resp_rx2) = tokio::sync::oneshot::channel();
-                let hdrs: Vec<Vec<String>> = extra_headers.iter()
+                let hdrs: Vec<Vec<String>> = extra_headers
+                    .iter()
                     .map(|h| vec![h[0].clone(), h[1].clone()])
                     .collect();
-                let _ = tx.send((ironbullet::sidecar::protocol::SidecarRequest {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    action: "request".into(),
-                    session: session_id.clone(),
-                    method: Some(method.clone()),
-                    url: Some(url.clone()),
-                    headers: if hdrs.is_empty() { None } else { Some(hdrs) },
-                    body: body.clone(),
-                    timeout: Some(20_000),
-                    proxy: proxy.clone(),
-                    browser: Some(browser.clone()),
-                    follow_redirects: Some(true),
-                    max_redirects: Some(8),
-                    ssl_verify: None,
-                    ja3: None, http2fp: None,
-                    custom_ciphers: None,
-                    return_request_headers: Some(true), // capture what was actually sent
-                    proxy_insecure: None,
-                }, resp_tx2)).await;
+                let _ = tx
+                    .send((
+                        ironbullet::sidecar::protocol::SidecarRequest {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            action: "request".into(),
+                            session: session_id.clone(),
+                            method: Some(method.clone()),
+                            url: Some(url.clone()),
+                            headers: if hdrs.is_empty() { None } else { Some(hdrs) },
+                            body: body.clone(),
+                            timeout: Some(20_000),
+                            proxy: proxy.clone(),
+                            browser: Some(browser.clone()),
+                            follow_redirects: Some(true),
+                            max_redirects: Some(8),
+                            ssl_verify: None,
+                            ja3: None,
+                            http2fp: None,
+                            custom_ciphers: None,
+                            return_request_headers: Some(true), // capture what was actually sent
+                            proxy_insecure: None,
+                        },
+                        resp_tx2,
+                    ))
+                    .await;
 
                 let sidecar_resp = resp_rx2.await.ok();
 
                 // Close session
                 let (close_tx, _) = tokio::sync::oneshot::channel();
-                let _ = tx.send((ironbullet::sidecar::protocol::SidecarRequest {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    action: "close_session".into(),
-                    session: session_id,
-                    method: None, url: None, headers: None, body: None,
-                    timeout: None, proxy: None, browser: None,
-                    ja3: None, http2fp: None, follow_redirects: None,
-                    max_redirects: None, ssl_verify: None,
-                    custom_ciphers: None, return_request_headers: None,
-                    proxy_insecure: None,
-                }, close_tx)).await;
+                let _ = tx
+                    .send((
+                        ironbullet::sidecar::protocol::SidecarRequest {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            action: "close_session".into(),
+                            session: session_id,
+                            method: None,
+                            url: None,
+                            headers: None,
+                            body: None,
+                            timeout: None,
+                            proxy: None,
+                            browser: None,
+                            ja3: None,
+                            http2fp: None,
+                            follow_redirects: None,
+                            max_redirects: None,
+                            ssl_verify: None,
+                            custom_ciphers: None,
+                            return_request_headers: None,
+                            proxy_insecure: None,
+                        },
+                        close_tx,
+                    ))
+                    .await;
 
                 if let Some(sr) = sidecar_resp {
-                    let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({
-                        "status":          sr.status,
-                        "final_url":       sr.final_url,
-                        "timing_ms":       sr.timing_ms,
-                        "headers":         sr.headers.unwrap_or_default(),
-                        "request_headers": sr.request_headers.unwrap_or_default(),
-                        "cookies":         sr.cookies.unwrap_or_default(),
-                        "body":            sr.body,
-                        "error":           sr.error,
-                        "via":             "azuretls",
-                        "browser":         browser,
-                    }));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp = IpcResponse::ok(
+                        "site_inspect_result",
+                        serde_json::json!({
+                            "status":          sr.status,
+                            "final_url":       sr.final_url,
+                            "timing_ms":       sr.timing_ms,
+                            "headers":         sr.headers.unwrap_or_default(),
+                            "request_headers": sr.request_headers.unwrap_or_default(),
+                            "cookies":         sr.cookies.unwrap_or_default(),
+                            "body":            sr.body,
+                            "error":           sr.error,
+                            "via":             "azuretls",
+                            "browser":         browser,
+                        }),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                     return;
                 }
             }
@@ -650,13 +832,22 @@ pub(super) fn site_inspect(
             let client = match client {
                 Ok(c) => c,
                 Err(e) => {
-                    let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({ "error": format!("Client error: {}", e) }));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp = IpcResponse::ok(
+                        "site_inspect_result",
+                        serde_json::json!({ "error": format!("Client error: {}", e) }),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                     return;
                 }
             };
 
-            let mut req = client.request(reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET), &url);
+            let mut req = client.request(
+                reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET),
+                &url,
+            );
             for h in &extra_headers {
                 req = req.header(&h[0], &h[1]);
             }
@@ -682,22 +873,34 @@ pub(super) fn site_inspect(
                         }
                     }
                     let body = response.text().await.unwrap_or_default();
-                    let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({
-                        "status":          status,
-                        "final_url":       final_url,
-                        "timing_ms":       timing_ms,
-                        "headers":         headers,
-                        "request_headers": serde_json::Value::Object(serde_json::Map::new()),
-                        "cookies":         serde_json::Value::Object(serde_json::Map::new()),
-                        "body":            body,
-                        "error":           null,
-                        "via":             "reqwest",
-                    }));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp = IpcResponse::ok(
+                        "site_inspect_result",
+                        serde_json::json!({
+                            "status":          status,
+                            "final_url":       final_url,
+                            "timing_ms":       timing_ms,
+                            "headers":         headers,
+                            "request_headers": serde_json::Value::Object(serde_json::Map::new()),
+                            "cookies":         serde_json::Value::Object(serde_json::Map::new()),
+                            "body":            body,
+                            "error":           null,
+                            "via":             "reqwest",
+                        }),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                 }
                 Err(e) => {
-                    let resp = IpcResponse::ok("site_inspect_result", serde_json::json!({ "error": format!("Request failed: {}", e) }));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                    let resp = IpcResponse::ok(
+                        "site_inspect_result",
+                        serde_json::json!({ "error": format!("Request failed: {}", e) }),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap_or_default()
+                    ));
                 }
             }
         });
@@ -726,40 +929,71 @@ pub(super) fn inspect_browser_open(
     let Ok(handle) = rt else { return };
 
     let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(1024);
-    handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
+    handle.spawn(async move {
+        while let Some(js) = js_rx.recv().await {
+            eval_js(js);
+        }
+    });
     let js = js_tx.clone();
 
     fn emit_browser(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
         let resp = IpcResponse::ok("inspector_browser_event", payload);
-        let _ = tx.try_send(format!("window.__ipc_callback({})",
-            serde_json::to_string(&resp).unwrap_or_default()));
+        let _ = tx.try_send(format!(
+            "window.__ipc_callback({})",
+            serde_json::to_string(&resp).unwrap_or_default()
+        ));
     }
     fn emit_proxy(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
         let resp = IpcResponse::ok("inspector_proxy_event", payload);
-        let _ = tx.try_send(format!("window.__ipc_callback({})",
-            serde_json::to_string(&resp).unwrap_or_default()));
+        let _ = tx.try_send(format!(
+            "window.__ipc_callback({})",
+            serde_json::to_string(&resp).unwrap_or_default()
+        ));
     }
 
     let chrome_exe = {
-        let from_cfg = state.try_lock()
+        let from_cfg = state
+            .try_lock()
             .map(|s| {
                 let p = s.config.chrome_executable_path.clone();
-                if !p.is_empty() { let pb = std::path::PathBuf::from(&p); if pb.exists() { Some(pb) } else { None } } else { None }
-            }).ok().flatten();
+                if !p.is_empty() {
+                    let pb = std::path::PathBuf::from(&p);
+                    if pb.exists() {
+                        Some(pb)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .ok()
+            .flatten();
         from_cfg.or_else(|| super::find_chrome_executable())
     };
 
     if chrome_exe.is_none() {
-        emit_browser(&js, serde_json::json!({
-            "type": "error",
-            "message": "Chrome not found. Set the path in Settings → Paths."
-        }));
+        emit_browser(
+            &js,
+            serde_json::json!({
+                "type": "error",
+                "message": "Chrome not found. Set the path in Settings → Paths."
+            }),
+        );
         return;
     }
 
-    let raw_url = data.get("url").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let raw_url = data
+        .get("url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
     if raw_url.is_empty() {
-        emit_browser(&js, serde_json::json!({ "type": "error", "message": "No URL provided." }));
+        emit_browser(
+            &js,
+            serde_json::json!({ "type": "error", "message": "No URL provided." }),
+        );
         return;
     }
     let url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
@@ -914,7 +1148,9 @@ pub(super) fn inspect_browser_open(
     let state2 = state.clone();
     handle.spawn(async move {
         let mut s = state2.lock().await;
-        if let Some(old) = s.browser_capture_abort.take() { old.abort(); }
+        if let Some(old) = s.browser_capture_abort.take() {
+            old.abort();
+        }
         s.browser_capture_abort = Some(abort);
     });
 }
@@ -927,14 +1163,17 @@ pub(super) fn inspect_browser_close(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let mut s = state.lock().await;
-            if let Some(h) = s.browser_capture_abort.take() { h.abort(); }
+            if let Some(h) = s.browser_capture_abort.take() {
+                h.abort();
+            }
             s.inspect_proxy_port = None;
             if let Some(p) = s.browser_capture_profile.take() {
                 tokio::spawn(async move {
                     let _ = tokio::time::timeout(
                         std::time::Duration::from_secs(3),
                         tokio::fs::remove_dir_all(p),
-                    ).await;
+                    )
+                    .await;
                 });
             }
         });
@@ -950,13 +1189,19 @@ pub(super) fn inspect_proxy_start(
     let Ok(handle) = rt else { return };
     let port = data.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
     let (js_tx, mut js_rx) = tokio::sync::mpsc::channel::<String>(512);
-    handle.spawn(async move { while let Some(js) = js_rx.recv().await { eval_js(js); } });
+    handle.spawn(async move {
+        while let Some(js) = js_rx.recv().await {
+            eval_js(js);
+        }
+    });
     let js = js_tx.clone();
 
     fn emit(tx: &tokio::sync::mpsc::Sender<String>, payload: serde_json::Value) {
         let resp = IpcResponse::ok("inspector_proxy_event", payload);
-        let _ = tx.try_send(format!("window.__ipc_callback({})",
-            serde_json::to_string(&resp).unwrap_or_default()));
+        let _ = tx.try_send(format!(
+            "window.__ipc_callback({})",
+            serde_json::to_string(&resp).unwrap_or_default()
+        ));
     }
 
     let state2 = state.clone();
@@ -1041,16 +1286,19 @@ pub(super) fn inspect_proxy_stop(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let mut s = state.lock().await;
-            if let Some(h) = s.inspect_proxy_abort.take() { h.abort(); }
+            if let Some(h) = s.inspect_proxy_abort.take() {
+                h.abort();
+            }
             s.inspect_proxy_port = None;
         });
     }
 }
 fn compute_ca_spki_hash(cert_pem: &str) -> Option<String> {
-    use sha2::Digest;
     use base64::Engine;
+    use sha2::Digest;
     let der = rustls_pemfile::certs(&mut cert_pem.as_bytes())
-        .next()?.ok()?;
+        .next()?
+        .ok()?;
     let spki = extract_spki_from_cert_der(&der)?;
     let hash = sha2::Sha256::digest(spki);
     Some(base64::engine::general_purpose::STANDARD.encode(hash))
@@ -1059,42 +1307,56 @@ fn compute_ca_spki_hash(cert_pem: &str) -> Option<String> {
 fn extract_spki_from_cert_der(der: &[u8]) -> Option<Vec<u8>> {
     // Walk Certificate DER: SEQUENCE { tbsCertificate SEQUENCE { ... SPKI ... } }
     let cert_body = der_seq_body(der)?;
-    let tbs_body  = der_seq_body(cert_body)?;
+    let tbs_body = der_seq_body(cert_body)?;
     let mut pos = tbs_body;
     // version [0] optional
-    if pos.first() == Some(&0xa0) { pos = der_skip(pos)?.0; }
+    if pos.first() == Some(&0xa0) {
+        pos = der_skip(pos)?.0;
+    }
     pos = der_skip(pos)?.0; // serialNumber
     pos = der_skip(pos)?.0; // signature
     pos = der_skip(pos)?.0; // issuer
     pos = der_skip(pos)?.0; // validity
     pos = der_skip(pos)?.0; // subject
-    // subjectPublicKeyInfo — return the full TLV
+                            // subjectPublicKeyInfo — return the full TLV
     let (rest, spki_tlv) = der_skip(pos)?;
     let _ = rest;
     Some(spki_tlv.to_vec())
 }
 
 fn der_seq_body(data: &[u8]) -> Option<&[u8]> {
-    if data.first() != Some(&0x30) { return None; }
+    if data.first() != Some(&0x30) {
+        return None;
+    }
     let (len, hl) = der_len(&data[1..])?;
-    Some(&data[1 + hl .. 1 + hl + len])
+    Some(&data[1 + hl..1 + hl + len])
 }
 
 fn der_skip(data: &[u8]) -> Option<(&[u8], &[u8])> {
-    if data.is_empty() { return None; }
+    if data.is_empty() {
+        return None;
+    }
     let (len, hl) = der_len(&data[1..])?;
     let end = 1 + hl + len;
-    if end > data.len() { return None; }
+    if end > data.len() {
+        return None;
+    }
     Some((&data[end..], &data[..end]))
 }
 
 fn der_len(data: &[u8]) -> Option<(usize, usize)> {
     let b = *data.first()? as usize;
-    if b < 0x80 { return Some((b, 1)); }
+    if b < 0x80 {
+        return Some((b, 1));
+    }
     let n = b & 0x7f;
-    if n == 0 || n > 4 || data.len() < 1 + n { return None; }
+    if n == 0 || n > 4 || data.len() < 1 + n {
+        return None;
+    }
     let mut len = 0usize;
-    for i in 0..n { len = (len << 8) | data[1+i] as usize; }
+    for i in 0..n {
+        len = (len << 8) | data[1 + i] as usize;
+    }
     Some((len, 1 + n))
 }
 
@@ -1105,7 +1367,12 @@ fn der_len(data: &[u8]) -> Option<(usize, usize)> {
 async fn install_ca_into_chrome_profile(profile_dir: &std::path::Path, ca_pem: &str) {
     // Write PEM to a temp file
     let pem_path = profile_dir.join("ib-ca.pem");
-    if tokio::fs::write(&pem_path, ca_pem.as_bytes()).await.is_err() { return; }
+    if tokio::fs::write(&pem_path, ca_pem.as_bytes())
+        .await
+        .is_err()
+    {
+        return;
+    }
 
     // Try certutil (ships with libnss3-tools on Linux, or nss on Mac)
     #[cfg(not(target_os = "windows"))]
@@ -1117,12 +1384,18 @@ async fn install_ca_into_chrome_profile(profile_dir: &std::path::Path, ca_pem: &
         for certutil_path in &["certutil", "/usr/bin/certutil", "/usr/local/bin/certutil"] {
             let out = tokio::process::Command::new(certutil_path)
                 .args([
-                    "-A", "-n", "IronBullet Inspector CA",
-                    "-t", "CT,,",
-                    "-i", pem_path.to_str().unwrap_or(""),
-                    "-d", &format!("sql:{}", nssdb.display()),
+                    "-A",
+                    "-n",
+                    "IronBullet Inspector CA",
+                    "-t",
+                    "CT,,",
+                    "-i",
+                    pem_path.to_str().unwrap_or(""),
+                    "-d",
+                    &format!("sql:{}", nssdb.display()),
                 ])
-                .output().await;
+                .output()
+                .await;
             if out.map(|o| o.status.success()).unwrap_or(false) {
                 break;
             }
@@ -1134,7 +1407,13 @@ async fn install_ca_into_chrome_profile(profile_dir: &std::path::Path, ca_pem: &
     {
         // Use certutil.exe (built into Windows)
         let _ = tokio::process::Command::new("certutil")
-            .args(["-addstore", "-user", "Root", pem_path.to_str().unwrap_or("")])
-            .output().await;
+            .args([
+                "-addstore",
+                "-user",
+                "Root",
+                pem_path.to_str().unwrap_or(""),
+            ])
+            .output()
+            .await;
     }
 }

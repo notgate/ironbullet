@@ -23,7 +23,7 @@ pub fn create_native_backend() -> mpsc::Sender<(SidecarRequest, oneshot::Sender<
 
     let client = reqwest::Client::builder()
         .use_rustls_tls()
-        .danger_accept_invalid_certs(true)  // debug-friendly
+        .danger_accept_invalid_certs(true) // debug-friendly
         .cookie_store(true)
         .redirect(reqwest::redirect::Policy::limited(10))
         .timeout(Duration::from_secs(30))
@@ -95,10 +95,20 @@ pub async fn execute_rustls_request(
         if let Some(ref proxy_str) = req.proxy {
             if !proxy_str.is_empty() {
                 match reqwest::Proxy::all(proxy_str) {
-                    Ok(proxy) => { builder = builder.proxy(proxy); }
+                    Ok(proxy) => {
+                        builder = builder.proxy(proxy);
+                    }
                     Err(e) => {
-                        let err = error_response(id, 0, String::new(), format!("Invalid proxy '{}': {}", proxy_str, e));
-                        let fallback = reqwest::Client::builder().use_rustls_tls().build().unwrap_or_default();
+                        let err = error_response(
+                            id,
+                            0,
+                            String::new(),
+                            format!("Invalid proxy '{}': {}", proxy_str, e),
+                        );
+                        let fallback = reqwest::Client::builder()
+                            .use_rustls_tls()
+                            .build()
+                            .unwrap_or_default();
                         return (err, fallback);
                     }
                 }
@@ -116,8 +126,12 @@ pub async fn execute_rustls_request(
         match builder.build() {
             Ok(c) => c,
             Err(e) => {
-                let err = error_response(id, 0, String::new(), format!("Client build error: {}", e));
-                let fallback = reqwest::Client::builder().use_rustls_tls().build().unwrap_or_default();
+                let err =
+                    error_response(id, 0, String::new(), format!("Client build error: {}", e));
+                let fallback = reqwest::Client::builder()
+                    .use_rustls_tls()
+                    .build()
+                    .unwrap_or_default();
                 return (err, fallback);
             }
         }
@@ -143,17 +157,23 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
     };
 
     // Method
-    let method = match req.method.as_deref().unwrap_or("GET").to_uppercase().as_str() {
-        "GET"     => reqwest::Method::GET,
-        "POST"    => reqwest::Method::POST,
-        "PUT"     => reqwest::Method::PUT,
-        "DELETE"  => reqwest::Method::DELETE,
-        "PATCH"   => reqwest::Method::PATCH,
-        "HEAD"    => reqwest::Method::HEAD,
+    let method = match req
+        .method
+        .as_deref()
+        .unwrap_or("GET")
+        .to_uppercase()
+        .as_str()
+    {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        "PATCH" => reqwest::Method::PATCH,
+        "HEAD" => reqwest::Method::HEAD,
         "OPTIONS" => reqwest::Method::OPTIONS,
-        "TRACE"   => reqwest::Method::TRACE,
+        "TRACE" => reqwest::Method::TRACE,
         "CONNECT" => reqwest::Method::CONNECT,
-        other     => {
+        other => {
             return error_response(id, 0, url, format!("Unknown HTTP method: {}", other));
         }
     };
@@ -175,9 +195,13 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
                     reqwest::header::HeaderName::from_bytes(pair[0].trim().as_bytes()),
                     reqwest::header::HeaderValue::from_str(pair[1].trim()),
                 ) {
-                    (Ok(name), Ok(value)) => { rb = rb.header(name, value); }
+                    (Ok(name), Ok(value)) => {
+                        rb = rb.header(name, value);
+                    }
                     (Err(e), _) => tracing_warn(&format!("Bad header name '{}': {}", pair[0], e)),
-                    (_, Err(e)) => tracing_warn(&format!("Bad header value for '{}': {}", pair[0], e)),
+                    (_, Err(e)) => {
+                        tracing_warn(&format!("Bad header value for '{}': {}", pair[0], e))
+                    }
                 }
             }
         }
@@ -195,8 +219,8 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
     match rb.send().await {
         Ok(resp) => {
             let timing_ms = start.elapsed().as_millis() as i64;
-            let status     = resp.status().as_u16() as i32;
-            let final_url  = resp.url().to_string();
+            let status = resp.status().as_u16() as i32;
+            let final_url = resp.url().to_string();
 
             // Collect response headers (multi-value: last wins for duplicates)
             let mut hdrs: HashMap<String, String> = HashMap::new();
@@ -220,9 +244,16 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
             let body = resp.text().await.unwrap_or_default();
 
             ok_response(
-                id, status, final_url, body,
+                id,
+                status,
+                final_url,
+                body,
                 Some(hdrs),
-                if cookies.is_empty() { None } else { Some(cookies) },
+                if cookies.is_empty() {
+                    None
+                } else {
+                    Some(cookies)
+                },
                 timing_ms,
             )
         }
@@ -230,8 +261,14 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
             let timing_ms = start.elapsed().as_millis() as i64;
             let detail = format_reqwest_error(&e, &url);
             SidecarResponse {
-                id, status: 0, body: String::new(), final_url: url,
-                headers: None, cookies: None, error: Some(detail), timing_ms,
+                id,
+                status: 0,
+                body: String::new(),
+                final_url: url,
+                headers: None,
+                cookies: None,
+                error: Some(detail),
+                timing_ms,
                 ..Default::default()
             }
         }
@@ -241,18 +278,37 @@ async fn execute_with_client(client: &reqwest::Client, req: &SidecarRequest) -> 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn ok_response(
-    id: String, status: i32, final_url: String, body: String,
+    id: String,
+    status: i32,
+    final_url: String,
+    body: String,
     headers: Option<HashMap<String, String>>,
     cookies: Option<HashMap<String, String>>,
     timing_ms: i64,
 ) -> SidecarResponse {
-    SidecarResponse { id, status, final_url, body, headers, cookies, error: None, timing_ms, ..Default::default() }
+    SidecarResponse {
+        id,
+        status,
+        final_url,
+        body,
+        headers,
+        cookies,
+        error: None,
+        timing_ms,
+        ..Default::default()
+    }
 }
 
 fn error_response(id: String, status: i32, final_url: String, error: String) -> SidecarResponse {
     SidecarResponse {
-        id, status, final_url, body: String::new(),
-        headers: None, cookies: None, error: Some(error), timing_ms: 0,
+        id,
+        status,
+        final_url,
+        body: String::new(),
+        headers: None,
+        cookies: None,
+        error: Some(error),
+        timing_ms: 0,
         ..Default::default()
     }
 }

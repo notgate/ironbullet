@@ -1,13 +1,15 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use ironbullet::pipeline::block::{Block, BlockSettings, BlockType, GroupSettings,
-    HttpRequestSettings, BodyType, KeyCheckSettings, Keychain, KeyCondition, KeychainMode, Comparison};
+use ironbullet::pipeline::block::{
+    Block, BlockSettings, BlockType, BodyType, Comparison, GroupSettings, HttpRequestSettings,
+    KeyCheckSettings, KeyCondition, Keychain, KeychainMode,
+};
 use ironbullet::pipeline::BotStatus;
 
 use super::block_tree::{
-    add_block_to_nested, extract_block_recursive, find_block_mut,
-    remove_block_recursive, set_block_disabled_recursive,
+    add_block_to_nested, extract_block_recursive, find_block_mut, remove_block_recursive,
+    set_block_disabled_recursive,
 };
 use super::{AppState, IpcResponse};
 use ironbullet::export::format::RfxConfig;
@@ -30,12 +32,19 @@ pub(super) fn add_block(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
-            if let Some(bt) = data.get("block_type").and_then(|v| serde_json::from_value::<BlockType>(v.clone()).ok()) {
+            if let Some(bt) = data
+                .get("block_type")
+                .and_then(|v| serde_json::from_value::<BlockType>(v.clone()).ok())
+            {
                 let mut block = Block::new(bt);
                 if bt == BlockType::Plugin {
                     if let BlockSettings::Plugin(ref mut ps) = block.settings {
@@ -50,7 +59,10 @@ pub(super) fn add_block(
                         block.label = lbl.to_string();
                     }
                 }
-                let index = data.get("index").and_then(|v| v.as_u64()).map(|v| v as usize);
+                let index = data
+                    .get("index")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as usize);
                 if let Some(idx) = index {
                     if idx <= s.pipeline.blocks.len() {
                         s.pipeline.blocks.insert(idx, block);
@@ -62,12 +74,17 @@ pub(super) fn add_block(
                 }
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -82,10 +99,14 @@ pub(super) fn remove_block(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             if let Some(id) = data.get("block_id").and_then(|v| v.as_str()) {
                 if let Ok(uuid) = uuid::Uuid::parse_str(id) {
@@ -93,12 +114,17 @@ pub(super) fn remove_block(
                 }
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -113,10 +139,14 @@ pub(super) fn move_block(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             let from = data.get("from").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
             let to = data.get("to").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
@@ -127,12 +157,17 @@ pub(super) fn move_block(
                 s.pipeline.blocks.insert(to, block);
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -147,27 +182,46 @@ pub(super) fn add_block_nested(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             let parent_id = data.get("parent_id").and_then(|v| v.as_str()).unwrap_or("");
-            let branch = data.get("branch").and_then(|v| v.as_str()).unwrap_or("true").to_string();
-            let index = data.get("index").and_then(|v| v.as_u64()).map(|v| v as usize);
+            let branch = data
+                .get("branch")
+                .and_then(|v| v.as_str())
+                .unwrap_or("true")
+                .to_string();
+            let index = data
+                .get("index")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize);
             if let Ok(parent_uuid) = uuid::Uuid::parse_str(parent_id) {
-                if let Some(bt) = data.get("block_type").and_then(|v| serde_json::from_value::<BlockType>(v.clone()).ok()) {
+                if let Some(bt) = data
+                    .get("block_type")
+                    .and_then(|v| serde_json::from_value::<BlockType>(v.clone()).ok())
+                {
                     let block = Block::new(bt);
                     add_block_to_nested(&mut s.pipeline.blocks, parent_uuid, &branch, block, index);
                 }
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -182,32 +236,57 @@ pub(super) fn move_block_to_nested(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             let block_id = data.get("block_id").and_then(|v| v.as_str()).unwrap_or("");
             let parent_id = data.get("parent_id").and_then(|v| v.as_str()).unwrap_or("");
-            let branch = data.get("branch").and_then(|v| v.as_str()).unwrap_or("true").to_string();
-            let index = data.get("index").and_then(|v| v.as_u64()).map(|v| v as usize);
-            if let (Ok(block_uuid), Ok(parent_uuid)) = (uuid::Uuid::parse_str(block_id), uuid::Uuid::parse_str(parent_id)) {
+            let branch = data
+                .get("branch")
+                .and_then(|v| v.as_str())
+                .unwrap_or("true")
+                .to_string();
+            let index = data
+                .get("index")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize);
+            if let (Ok(block_uuid), Ok(parent_uuid)) = (
+                uuid::Uuid::parse_str(block_id),
+                uuid::Uuid::parse_str(parent_id),
+            ) {
                 // Extract the block from its current location
                 if let Some(block) = extract_block_recursive(&mut s.pipeline.blocks, block_uuid) {
                     // Insert into new location
-                    if !add_block_to_nested(&mut s.pipeline.blocks, parent_uuid, &branch, block.clone(), index) {
+                    if !add_block_to_nested(
+                        &mut s.pipeline.blocks,
+                        parent_uuid,
+                        &branch,
+                        block.clone(),
+                        index,
+                    ) {
                         // If parent not found, put back at top level
                         s.pipeline.blocks.push(block);
                     }
                 }
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -225,10 +304,14 @@ pub(super) fn update_block(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = blocks_sync {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = startup_blocks_sync {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             if let Ok(updated_block) = serde_json::from_value::<Block>(data) {
                 let id = updated_block.id;
@@ -242,7 +325,10 @@ pub(super) fn update_block(
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -257,10 +343,14 @@ pub(super) fn remove_blocks(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             if let Some(ids) = data.get("ids").and_then(|v| v.as_array()) {
                 for id_val in ids {
@@ -272,12 +362,17 @@ pub(super) fn remove_blocks(
                 }
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -292,10 +387,14 @@ pub(super) fn paste_blocks(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             // Deserialize blocks to paste and assign new UUIDs
             if let Some(blocks_val) = data.get("blocks") {
@@ -304,15 +403,25 @@ pub(super) fn paste_blocks(
                         for b in blocks.iter_mut() {
                             b.id = uuid::Uuid::new_v4();
                             match &mut b.settings {
-                                BlockSettings::IfElse(s) => { reassign_ids(&mut s.true_blocks); reassign_ids(&mut s.false_blocks); }
-                                BlockSettings::Loop(s) => { reassign_ids(&mut s.blocks); }
-                                BlockSettings::Group(s) => { reassign_ids(&mut s.blocks); }
+                                BlockSettings::IfElse(s) => {
+                                    reassign_ids(&mut s.true_blocks);
+                                    reassign_ids(&mut s.false_blocks);
+                                }
+                                BlockSettings::Loop(s) => {
+                                    reassign_ids(&mut s.blocks);
+                                }
+                                BlockSettings::Group(s) => {
+                                    reassign_ids(&mut s.blocks);
+                                }
                                 _ => {}
                             }
                         }
                     }
                     reassign_ids(&mut blocks);
-                    let index = data.get("index").and_then(|v| v.as_u64()).map(|v| v as usize);
+                    let index = data
+                        .get("index")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as usize);
                     if let Some(idx) = index {
                         let pos = idx.min(s.pipeline.blocks.len());
                         for (i, block) in blocks.into_iter().enumerate() {
@@ -324,12 +433,17 @@ pub(super) fn paste_blocks(
                 }
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -344,12 +458,19 @@ pub(super) fn toggle_blocks(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
-            let disabled = data.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+            let disabled = data
+                .get("disabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if let Some(ids) = data.get("ids").and_then(|v| v.as_array()) {
                 for id_val in ids {
                     if let Some(id) = id_val.as_str() {
@@ -360,12 +481,17 @@ pub(super) fn toggle_blocks(
                 }
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -380,14 +506,19 @@ pub(super) fn move_blocks_to(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             let to = data.get("to").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
             if let Some(ids) = data.get("ids").and_then(|v| v.as_array()) {
-                let id_set: std::collections::HashSet<String> = ids.iter()
+                let id_set: std::collections::HashSet<String> = ids
+                    .iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect();
                 let mut selected: Vec<Block> = Vec::new();
@@ -406,12 +537,17 @@ pub(super) fn move_blocks_to(
                 s.pipeline.blocks = remaining;
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -426,17 +562,25 @@ pub(super) fn group_blocks(
         handle.spawn(async move {
             let mut s = state.lock().await;
             if let Some(blk_val) = data.get("_blocks") {
-                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) { s.pipeline.blocks = blks; }
+                if let Ok(blks) = serde_json::from_value::<Vec<Block>>(blk_val.clone()) {
+                    s.pipeline.blocks = blks;
+                }
             }
             if let Some(sblk_val) = data.get("_startup_blocks") {
-                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) { s.pipeline.startup_blocks = sblks; }
+                if let Ok(sblks) = serde_json::from_value::<Vec<Block>>(sblk_val.clone()) {
+                    s.pipeline.startup_blocks = sblks;
+                }
             }
             if let Some(ids) = data.get("ids").and_then(|v| v.as_array()) {
-                let id_set: std::collections::HashSet<String> = ids.iter()
+                let id_set: std::collections::HashSet<String> = ids
+                    .iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect();
                 // Find the position of the first selected block (insertion point)
-                let insert_pos = s.pipeline.blocks.iter()
+                let insert_pos = s
+                    .pipeline
+                    .blocks
+                    .iter()
                     .position(|b| id_set.contains(&b.id.to_string()))
                     .unwrap_or(0);
                 // Extract selected blocks in order, keep remaining
@@ -461,12 +605,17 @@ pub(super) fn group_blocks(
                 s.pipeline.blocks = remaining;
             }
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -496,19 +645,39 @@ pub(super) fn import_curl_blocks(
                 }
             }
 
-            let method  = data.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_string();
-            let url     = data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let body    = data.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let ct      = data.get("content_type").and_then(|v| v.as_str()).unwrap_or("application/x-www-form-urlencoded").to_string();
-            let bt_str  = data.get("body_type").and_then(|v| v.as_str()).unwrap_or("None");
-            let headers: Vec<(String, String)> = data.get("headers")
+            let method = data
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("GET")
+                .to_string();
+            let url = data
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let body = data
+                .get("body")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let ct = data
+                .get("content_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("application/x-www-form-urlencoded")
+                .to_string();
+            let bt_str = data
+                .get("body_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("None");
+            let headers: Vec<(String, String)> = data
+                .get("headers")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default();
 
             let body_type = match bt_str {
                 "Standard" => BodyType::Standard,
-                "Raw"      => BodyType::Raw,
-                _          => BodyType::None,
+                "Raw" => BodyType::Raw,
+                _ => BodyType::None,
             };
 
             // Build HTTP Request block via Block::new() — ensures all fields have
@@ -516,11 +685,11 @@ pub(super) fn import_curl_blocks(
             let mut http_block = Block::new(BlockType::HttpRequest);
             http_block.label = "HTTP Request".to_string();
             if let BlockSettings::HttpRequest(ref mut hs) = http_block.settings {
-                hs.method       = method;
-                hs.url          = url;
-                hs.headers      = headers;
-                hs.body         = body;
-                hs.body_type    = body_type;
+                hs.method = method;
+                hs.url = url;
+                hs.headers = headers;
+                hs.body = body;
+                hs.body_type = body_type;
                 hs.content_type = ct;
             }
 
@@ -555,12 +724,17 @@ pub(super) fn import_curl_blocks(
             s.pipeline.blocks.push(key_block);
 
             let mut resp_data = serde_json::to_value(&s.pipeline).unwrap_or_default();
-            if let (Some(tid), Some(obj)) = (data.get("_tab_id").cloned(), resp_data.as_object_mut()) {
+            if let (Some(tid), Some(obj)) =
+                (data.get("_tab_id").cloned(), resp_data.as_object_mut())
+            {
                 obj.insert("_tab_id".to_string(), tid);
             }
             auto_save_if_known(&s);
             let resp = IpcResponse::ok("pipeline_loaded", resp_data);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }

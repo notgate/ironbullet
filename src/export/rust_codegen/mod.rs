@@ -3,8 +3,8 @@ mod helpers;
 
 use crate::pipeline::block::*;
 use crate::pipeline::Pipeline;
-use helpers::VarTracker;
 use block_codegen::generate_block_code;
+use helpers::VarTracker;
 
 /// Generate a standalone Rust program from a pipeline
 pub fn generate_rust_code(pipeline: &Pipeline) -> String {
@@ -119,29 +119,42 @@ fn scan_blocks_for_imports(blocks: &[Block], flags: &mut ImportFlags) {
             BlockSettings::ParseXPath(_) => flags.xpath = true,
             BlockSettings::CryptoFunction(_) => flags.crypto = true,
             BlockSettings::DateFunction(_) => flags.chrono = true,
-            BlockSettings::BrowserOpen(_) | BlockSettings::NavigateTo(_) |
-            BlockSettings::ClickElement(_) | BlockSettings::TypeText(_) |
-            BlockSettings::WaitForElement(_) | BlockSettings::GetElementText(_) |
-            BlockSettings::Screenshot(_) | BlockSettings::ExecuteJs(_) => flags.browser = true,
-            BlockSettings::StringFunction(s) => {
-                match s.function_type {
-                    StringFnType::URLEncode | StringFnType::URLDecode => flags.urlencoding = true,
-                    StringFnType::Base64Encode | StringFnType::Base64Decode => flags.base64 = true,
-                    _ => {}
-                }
-            }
+            BlockSettings::BrowserOpen(_)
+            | BlockSettings::NavigateTo(_)
+            | BlockSettings::ClickElement(_)
+            | BlockSettings::TypeText(_)
+            | BlockSettings::WaitForElement(_)
+            | BlockSettings::GetElementText(_)
+            | BlockSettings::Screenshot(_)
+            | BlockSettings::ExecuteJs(_) => flags.browser = true,
+            BlockSettings::StringFunction(s) => match s.function_type {
+                StringFnType::URLEncode | StringFnType::URLDecode => flags.urlencoding = true,
+                StringFnType::Base64Encode | StringFnType::Base64Decode => flags.base64 = true,
+                _ => {}
+            },
             BlockSettings::ConversionFunction(s) => {
                 if s.from_type == "base64" || s.to_type == "base64" {
                     flags.base64 = true;
                 }
             }
-            BlockSettings::RandomData(_) => { flags.rand = true; }
-            BlockSettings::TcpRequest(_) | BlockSettings::UdpRequest(_) |
-            BlockSettings::FtpRequest(_) | BlockSettings::SshRequest(_) |
-            BlockSettings::ImapRequest(_) | BlockSettings::SmtpRequest(_) |
-            BlockSettings::PopRequest(_) => { flags.net = true; }
-            BlockSettings::CaptchaSolver(_) | BlockSettings::CloudflareBypass(_) => { flags.serde_json = true; }
-            BlockSettings::LaravelCsrf(_) => { flags.scraper = true; }
+            BlockSettings::RandomData(_) => {
+                flags.rand = true;
+            }
+            BlockSettings::TcpRequest(_)
+            | BlockSettings::UdpRequest(_)
+            | BlockSettings::FtpRequest(_)
+            | BlockSettings::SshRequest(_)
+            | BlockSettings::ImapRequest(_)
+            | BlockSettings::SmtpRequest(_)
+            | BlockSettings::PopRequest(_) => {
+                flags.net = true;
+            }
+            BlockSettings::CaptchaSolver(_) | BlockSettings::CloudflareBypass(_) => {
+                flags.serde_json = true;
+            }
+            BlockSettings::LaravelCsrf(_) => {
+                flags.scraper = true;
+            }
             BlockSettings::Script(s) => {
                 if s.code.contains("SVB UnixTimeToDate:") {
                     flags.chrono = true;

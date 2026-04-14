@@ -5,16 +5,16 @@ mod ipc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use include_dir::{include_dir, Dir};
+#[cfg(target_os = "windows")]
+use raw_window_handle::HasWindowHandle;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::{Icon, WindowBuilder};
-#[cfg(target_os = "windows")]
-use raw_window_handle::HasWindowHandle;
 use wry::WebViewBuilder;
-use include_dir::{include_dir, Dir};
 
-use ironbullet::config::{load_config, save_config, autosave_path};
 use ipc::{AppState, IpcCmd};
+use ironbullet::config::{autosave_path, load_config, save_config};
 
 /// Check if WebView2 runtime is installed (Windows only).
 /// On Linux, check that WebKitGTK (required by wry) is actually installed.
@@ -109,12 +109,12 @@ fn check_webview2_available() -> bool {
 #[cfg(target_os = "windows")]
 mod win32_titlebar {
     use std::sync::atomic::{AtomicIsize, Ordering};
-    use windows_sys::Win32::Foundation::{HWND, WPARAM, LPARAM, LRESULT, RECT};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowLongPtrW, CallWindowProcW, GetWindowRect,
-        GWLP_WNDPROC, WM_NCHITTEST, HTCLIENT, HTCAPTION, WNDPROC,
-    };
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CallWindowProcW, GetWindowRect, SetWindowLongPtrW, GWLP_WNDPROC, HTCAPTION, HTCLIENT,
+        WM_NCHITTEST, WNDPROC,
+    };
 
     static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 
@@ -155,17 +155,29 @@ mod win32_titlebar {
 static GUI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/gui/build");
 
 fn mime_for(path: &str) -> &'static str {
-    if path.ends_with(".html") { "text/html" }
-    else if path.ends_with(".js") { "application/javascript" }
-    else if path.ends_with(".css") { "text/css" }
-    else if path.ends_with(".svg") { "image/svg+xml" }
-    else if path.ends_with(".png") { "image/png" }
-    else if path.ends_with(".ico") { "image/x-icon" }
-    else if path.ends_with(".json") { "application/json" }
-    else if path.ends_with(".woff2") { "font/woff2" }
-    else if path.ends_with(".woff") { "font/woff" }
-    else if path.ends_with(".ttf") { "font/ttf" }
-    else { "application/octet-stream" }
+    if path.ends_with(".html") {
+        "text/html"
+    } else if path.ends_with(".js") {
+        "application/javascript"
+    } else if path.ends_with(".css") {
+        "text/css"
+    } else if path.ends_with(".svg") {
+        "image/svg+xml"
+    } else if path.ends_with(".png") {
+        "image/png"
+    } else if path.ends_with(".ico") {
+        "image/x-icon"
+    } else if path.ends_with(".json") {
+        "application/json"
+    } else if path.ends_with(".woff2") {
+        "font/woff2"
+    } else if path.ends_with(".woff") {
+        "font/woff"
+    } else if path.ends_with(".ttf") {
+        "font/ttf"
+    } else {
+        "application/octet-stream"
+    }
 }
 
 enum Evt {
@@ -244,8 +256,8 @@ fn position_window(
     {
         use windows_sys::Win32::Foundation::POINT;
         use windows_sys::Win32::Graphics::Gdi::{
-            GetMonitorInfoW, MonitorFromPoint, MONITORINFO,
-            MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY,
+            GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONULL,
+            MONITOR_DEFAULTTOPRIMARY,
         };
 
         // Physical window size from known logical dimensions
@@ -292,7 +304,10 @@ fn position_window(
     {
         if let (Some(x), Some(y)) = (saved_x, saved_y) {
             window.set_outer_position(tao::dpi::PhysicalPosition::new(x, y));
-        } else if let Some(monitor) = window.primary_monitor().or_else(|| window.current_monitor()) {
+        } else if let Some(monitor) = window
+            .primary_monitor()
+            .or_else(|| window.current_monitor())
+        {
             let mon_size = monitor.size();
             let mon_pos = monitor.position();
             let scale = window.scale_factor();
@@ -322,13 +337,19 @@ fn run_gui() {
     {
         // Force XWayland — the single most effective fix for NVIDIA + Wayland
         if std::env::var("GDK_BACKEND").is_err() {
-            unsafe { std::env::set_var("GDK_BACKEND", "x11"); }
+            unsafe {
+                std::env::set_var("GDK_BACKEND", "x11");
+            }
         }
         if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
-            unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); }
+            unsafe {
+                std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+            }
         }
         if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
-            unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
+            unsafe {
+                std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            }
         }
         // Disable the WebKit sandbox. On some NVIDIA driver versions and certain
         // kernel security configurations the sandbox helper process fails to start,
@@ -336,7 +357,9 @@ fn run_gui() {
         // skips the sandbox entirely and resolves the remaining gray-screen cases
         // that GDK_BACKEND=x11 alone does not fix.
         if std::env::var("WEBKIT_FORCE_SANDBOX").is_err() {
-            unsafe { std::env::set_var("WEBKIT_FORCE_SANDBOX", "0"); }
+            unsafe {
+                std::env::set_var("WEBKIT_FORCE_SANDBOX", "0");
+            }
         }
     }
 
@@ -359,7 +382,10 @@ fn run_gui() {
 
     let mut wb = WindowBuilder::new()
         .with_title("IronBullet 0.2.3")
-        .with_inner_size(tao::dpi::LogicalSize::new(cfg.window_width, cfg.window_height))
+        .with_inner_size(tao::dpi::LogicalSize::new(
+            cfg.window_width,
+            cfg.window_height,
+        ))
         .with_decorations(false);
 
     // Load app icon from embedded PNG (file may not exist in all builds)
@@ -372,7 +398,8 @@ fn run_gui() {
 
         // Runtime fallback: try loading from filesystem next to the exe
         let runtime_icon: Option<Vec<u8>> = if icon_bytes.is_none() {
-            std::env::current_exe().ok()
+            std::env::current_exe()
+                .ok()
                 .and_then(|p| p.parent().map(|d| d.join("data/IMGS/notextlogo.png")))
                 .and_then(|p| std::fs::read(p).ok())
         } else {
@@ -394,7 +421,13 @@ fn run_gui() {
     let window = wb.build(&event_loop).expect("Failed to create window");
 
     // Restore saved position or center on work area (WPF CenterScreen style)
-    position_window(&window, cfg.window_x, cfg.window_y, cfg.window_width, cfg.window_height);
+    position_window(
+        &window,
+        cfg.window_x,
+        cfg.window_y,
+        cfg.window_width,
+        cfg.window_height,
+    );
 
     // Windows-specific: disable rounded corners + install native title bar drag
     #[cfg(target_os = "windows")]
@@ -403,7 +436,9 @@ fn run_gui() {
             if let raw_window_handle::RawWindowHandle::Win32(win32) = handle.as_raw() {
                 let hwnd = win32.hwnd.get() as *mut std::ffi::c_void;
                 // Disable Windows 11 rounded corners
-                use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND};
+                use windows_sys::Win32::Graphics::Dwm::{
+                    DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+                };
                 let preference: u32 = DWMWCP_DONOTROUND as u32;
                 unsafe {
                     DwmSetWindowAttribute(
@@ -428,12 +463,19 @@ fn run_gui() {
     {
         let wv2_available = check_webview2_available();
         if !wv2_available {
-            use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONERROR};
-            let title: Vec<u16> = "IronBullet \u{2014} Missing Dependency\0".encode_utf16().collect();
+            use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+            let title: Vec<u16> = "IronBullet \u{2014} Missing Dependency\0"
+                .encode_utf16()
+                .collect();
             let msg: Vec<u16> = "WebView2 runtime was not found.\n\nIronBullet requires the Microsoft Edge WebView2 runtime.\nPlease install it from:\nhttps://go.microsoft.com/fwlink/p/?LinkId=2124703\n\nAfter installing, restart IronBullet.\0".encode_utf16().collect();
             unsafe {
                 #[allow(clippy::zero_ptr)]
-                MessageBoxW(std::ptr::null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
+                MessageBoxW(
+                    std::ptr::null_mut(),
+                    msg.as_ptr(),
+                    title.as_ptr(),
+                    MB_OK | MB_ICONERROR,
+                );
             }
             std::process::exit(1);
         }
@@ -451,8 +493,11 @@ fn run_gui() {
             eprintln!("IronBullet: {}", msg);
             // Try to show a GTK dialog — best effort, no hard dep on GTK dialog lib
             let _ = std::process::Command::new("zenity")
-                .args(["--error", "--title=IronBullet — Missing Dependency",
-                       &format!("--text={}", msg)])
+                .args([
+                    "--error",
+                    "--title=IronBullet — Missing Dependency",
+                    &format!("--text={}", msg),
+                ])
                 .status();
             std::process::exit(1);
         }
@@ -464,18 +509,20 @@ fn run_gui() {
             use std::borrow::Cow;
             let uri = req.uri().to_string();
             let path = uri.strip_prefix("ironbullet://localhost").unwrap_or(&uri);
-            let path = if path.is_empty() || path == "/" { "/index.html" } else { path };
+            let path = if path.is_empty() || path == "/" {
+                "/index.html"
+            } else {
+                path
+            };
             let path = path.trim_start_matches('/');
             // Strip query string
             let path = path.split('?').next().unwrap_or(path);
             let (body, mime): (Cow<'static, [u8]>, &str) = match GUI_DIR.get_file(path) {
                 Some(f) => (Cow::Borrowed(f.contents()), mime_for(path)),
-                None => {
-                    match GUI_DIR.get_file("index.html") {
-                        Some(f) => (Cow::Borrowed(f.contents()), "text/html"),
-                        None => (Cow::Borrowed(b"404 Not Found"), "text/plain"),
-                    }
-                }
+                None => match GUI_DIR.get_file("index.html") {
+                    Some(f) => (Cow::Borrowed(f.contents()), "text/html"),
+                    None => (Cow::Borrowed(b"404 Not Found"), "text/plain"),
+                },
             };
             wry::http::Response::builder()
                 .header("Content-Type", mime)
@@ -510,7 +557,9 @@ fn run_gui() {
                     }
                     "float_panel_native" => {
                         // Open a panel as a real native OS window
-                        let panel_id = cmd.data.get("id")
+                        let panel_id = cmd
+                            .data
+                            .get("id")
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
@@ -547,17 +596,27 @@ fn run_gui() {
         *control_flow = ControlFlow::Wait;
 
         match event {
-            Event::WindowEvent { window_id, event: WindowEvent::CloseRequested, .. } => {
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
                 // Check if it's a panel sub-window being closed
-                if let Some(idx) = panel_windows.iter().position(|(w, _, _)| w.id() == window_id) {
+                if let Some(idx) = panel_windows
+                    .iter()
+                    .position(|(w, _, _)| w.id() == window_id)
+                {
                     let (_, _, panel_id) = panel_windows.remove(idx);
                     // Tell main window to re-dock this panel to bottom
-                    let js = format!("if (window.__ibPanelClosed) window.__ibPanelClosed('{}')", panel_id);
+                    let js = format!(
+                        "if (window.__ibPanelClosed) window.__ibPanelClosed('{}')",
+                        panel_id
+                    );
                     let _ = webview.evaluate_script(&js);
                 } else {
                     // Main window close — redirect to frontend for unsaved-changes prompt
                     let _ = webview.evaluate_script(
-                        "window.dispatchEvent(new Event('native-close-requested'))"
+                        "window.dispatchEvent(new Event('native-close-requested'))",
                     );
                 }
             }
@@ -571,21 +630,23 @@ fn run_gui() {
                 }
                 Evt::FloatPanel(panel_id) => {
                     // Focus existing panel window if already open
-                    if let Some((pw, _, _)) = panel_windows.iter().find(|(_, _, id)| id == &panel_id) {
+                    if let Some((pw, _, _)) =
+                        panel_windows.iter().find(|(_, _, id)| id == &panel_id)
+                    {
                         pw.set_focus();
                         return;
                     }
 
                     let label = match panel_id.as_str() {
-                        "debugger"        => "Debugger",
-                        "code"            => "Code View",
-                        "data"            => "Data / Proxy",
-                        "jobs"            => "Jobs",
-                        "network"         => "Network",
-                        "variables"       => "Variables",
+                        "debugger" => "Debugger",
+                        "code" => "Code View",
+                        "data" => "Data / Proxy",
+                        "jobs" => "Jobs",
+                        "network" => "Network",
+                        "variables" => "Variables",
                         "response-viewer" => "Response Viewer",
-                        "inspector"       => "Inspect",
-                        _                 => "Panel",
+                        "inspector" => "Inspect",
+                        _ => "Panel",
                     };
 
                     let panel_window = match WindowBuilder::new()
@@ -595,7 +656,10 @@ fn run_gui() {
                         .build(elwt)
                     {
                         Ok(w) => w,
-                        Err(e) => { eprintln!("[float panel] window error: {}", e); return; }
+                        Err(e) => {
+                            eprintln!("[float panel] window error: {}", e);
+                            return;
+                        }
                     };
 
                     let url = format!("ironbullet://localhost/?panel={}", panel_id);
@@ -608,16 +672,21 @@ fn run_gui() {
                             use std::borrow::Cow;
                             let uri = req.uri().to_string();
                             let path = uri.strip_prefix("ironbullet://localhost").unwrap_or(&uri);
-                            let path = if path.is_empty() || path == "/" { "/index.html" } else { path };
+                            let path = if path.is_empty() || path == "/" {
+                                "/index.html"
+                            } else {
+                                path
+                            };
                             let path = path.trim_start_matches('/');
                             let path = path.split('?').next().unwrap_or(path);
-                            let (body, mime): (Cow<'static, [u8]>, &str) = match GUI_DIR.get_file(path) {
-                                Some(f) => (Cow::Borrowed(f.contents()), mime_for(path)),
-                                None => match GUI_DIR.get_file("index.html") {
-                                    Some(f) => (Cow::Borrowed(f.contents()), "text/html"),
-                                    None => (Cow::Borrowed(b"404 Not Found"), "text/plain"),
-                                },
-                            };
+                            let (body, mime): (Cow<'static, [u8]>, &str) =
+                                match GUI_DIR.get_file(path) {
+                                    Some(f) => (Cow::Borrowed(f.contents()), mime_for(path)),
+                                    None => match GUI_DIR.get_file("index.html") {
+                                        Some(f) => (Cow::Borrowed(f.contents()), "text/html"),
+                                        None => (Cow::Borrowed(b"404 Not Found"), "text/plain"),
+                                    },
+                                };
                             wry::http::Response::builder()
                                 .header("Content-Type", mime)
                                 .header("Access-Control-Allow-Origin", "*")
@@ -641,7 +710,10 @@ fn run_gui() {
                         .build(&panel_window)
                     {
                         Ok(wv) => wv,
-                        Err(e) => { eprintln!("[float panel] webview error: {}", e); return; }
+                        Err(e) => {
+                            eprintln!("[float panel] webview error: {}", e);
+                            return;
+                        }
                     };
 
                     // Notify main window that this panel is now in a native window

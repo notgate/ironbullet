@@ -8,14 +8,22 @@ pub(super) fn find_block_mut(blocks: &mut Vec<Block>, id: uuid::Uuid) -> Option<
         }
         match &mut block.settings {
             BlockSettings::IfElse(s) => {
-                if let Some(b) = find_block_mut(&mut s.true_blocks, id) { return Some(b); }
-                if let Some(b) = find_block_mut(&mut s.false_blocks, id) { return Some(b); }
+                if let Some(b) = find_block_mut(&mut s.true_blocks, id) {
+                    return Some(b);
+                }
+                if let Some(b) = find_block_mut(&mut s.false_blocks, id) {
+                    return Some(b);
+                }
             }
             BlockSettings::Loop(s) => {
-                if let Some(b) = find_block_mut(&mut s.blocks, id) { return Some(b); }
+                if let Some(b) = find_block_mut(&mut s.blocks, id) {
+                    return Some(b);
+                }
             }
             BlockSettings::Group(s) => {
-                if let Some(b) = find_block_mut(&mut s.blocks, id) { return Some(b); }
+                if let Some(b) = find_block_mut(&mut s.blocks, id) {
+                    return Some(b);
+                }
             }
             _ => {}
         }
@@ -33,14 +41,22 @@ pub(super) fn remove_block_recursive(blocks: &mut Vec<Block>, id: uuid::Uuid) ->
     for block in blocks.iter_mut() {
         match &mut block.settings {
             BlockSettings::IfElse(s) => {
-                if remove_block_recursive(&mut s.true_blocks, id) { return true; }
-                if remove_block_recursive(&mut s.false_blocks, id) { return true; }
+                if remove_block_recursive(&mut s.true_blocks, id) {
+                    return true;
+                }
+                if remove_block_recursive(&mut s.false_blocks, id) {
+                    return true;
+                }
             }
             BlockSettings::Loop(s) => {
-                if remove_block_recursive(&mut s.blocks, id) { return true; }
+                if remove_block_recursive(&mut s.blocks, id) {
+                    return true;
+                }
             }
             BlockSettings::Group(s) => {
-                if remove_block_recursive(&mut s.blocks, id) { return true; }
+                if remove_block_recursive(&mut s.blocks, id) {
+                    return true;
+                }
             }
             _ => {}
         }
@@ -49,7 +65,11 @@ pub(super) fn remove_block_recursive(blocks: &mut Vec<Block>, id: uuid::Uuid) ->
 }
 
 /// Recursively set disabled on a block by ID
-pub(super) fn set_block_disabled_recursive(blocks: &mut Vec<Block>, id: uuid::Uuid, disabled: bool) -> bool {
+pub(super) fn set_block_disabled_recursive(
+    blocks: &mut Vec<Block>,
+    id: uuid::Uuid,
+    disabled: bool,
+) -> bool {
     if let Some(block) = find_block_mut(blocks, id) {
         block.disabled = disabled;
         return true;
@@ -67,14 +87,22 @@ pub(super) fn extract_block_recursive(blocks: &mut Vec<Block>, id: uuid::Uuid) -
     for block in blocks.iter_mut() {
         match &mut block.settings {
             BlockSettings::IfElse(s) => {
-                if let Some(b) = extract_block_recursive(&mut s.true_blocks, id) { return Some(b); }
-                if let Some(b) = extract_block_recursive(&mut s.false_blocks, id) { return Some(b); }
+                if let Some(b) = extract_block_recursive(&mut s.true_blocks, id) {
+                    return Some(b);
+                }
+                if let Some(b) = extract_block_recursive(&mut s.false_blocks, id) {
+                    return Some(b);
+                }
             }
             BlockSettings::Loop(s) => {
-                if let Some(b) = extract_block_recursive(&mut s.blocks, id) { return Some(b); }
+                if let Some(b) = extract_block_recursive(&mut s.blocks, id) {
+                    return Some(b);
+                }
             }
             BlockSettings::Group(s) => {
-                if let Some(b) = extract_block_recursive(&mut s.blocks, id) { return Some(b); }
+                if let Some(b) = extract_block_recursive(&mut s.blocks, id) {
+                    return Some(b);
+                }
             }
             _ => {}
         }
@@ -83,7 +111,13 @@ pub(super) fn extract_block_recursive(blocks: &mut Vec<Block>, id: uuid::Uuid) -
 }
 
 /// Add a block into a nested container (IfElse branch or Loop body)
-pub(super) fn add_block_to_nested(blocks: &mut Vec<Block>, parent_id: uuid::Uuid, branch: &str, new_block: Block, index: Option<usize>) -> bool {
+pub(super) fn add_block_to_nested(
+    blocks: &mut Vec<Block>,
+    parent_id: uuid::Uuid,
+    branch: &str,
+    new_block: Block,
+    index: Option<usize>,
+) -> bool {
     for block in blocks.iter_mut() {
         if block.id == parent_id {
             let target = match (&mut block.settings, branch) {
@@ -109,14 +143,34 @@ pub(super) fn add_block_to_nested(blocks: &mut Vec<Block>, parent_id: uuid::Uuid
         // Recurse into nested containers
         match &mut block.settings {
             BlockSettings::IfElse(s) => {
-                if add_block_to_nested(&mut s.true_blocks, parent_id, branch, new_block.clone(), index) { return true; }
-                if add_block_to_nested(&mut s.false_blocks, parent_id, branch, new_block.clone(), index) { return true; }
+                if add_block_to_nested(
+                    &mut s.true_blocks,
+                    parent_id,
+                    branch,
+                    new_block.clone(),
+                    index,
+                ) {
+                    return true;
+                }
+                if add_block_to_nested(
+                    &mut s.false_blocks,
+                    parent_id,
+                    branch,
+                    new_block.clone(),
+                    index,
+                ) {
+                    return true;
+                }
             }
             BlockSettings::Loop(s) => {
-                if add_block_to_nested(&mut s.blocks, parent_id, branch, new_block.clone(), index) { return true; }
+                if add_block_to_nested(&mut s.blocks, parent_id, branch, new_block.clone(), index) {
+                    return true;
+                }
             }
             BlockSettings::Group(s) => {
-                if add_block_to_nested(&mut s.blocks, parent_id, branch, new_block.clone(), index) { return true; }
+                if add_block_to_nested(&mut s.blocks, parent_id, branch, new_block.clone(), index) {
+                    return true;
+                }
             }
             _ => {}
         }

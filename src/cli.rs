@@ -8,13 +8,13 @@
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use crate::import::import_config_bytes;
 use crate::export::format::RfxConfig;
+use crate::import::import_config_bytes;
+use crate::pipeline::Pipeline;
 use crate::runner::data_pool::DataPool;
 use crate::runner::proxy_pool::ProxyPool;
 use crate::runner::{HitResult, RunnerOrchestrator};
 use crate::sidecar::native::create_native_backend;
-use crate::pipeline::Pipeline;
 
 pub struct CliArgs {
     pub config: String,
@@ -51,7 +51,10 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             "--threads" | "-t" => {
                 i += 1;
                 let val = args.get(i).ok_or("--threads requires a number")?;
-                threads = Some(val.parse::<u32>().map_err(|_| format!("invalid thread count: {}", val))?);
+                threads = Some(
+                    val.parse::<u32>()
+                        .map_err(|_| format!("invalid thread count: {}", val))?,
+                );
             }
             "--proxies" | "-p" => {
                 i += 1;
@@ -64,12 +67,18 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             "--skip" => {
                 i += 1;
                 let val = args.get(i).ok_or("--skip requires a number")?;
-                skip = Some(val.parse::<u32>().map_err(|_| format!("invalid skip value: {}", val))?);
+                skip = Some(
+                    val.parse::<u32>()
+                        .map_err(|_| format!("invalid skip value: {}", val))?,
+                );
             }
             "--take" => {
                 i += 1;
                 let val = args.get(i).ok_or("--take requires a number")?;
-                take = Some(val.parse::<u32>().map_err(|_| format!("invalid take value: {}", val))?);
+                take = Some(
+                    val.parse::<u32>()
+                        .map_err(|_| format!("invalid take value: {}", val))?,
+                );
             }
             "--debug" | "-d" => {
                 debug = true;
@@ -98,7 +107,8 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
 }
 
 fn print_help() {
-    eprintln!("ironbullet — pipelined request automation
+    eprintln!(
+        "ironbullet — pipelined request automation
 
 USAGE:
   ironbullet --config <path> --wordlist <path> [options]
@@ -112,7 +122,8 @@ OPTIONS:
       --skip <n>          Skip first N data lines
       --take <n>          Process only N data lines (0 = all)
   -d, --debug             Print each block result to stderr
-  -h, --help              Show this help");
+  -h, --help              Show this help"
+    );
 }
 
 /// Load a config from any supported format, returns the pipeline
@@ -125,8 +136,7 @@ fn load_config(path: &str) -> Result<Pipeline, String> {
     }
 
     // Otherwise read bytes and auto-detect
-    let bytes = std::fs::read(path)
-        .map_err(|e| format!("failed to read {}: {}", path, e))?;
+    let bytes = std::fs::read(path).map_err(|e| format!("failed to read {}: {}", path, e))?;
     let result = import_config_bytes(&bytes)?;
 
     if !result.warnings.is_empty() {
@@ -136,7 +146,10 @@ fn load_config(path: &str) -> Result<Pipeline, String> {
     }
     if !result.security_issues.is_empty() {
         for issue in &result.security_issues {
-            eprintln!("[{:?}] {} — {}", issue.severity, issue.title, issue.description);
+            eprintln!(
+                "[{:?}] {} — {}",
+                issue.severity, issue.title, issue.description
+            );
         }
     }
 
@@ -147,7 +160,11 @@ fn load_config(path: &str) -> Result<Pipeline, String> {
 pub async fn run(cli: CliArgs) -> Result<(), String> {
     // Load config
     let mut pipeline = load_config(&cli.config)?;
-    eprintln!("[*] loaded config: {} ({} blocks)", pipeline.name, pipeline.blocks.len());
+    eprintln!(
+        "[*] loaded config: {} ({} blocks)",
+        pipeline.name,
+        pipeline.blocks.len()
+    );
 
     // Apply CLI overrides
     if let Some(t) = cli.threads {
@@ -190,7 +207,12 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
         data_pool = DataPool::new(lines);
     }
 
-    eprintln!("[*] wordlist: {} lines (skip={}, take={})", data_pool.total(), skip, take);
+    eprintln!(
+        "[*] wordlist: {} lines (skip={}, take={})",
+        data_pool.total(),
+        skip,
+        take
+    );
 
     // Load proxies
     let proxy_pool = if let Some(ref proxy_path) = cli.proxies {
@@ -220,7 +242,7 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
         threads,
         hits_tx,
         None,
-        None, // chrome_executable_path — not used in CLI mode
+        None,                             // chrome_executable_path — not used in CLI mode
         std::collections::HashMap::new(), // no custom inputs in CLI mode
     ));
 
@@ -247,7 +269,9 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
         let mut count = 0u64;
         while let Some(hit) = hits_rx.recv().await {
             count += 1;
-            let caps: String = hit.captures.iter()
+            let caps: String = hit
+                .captures
+                .iter()
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect::<Vec<_>>()
                 .join(" | ");
@@ -270,8 +294,10 @@ pub async fn run(cli: CliArgs) -> Result<(), String> {
 
     // Final stats
     let stats = orchestrator.get_stats();
-    eprintln!("\r[*] done in {:.1}s — {} processed, {} hits, {} fails, {} errors",
-        stats.elapsed_secs, stats.processed, stats.hits, stats.fails, stats.errors);
+    eprintln!(
+        "\r[*] done in {:.1}s — {} processed, {} hits, {} fails, {} errors",
+        stats.elapsed_secs, stats.processed, stats.hits, stats.fails, stats.errors
+    );
 
     stats_handle.abort();
     let hit_count = hit_handle.await.unwrap_or(0);

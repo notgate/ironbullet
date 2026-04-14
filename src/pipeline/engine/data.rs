@@ -7,7 +7,11 @@ pub(super) fn parse_bytes(s: &str) -> Vec<u8> {
 }
 
 pub(super) fn bytes_to_csv(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",")
+    bytes
+        .iter()
+        .map(|b| b.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 pub(super) fn number_to_words(n: i64) -> String {
@@ -17,18 +21,47 @@ pub(super) fn number_to_words(n: i64) -> String {
     if n == 0 {
         return "zero".into();
     }
-    let ones = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-                "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-                "seventeen", "eighteen", "nineteen"];
-    let tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+    let ones = [
+        "",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
+    ];
+    let tens = [
+        "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+    ];
 
     fn below_1000(n: i64, ones: &[&str], tens: &[&str]) -> String {
-        if n == 0 { return String::new(); }
-        if n < 20 { return ones[n as usize].into(); }
+        if n == 0 {
+            return String::new();
+        }
+        if n < 20 {
+            return ones[n as usize].into();
+        }
         if n < 100 {
             let t = tens[(n / 10) as usize];
             let o = ones[(n % 10) as usize];
-            return if o.is_empty() { t.into() } else { format!("{}-{}", t, o) };
+            return if o.is_empty() {
+                t.into()
+            } else {
+                format!("{}-{}", t, o)
+            };
         }
         let h = ones[(n / 100) as usize];
         let rest = n % 100;
@@ -40,12 +73,20 @@ pub(super) fn number_to_words(n: i64) -> String {
     }
 
     let mut parts: Vec<String> = Vec::new();
-    let scales = [(1_000_000_000_000i64, "trillion"), (1_000_000_000, "billion"),
-                  (1_000_000, "million"), (1_000, "thousand")];
+    let scales = [
+        (1_000_000_000_000i64, "trillion"),
+        (1_000_000_000, "billion"),
+        (1_000_000, "million"),
+        (1_000, "thousand"),
+    ];
     let mut remaining = n;
     for (scale, label) in &scales {
         if remaining >= *scale {
-            parts.push(format!("{} {}", below_1000(remaining / scale, &ones, &tens), label));
+            parts.push(format!(
+                "{} {}",
+                below_1000(remaining / scale, &ones, &tens),
+                label
+            ));
             remaining %= scale;
         }
     }
@@ -61,14 +102,39 @@ pub(super) fn words_to_number(s: &str) -> i64 {
     let s = s.trim_start_matches("negative ").trim();
 
     let word_map: &[(&str, i64)] = &[
-        ("zero",0),("one",1),("two",2),("three",3),("four",4),("five",5),
-        ("six",6),("seven",7),("eight",8),("nine",9),("ten",10),
-        ("eleven",11),("twelve",12),("thirteen",13),("fourteen",14),("fifteen",15),
-        ("sixteen",16),("seventeen",17),("eighteen",18),("nineteen",19),
-        ("twenty",20),("thirty",30),("forty",40),("fifty",50),
-        ("sixty",60),("seventy",70),("eighty",80),("ninety",90),
-        ("hundred",100),("thousand",1_000),("million",1_000_000),
-        ("billion",1_000_000_000),("trillion",1_000_000_000_000),
+        ("zero", 0),
+        ("one", 1),
+        ("two", 2),
+        ("three", 3),
+        ("four", 4),
+        ("five", 5),
+        ("six", 6),
+        ("seven", 7),
+        ("eight", 8),
+        ("nine", 9),
+        ("ten", 10),
+        ("eleven", 11),
+        ("twelve", 12),
+        ("thirteen", 13),
+        ("fourteen", 14),
+        ("fifteen", 15),
+        ("sixteen", 16),
+        ("seventeen", 17),
+        ("eighteen", 18),
+        ("nineteen", 19),
+        ("twenty", 20),
+        ("thirty", 30),
+        ("forty", 40),
+        ("fifty", 50),
+        ("sixty", 60),
+        ("seventy", 70),
+        ("eighty", 80),
+        ("ninety", 90),
+        ("hundred", 100),
+        ("thousand", 1_000),
+        ("million", 1_000_000),
+        ("billion", 1_000_000_000),
+        ("trillion", 1_000_000_000_000),
     ];
 
     let mut total: i64 = 0;
@@ -76,7 +142,9 @@ pub(super) fn words_to_number(s: &str) -> i64 {
 
     for token in s.split(|c: char| c == ' ' || c == '-') {
         let token = token.trim();
-        if token.is_empty() { continue; }
+        if token.is_empty() {
+            continue;
+        }
         if let Some(&(_, val)) = word_map.iter().find(|(w, _)| *w == token) {
             if val == 100 {
                 current *= 100;
@@ -89,12 +157,18 @@ pub(super) fn words_to_number(s: &str) -> i64 {
         }
     }
     total += current;
-    if is_negative { -total } else { total }
+    if is_negative {
+        -total
+    } else {
+        total
+    }
 }
 
 pub(super) fn readable_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB", "PB"];
-    if bytes < 0 { return format!("{} B", bytes); }
+    if bytes < 0 {
+        return format!("{} B", bytes);
+    }
     let mut val = bytes as f64;
     let mut unit_idx = 0;
     while val >= 1024.0 && unit_idx < UNITS.len() - 1 {
@@ -109,7 +183,10 @@ pub(super) fn readable_size(bytes: i64) -> String {
 }
 
 impl ExecutionContext {
-    pub(super) fn execute_file_system(&mut self, settings: &FileSystemSettings) -> crate::error::Result<()> {
+    pub(super) fn execute_file_system(
+        &mut self,
+        settings: &FileSystemSettings,
+    ) -> crate::error::Result<()> {
         let path = self.variables.interpolate(&settings.path);
         let dest = self.variables.interpolate(&settings.dest_path);
         let content = self.variables.interpolate(&settings.content);
@@ -118,51 +195,52 @@ impl ExecutionContext {
 
         let result: String = match settings.op {
             FileSystemOp::CreatePath => {
-                std::fs::create_dir_all(&path)
-                    .map_err(|e| err(format!("CreatePath: {}", e)))?;
+                std::fs::create_dir_all(&path).map_err(|e| err(format!("CreatePath: {}", e)))?;
                 path.clone()
             }
             FileSystemOp::FileAppend => {
                 use std::io::Write;
-                let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&path)
+                let mut f = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&path)
                     .map_err(|e| err(format!("FileAppend: {}", e)))?;
-                f.write_all(content.as_bytes()).map_err(|e| err(format!("FileAppend write: {}", e)))?;
+                f.write_all(content.as_bytes())
+                    .map_err(|e| err(format!("FileAppend write: {}", e)))?;
                 String::new()
             }
             FileSystemOp::FileAppendLines => {
                 use std::io::Write;
-                let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&path)
+                let mut f = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&path)
                     .map_err(|e| err(format!("FileAppendLines: {}", e)))?;
                 for line in content.lines() {
-                    writeln!(f, "{}", line).map_err(|e| err(format!("FileAppendLines write: {}", e)))?;
+                    writeln!(f, "{}", line)
+                        .map_err(|e| err(format!("FileAppendLines write: {}", e)))?;
                 }
                 String::new()
             }
             FileSystemOp::FileCopy => {
-                std::fs::copy(&path, &dest)
-                    .map_err(|e| err(format!("FileCopy: {}", e)))?;
+                std::fs::copy(&path, &dest).map_err(|e| err(format!("FileCopy: {}", e)))?;
                 dest.clone()
             }
             FileSystemOp::FileMove => {
-                std::fs::rename(&path, &dest)
-                    .map_err(|e| err(format!("FileMove: {}", e)))?;
+                std::fs::rename(&path, &dest).map_err(|e| err(format!("FileMove: {}", e)))?;
                 dest.clone()
             }
             FileSystemOp::FileDelete => {
-                std::fs::remove_file(&path)
-                    .map_err(|e| err(format!("FileDelete: {}", e)))?;
+                std::fs::remove_file(&path).map_err(|e| err(format!("FileDelete: {}", e)))?;
                 String::new()
             }
-            FileSystemOp::FileExists => {
-                std::path::Path::new(&path).is_file().to_string()
-            }
+            FileSystemOp::FileExists => std::path::Path::new(&path).is_file().to_string(),
             FileSystemOp::FileRead => {
-                std::fs::read_to_string(&path)
-                    .map_err(|e| err(format!("FileRead: {}", e)))?
+                std::fs::read_to_string(&path).map_err(|e| err(format!("FileRead: {}", e)))?
             }
             FileSystemOp::FileReadBytes => {
-                let bytes = std::fs::read(&path)
-                    .map_err(|e| err(format!("FileReadBytes: {}", e)))?;
+                let bytes =
+                    std::fs::read(&path).map_err(|e| err(format!("FileReadBytes: {}", e)))?;
                 bytes_to_csv(&bytes)
             }
             FileSystemOp::FileReadLines => {
@@ -178,8 +256,7 @@ impl ExecutionContext {
             }
             FileSystemOp::FileWriteBytes => {
                 let bytes = parse_bytes(&content);
-                std::fs::write(&path, &bytes)
-                    .map_err(|e| err(format!("FileWriteBytes: {}", e)))?;
+                std::fs::write(&path, &bytes).map_err(|e| err(format!("FileWriteBytes: {}", e)))?;
                 String::new()
             }
             FileSystemOp::FileWriteLines => {
@@ -189,13 +266,10 @@ impl ExecutionContext {
                 String::new()
             }
             FileSystemOp::FolderDelete => {
-                std::fs::remove_dir_all(&path)
-                    .map_err(|e| err(format!("FolderDelete: {}", e)))?;
+                std::fs::remove_dir_all(&path).map_err(|e| err(format!("FolderDelete: {}", e)))?;
                 String::new()
             }
-            FileSystemOp::FolderExists => {
-                std::path::Path::new(&path).is_dir().to_string()
-            }
+            FileSystemOp::FolderExists => std::path::Path::new(&path).is_dir().to_string(),
             FileSystemOp::GetFilesInFolder => {
                 let entries: Vec<String> = std::fs::read_dir(&path)
                     .map_err(|e| err(format!("GetFilesInFolder: {}", e)))?
@@ -207,7 +281,8 @@ impl ExecutionContext {
             }
         };
 
-        self.variables.set_user(&settings.output_var, result, settings.capture);
+        self.variables
+            .set_user(&settings.output_var, result, settings.capture);
         Ok(())
     }
 }

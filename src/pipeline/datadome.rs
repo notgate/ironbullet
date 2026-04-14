@@ -51,8 +51,11 @@ pub fn generate_datadome_sensor(
 
     // Canvas/WebGL fingerprint (static plausible hashes)
     let canvas_hashes = [
-        "a1b2c3d4e5f6a7b8", "f8e7d6c5b4a39281", "1a2b3c4d5e6f7a8b",
-        "9f8e7d6c5b4a3210", "abcdef0123456789",
+        "a1b2c3d4e5f6a7b8",
+        "f8e7d6c5b4a39281",
+        "1a2b3c4d5e6f7a8b",
+        "9f8e7d6c5b4a3210",
+        "abcdef0123456789",
     ];
     let webgl_renderers = [
         "ANGLE (NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)",

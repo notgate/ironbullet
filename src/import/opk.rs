@@ -12,15 +12,16 @@ use super::ImportResult;
 /// Import an OB2 .opk file (ZIP archive containing script.loli + metadata + settings)
 pub(super) fn import_opk(bytes: &[u8]) -> Result<ImportResult, String> {
     let reader = std::io::Cursor::new(bytes);
-    let mut archive = zip::ZipArchive::new(reader)
-        .map_err(|e| format!("Failed to open .opk archive: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(reader).map_err(|e| format!("Failed to open .opk archive: {}", e))?;
 
     let mut script_loli = String::new();
     let mut metadata_json = String::new();
     let mut settings_json = String::new();
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)
+        let mut file = archive
+            .by_index(i)
             .map_err(|e| format!("Failed to read archive entry: {}", e))?;
         let name = file.name().to_string();
         let mut content = String::new();
@@ -62,7 +63,11 @@ pub(super) fn import_opk(bytes: &[u8]) -> Result<ImportResult, String> {
     // Parse the LoliCode script → blocks
     pipeline.blocks = parse_lolicode_blocks(&script_loli, &mut warnings)?;
 
-    Ok(ImportResult { pipeline, warnings, security_issues: Vec::new() })
+    Ok(ImportResult {
+        pipeline,
+        warnings,
+        security_issues: Vec::new(),
+    })
 }
 
 /// Map OB2 settings.json fields to Pipeline settings
@@ -81,7 +86,11 @@ pub(super) fn apply_ob2_settings(pipeline: &mut Pipeline, json_str: &str) {
 
     // ProxySettings.UseProxies → proxy mode
     if let Some(proxy) = json.get("ProxySettings") {
-        if proxy.get("UseProxies").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if proxy
+            .get("UseProxies")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             pipeline.proxy_settings.proxy_mode = ProxyMode::Rotate;
         }
         if let Some(ban_loop) = proxy.get("BanLoopEvasion").and_then(|v| v.as_u64()) {

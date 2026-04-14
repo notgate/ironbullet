@@ -12,21 +12,16 @@ fn random_public_ipv4() -> String {
     // Using a curated list is simpler and more correct than rejection-sampling
     // because the private ranges cluster at well-known values.
     const SAFE_FIRST: &[u8] = &[
-        1, 2, 4, 5, 8, 12, 14, 15, 17, 18, 20, 23, 24, 31, 34, 37,
-        38, 40, 41, 43, 44, 45, 46, 47, 50, 51, 52, 53, 54, 55, 57,
-        58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 70, 71, 72, 73,
-        74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
-        89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 101, 102, 103, 104,
-        105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
-        117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 128, 129,
-        130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141,
-        142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153,
-        154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165,
-        166, 167, 168, 170, 171, 173, 174, 175, 176, 177, 178, 179,
-        180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191,
-        193, 194, 195, 196, 197, 199, 200, 201, 202, 204, 205, 206,
-        207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218,
-        219, 220, 221, 222, 223,
+        1, 2, 4, 5, 8, 12, 14, 15, 17, 18, 20, 23, 24, 31, 34, 37, 38, 40, 41, 43, 44, 45, 46, 47,
+        50, 51, 52, 53, 54, 55, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 70, 71, 72, 73, 74,
+        75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98,
+        99, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117,
+        118, 119, 120, 121, 122, 123, 124, 125, 126, 128, 129, 130, 131, 132, 133, 134, 135, 136,
+        137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154,
+        155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 170, 171, 173, 174,
+        175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 193,
+        194, 195, 196, 197, 199, 200, 201, 202, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213,
+        214, 215, 216, 217, 218, 219, 220, 221, 222, 223,
     ];
 
     let o1 = SAFE_FIRST[rng.gen_range(0..SAFE_FIRST.len())];
@@ -38,12 +33,17 @@ fn random_public_ipv4() -> String {
 }
 
 impl ExecutionContext {
-    pub(super) async fn execute_header_spoof(&mut self, _block: &Block, settings: &HeaderSpoofSettings) -> crate::error::Result<()> {
+    pub(super) async fn execute_header_spoof(
+        &mut self,
+        _block: &Block,
+        settings: &HeaderSpoofSettings,
+    ) -> crate::error::Result<()> {
         // Resolve the IP to inject
         let ip = match &settings.strategy {
             IpSpoofStrategy::RandomPublic => random_public_ipv4(),
             IpSpoofStrategy::FixedList => {
-                let lines: Vec<&str> = settings.fixed_ips
+                let lines: Vec<&str> = settings
+                    .fixed_ips
                     .lines()
                     .map(|l| l.trim())
                     .filter(|l| !l.is_empty())
@@ -55,25 +55,27 @@ impl ExecutionContext {
                     let idx = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
-                        .as_millis() as usize % lines.len();
+                        .as_millis() as usize
+                        % lines.len();
                     lines[idx].to_string()
                 }
             }
             IpSpoofStrategy::FromProxy => {
                 // Strip scheme and auth from proxy URL → use host as IP
                 let proxy = self.proxy.clone().unwrap_or_default();
-                proxy.trim_start_matches("http://")
-                     .trim_start_matches("https://")
-                     .trim_start_matches("socks5://")
-                     .split('@').last()
-                     .unwrap_or("")
-                     .split(':').next()
-                     .unwrap_or(&proxy)
-                     .to_string()
+                proxy
+                    .trim_start_matches("http://")
+                    .trim_start_matches("https://")
+                    .trim_start_matches("socks5://")
+                    .split('@')
+                    .last()
+                    .unwrap_or("")
+                    .split(':')
+                    .next()
+                    .unwrap_or(&proxy)
+                    .to_string()
             }
-            IpSpoofStrategy::Manual => {
-                self.variables.interpolate(&settings.manual_value)
-            }
+            IpSpoofStrategy::Manual => self.variables.interpolate(&settings.manual_value),
         };
 
         // Build the header KV pairs and inject into a special variable
@@ -107,14 +109,19 @@ impl ExecutionContext {
         self.variables.set_user("SPOOF_IP", ip.clone(), true);
 
         if !settings.output_var.is_empty() {
-            self.variables.set_user(&settings.output_var, ip.clone(), true);
+            self.variables
+                .set_user(&settings.output_var, ip.clone(), true);
         }
 
         self.log.push(LogEntry {
             timestamp_ms: elapsed_ms(),
             block_id: Uuid::nil(),
             block_label: "HeaderSpoof".into(),
-            message: format!("IP spoofing headers set → {} ({})", ip, format_strategy(&settings.strategy)),
+            message: format!(
+                "IP spoofing headers set → {} ({})",
+                ip,
+                format_strategy(&settings.strategy)
+            ),
         });
         Ok(())
     }

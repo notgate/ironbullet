@@ -2,10 +2,10 @@
 
 #[cfg(any(unix, target_os = "windows"))]
 mod inner {
+    use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
     use std::time::Instant;
     use wreq::redirect;
     use wreq_util::Emulation;
-    use crate::sidecar::protocol::{SidecarRequest, SidecarResponse};
 
     pub(crate) fn parse_emulation(s: &str) -> Emulation {
         match s {
@@ -120,20 +120,25 @@ mod inner {
     ) -> (SidecarResponse, wreq::Client) {
         let proxy_str = req.proxy.as_deref();
         let client = existing_client.unwrap_or_else(|| {
-            build_wreq_client(emulation, ssl_verify, proxy_insecure, proxy_str).unwrap_or_else(|e| {
-                eprintln!("[wreq] client build error: {e}");
-                wreq::Client::new()
-            })
+            build_wreq_client(emulation, ssl_verify, proxy_insecure, proxy_str).unwrap_or_else(
+                |e| {
+                    eprintln!("[wreq] client build error: {e}");
+                    wreq::Client::new()
+                },
+            )
         });
 
         let url = match req.url.as_deref() {
             Some(u) if !u.is_empty() => u.to_string(),
             _ => {
-                return (SidecarResponse {
-                    id: req.id.clone(),
-                    error: Some("WreqTLS: missing URL".into()),
-                    ..Default::default()
-                }, client);
+                return (
+                    SidecarResponse {
+                        id: req.id.clone(),
+                        error: Some("WreqTLS: missing URL".into()),
+                        ..Default::default()
+                    },
+                    client,
+                );
             }
         };
 
@@ -141,11 +146,14 @@ mod inner {
         let method = match wreq::Method::from_bytes(method_str.as_bytes()) {
             Ok(m) => m,
             Err(_) => {
-                return (SidecarResponse {
-                    id: req.id.clone(),
-                    error: Some(format!("WreqTLS: invalid method '{method_str}'")),
-                    ..Default::default()
-                }, client);
+                return (
+                    SidecarResponse {
+                        id: req.id.clone(),
+                        error: Some(format!("WreqTLS: invalid method '{method_str}'")),
+                        ..Default::default()
+                    },
+                    client,
+                );
             }
         };
 
@@ -205,29 +213,38 @@ mod inner {
 
                 let body = match resp.text().await {
                     Ok(t) => t,
-                    Err(e) => { eprintln!("[wreq] body read error: {e}"); String::new() }
+                    Err(e) => {
+                        eprintln!("[wreq] body read error: {e}");
+                        String::new()
+                    }
                 };
 
-                (SidecarResponse {
-                    id: req.id.clone(),
-                    status,
-                    body,
-                    final_url,
-                    headers: Some(headers_map),
-                    cookies: Some(cookies_map),
-                    timing_ms,
-                    error: None,
-                    ..Default::default()
-                }, client)
+                (
+                    SidecarResponse {
+                        id: req.id.clone(),
+                        status,
+                        body,
+                        final_url,
+                        headers: Some(headers_map),
+                        cookies: Some(cookies_map),
+                        timing_ms,
+                        error: None,
+                        ..Default::default()
+                    },
+                    client,
+                )
             }
             Err(e) => {
                 eprintln!("[wreq] request error: {e}");
-                (SidecarResponse {
-                    id: req.id.clone(),
-                    error: Some(format!("WreqTLS: {e}")),
-                    timing_ms,
-                    ..Default::default()
-                }, client)
+                (
+                    SidecarResponse {
+                        id: req.id.clone(),
+                        error: Some(format!("WreqTLS: {e}")),
+                        timing_ms,
+                        ..Default::default()
+                    },
+                    client,
+                )
             }
         }
     }

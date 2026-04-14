@@ -159,7 +159,9 @@ pub enum ConversionOp {
 }
 
 impl Default for ConversionOp {
-    fn default() -> Self { ConversionOp::Base64Encode }
+    fn default() -> Self {
+        ConversionOp::Base64Encode
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,7 +183,9 @@ pub struct ConversionFunctionSettings {
     pub to_type: String,
 }
 
-fn default_byte_count() -> u32 { 4 }
+fn default_byte_count() -> u32 {
+    4
+}
 
 impl Default for ConversionFunctionSettings {
     fn default() -> Self {
@@ -267,8 +271,14 @@ impl Default for CaseSwitchSettings {
         Self {
             input_var: "data.RESPONSECODE".into(),
             cases: vec![
-                CaseBranch { match_value: "200".into(), result_value: "SUCCESS".into() },
-                CaseBranch { match_value: "403".into(), result_value: "BAN".into() },
+                CaseBranch {
+                    match_value: "200".into(),
+                    result_value: "SUCCESS".into(),
+                },
+                CaseBranch {
+                    match_value: "403".into(),
+                    result_value: "BAN".into(),
+                },
             ],
             default_value: "FAIL".into(),
             output_var: "RESULT".into(),
@@ -303,7 +313,9 @@ pub struct CookieContainerSettings {
     pub save_netscape: bool,
 }
 
-fn default_cookie_source_type() -> String { "text".to_string() }
+fn default_cookie_source_type() -> String {
+    "text".to_string()
+}
 
 impl Default for CookieContainerSettings {
     fn default() -> Self {
@@ -328,7 +340,9 @@ pub struct GroupSettings {
     pub collapsed: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 impl Default for GroupSettings {
     fn default() -> Self {

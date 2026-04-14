@@ -7,10 +7,7 @@ use ironbullet::pipeline::Pipeline;
 
 use super::{AppState, IpcResponse};
 
-pub(super) fn get_config(
-    state: Arc<Mutex<AppState>>,
-    eval_js: impl Fn(String) + Send + 'static,
-) {
+pub(super) fn get_config(state: Arc<Mutex<AppState>>, eval_js: impl Fn(String) + Send + 'static) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
@@ -80,19 +77,45 @@ pub(super) fn save_config(
             let cfg_snapshot = {
                 let mut s = state.lock().await;
                 use ironbullet::plugin::manager::PluginManager;
-                if let Some(v) = data.get("zoom").and_then(|v| v.as_u64()) { s.config.zoom = v as u32; }
-                if let Some(v) = data.get("font_size").and_then(|v| v.as_u64()) { s.config.font_size = v as u32; }
-                if let Some(v) = data.get("font_family").and_then(|v| v.as_str()) { s.config.font_family = v.to_string(); }
-                if let Some(v) = data.get("font_weight").and_then(|v| v.as_str()) { s.config.font_weight = v.to_string(); }
-                if let Some(v) = data.get("default_threads").and_then(|v| v.as_u64()) { s.config.default_threads = v as u32; }
-                if let Some(v) = data.get("left_panel_width").and_then(|v| v.as_u64()) { s.config.left_panel_width = v as u32; }
-                if let Some(v) = data.get("bottom_panel_height").and_then(|v| v.as_u64()) { s.config.bottom_panel_height = v as u32; }
-                if let Some(v) = data.get("show_block_palette").and_then(|v| v.as_bool()) { s.config.show_block_palette = v; }
-                if let Some(v) = data.get("collections_path").and_then(|v| v.as_str()) { s.config.collections_path = v.to_string(); }
-                if let Some(v) = data.get("default_wordlist_path").and_then(|v| v.as_str()) { s.config.default_wordlist_path = v.to_string(); }
-                if let Some(v) = data.get("default_proxy_path").and_then(|v| v.as_str()) { s.config.default_proxy_path = v.to_string(); }
-                if let Some(v) = data.get("configs_path").and_then(|v| v.as_str()) { s.config.configs_path = v.to_string(); }
-                if let Some(v) = data.get("results_path").and_then(|v| v.as_str()) { s.config.results_path = v.to_string(); }
+                if let Some(v) = data.get("zoom").and_then(|v| v.as_u64()) {
+                    s.config.zoom = v as u32;
+                }
+                if let Some(v) = data.get("font_size").and_then(|v| v.as_u64()) {
+                    s.config.font_size = v as u32;
+                }
+                if let Some(v) = data.get("font_family").and_then(|v| v.as_str()) {
+                    s.config.font_family = v.to_string();
+                }
+                if let Some(v) = data.get("font_weight").and_then(|v| v.as_str()) {
+                    s.config.font_weight = v.to_string();
+                }
+                if let Some(v) = data.get("default_threads").and_then(|v| v.as_u64()) {
+                    s.config.default_threads = v as u32;
+                }
+                if let Some(v) = data.get("left_panel_width").and_then(|v| v.as_u64()) {
+                    s.config.left_panel_width = v as u32;
+                }
+                if let Some(v) = data.get("bottom_panel_height").and_then(|v| v.as_u64()) {
+                    s.config.bottom_panel_height = v as u32;
+                }
+                if let Some(v) = data.get("show_block_palette").and_then(|v| v.as_bool()) {
+                    s.config.show_block_palette = v;
+                }
+                if let Some(v) = data.get("collections_path").and_then(|v| v.as_str()) {
+                    s.config.collections_path = v.to_string();
+                }
+                if let Some(v) = data.get("default_wordlist_path").and_then(|v| v.as_str()) {
+                    s.config.default_wordlist_path = v.to_string();
+                }
+                if let Some(v) = data.get("default_proxy_path").and_then(|v| v.as_str()) {
+                    s.config.default_proxy_path = v.to_string();
+                }
+                if let Some(v) = data.get("configs_path").and_then(|v| v.as_str()) {
+                    s.config.configs_path = v.to_string();
+                }
+                if let Some(v) = data.get("results_path").and_then(|v| v.as_str()) {
+                    s.config.results_path = v.to_string();
+                }
                 if let Some(v) = data.get("plugins_path").and_then(|v| v.as_str()) {
                     s.config.plugins_path = v.to_string();
                     let mut pm = PluginManager::new();
@@ -108,15 +131,15 @@ pub(super) fn save_config(
             // Write to disk outside the lock
             config::save_config(&cfg_snapshot);
             let resp = IpcResponse::ok("config_saved", serde_json::json!({}));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
 
-pub(super) fn get_pipeline(
-    state: Arc<Mutex<AppState>>,
-    eval_js: impl Fn(String) + Send + 'static,
-) {
+pub(super) fn get_pipeline(state: Arc<Mutex<AppState>>, eval_js: impl Fn(String) + Send + 'static) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
@@ -127,11 +150,17 @@ pub(super) fn get_pipeline(
             // tab shows filePath=null even though the pipeline was previously saved).
             if let Some(ref path) = s.pipeline_path {
                 if let Some(obj) = pipeline_val.as_object_mut() {
-                    obj.insert("_file_path".to_string(), serde_json::Value::String(path.clone()));
+                    obj.insert(
+                        "_file_path".to_string(),
+                        serde_json::Value::String(path.clone()),
+                    );
                 }
             }
             let resp = IpcResponse::ok("pipeline_loaded", pipeline_val);
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -148,7 +177,8 @@ pub(super) fn update_pipeline(
             // Extract and consume _file_path before deserializing into Pipeline.
             // This keeps the active tab's save path in sync so Ctrl+S on a new tab
             // opens a file dialog instead of overwriting the previously opened file.
-            let file_path = data.as_object_mut()
+            let file_path = data
+                .as_object_mut()
                 .and_then(|o| o.remove("_file_path"))
                 .and_then(|v| v.as_str().map(|s| s.to_string()));
             s.pipeline_path = file_path.filter(|s| !s.is_empty());
@@ -173,7 +203,10 @@ pub(super) fn update_pipeline(
                 });
             }
             let resp = IpcResponse::ok("pipeline_updated", serde_json::json!({}));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -186,8 +219,15 @@ pub(super) fn save_pipeline(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let path = data.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let force_dialog = data.get("force_dialog").and_then(|v| v.as_bool()).unwrap_or(false);
+            let path = data
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let force_dialog = data
+                .get("force_dialog")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             // Resolve save path: explicit path > existing pipeline_path > file dialog.
             // This prevents proxy-group and settings auto-saves from opening a dialog
@@ -231,12 +271,15 @@ pub(super) fn save_pipeline(
                         // Track in recent configs
                         let pipeline_name = s.pipeline.name.clone();
                         s.config.recent_configs.retain(|r| r.path != save_path);
-                        s.config.recent_configs.insert(0, RecentConfigEntry {
-                            path: save_path.clone(),
-                            name: pipeline_name,
-                            description: String::new(),
-                            last_opened: chrono::Utc::now().to_rfc3339(),
-                        });
+                        s.config.recent_configs.insert(
+                            0,
+                            RecentConfigEntry {
+                                path: save_path.clone(),
+                                name: pipeline_name,
+                                description: String::new(),
+                                last_opened: chrono::Utc::now().to_rfc3339(),
+                            },
+                        );
                         if s.config.recent_configs.len() > 10 {
                             s.config.recent_configs.truncate(10);
                         }
@@ -244,12 +287,21 @@ pub(super) fn save_pipeline(
                         config::save_config(&s.config);
                         // Clean save succeeded — remove autosave recovery file
                         let _ = std::fs::remove_file(config::autosave_path());
-                        let resp = IpcResponse::ok("pipeline_saved", serde_json::json!({ "path": save_path }));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp = IpcResponse::ok(
+                            "pipeline_saved",
+                            serde_json::json!({ "path": save_path }),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                     Err(e) => {
                         let resp = IpcResponse::err("pipeline_saved", e.to_string());
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                 }
             }
@@ -265,7 +317,10 @@ pub(super) fn load_pipeline(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let load_path = data.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let load_path = data
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             let configs_dir = { state.lock().await.config.configs_path.clone() };
             let pick_path = if load_path.is_some() {
                 load_path.map(|p| std::path::PathBuf::from(p))
@@ -296,12 +351,15 @@ pub(super) fn load_pipeline(
                         // Track in recent configs
                         let pipeline_name = s.pipeline.name.clone();
                         s.config.recent_configs.retain(|r| r.path != path_str);
-                        s.config.recent_configs.insert(0, RecentConfigEntry {
-                            path: path_str.clone(),
-                            name: pipeline_name,
-                            description: String::new(),
-                            last_opened: chrono::Utc::now().to_rfc3339(),
-                        });
+                        s.config.recent_configs.insert(
+                            0,
+                            RecentConfigEntry {
+                                path: path_str.clone(),
+                                name: pipeline_name,
+                                description: String::new(),
+                                last_opened: chrono::Utc::now().to_rfc3339(),
+                            },
+                        );
                         if s.config.recent_configs.len() > 10 {
                             s.config.recent_configs.truncate(10);
                         }
@@ -312,16 +370,26 @@ pub(super) fn load_pipeline(
                         if is_autosave {
                             let _ = std::fs::remove_file(config::autosave_path());
                         }
-                        let mut pipeline_val = serde_json::to_value(&s.pipeline).unwrap_or_default();
+                        let mut pipeline_val =
+                            serde_json::to_value(&s.pipeline).unwrap_or_default();
                         if let Some(obj) = pipeline_val.as_object_mut() {
-                            obj.insert("_file_path".to_string(), serde_json::Value::String(path_str));
+                            obj.insert(
+                                "_file_path".to_string(),
+                                serde_json::Value::String(path_str),
+                            );
                         }
                         let resp = IpcResponse::ok("pipeline_loaded", pipeline_val);
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                     Err(e) => {
                         let resp = IpcResponse::err("pipeline_loaded", e.to_string());
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                 }
             }
@@ -337,15 +405,19 @@ pub(super) fn get_recent_configs(
     if let Ok(handle) = rt {
         handle.spawn(async move {
             let s = state.lock().await;
-            let resp = IpcResponse::ok("recent_configs", serde_json::to_value(&s.config.recent_configs).unwrap_or_default());
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "recent_configs",
+                serde_json::to_value(&s.config.recent_configs).unwrap_or_default(),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
 
-pub(super) fn setup_default_dirs(
-    eval_js: impl Fn(String) + Send + 'static,
-) {
+pub(super) fn setup_default_dirs(eval_js: impl Fn(String) + Send + 'static) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
@@ -357,7 +429,8 @@ pub(super) fn setup_default_dirs(
 
             let dirs = ["wordlists", "proxies", "configs", "results"];
             let mut created: Vec<String> = Vec::new();
-            let mut paths: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            let mut paths: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
 
             for name in &dirs {
                 let dir = base.join(name);
@@ -369,11 +442,17 @@ pub(super) fn setup_default_dirs(
                 paths.insert(name.to_string(), dir.display().to_string());
             }
 
-            let resp = IpcResponse::ok("dirs_created", serde_json::json!({
-                "created": created,
-                "paths": paths,
-            }));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "dirs_created",
+                serde_json::json!({
+                    "created": created,
+                    "paths": paths,
+                }),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }

@@ -44,8 +44,14 @@ impl Default for ConstantsSettings {
     fn default() -> Self {
         Self {
             constants: vec![
-                ConstantEntry { name: "API_KEY".into(), value: "your-key-here".into() },
-                ConstantEntry { name: "BASE_URL".into(), value: "https://api.example.com".into() },
+                ConstantEntry {
+                    name: "API_KEY".into(),
+                    value: "your-key-here".into(),
+                },
+                ConstantEntry {
+                    name: "BASE_URL".into(),
+                    value: "https://api.example.com".into(),
+                },
             ],
         }
     }

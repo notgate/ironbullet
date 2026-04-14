@@ -1,8 +1,8 @@
+use ironbullet::sidecar::shadowsocks_pool::resolve_ss_proxy;
 /// Integration test for the embedded Shadowsocks pool.
 /// Uses PIA's public free shadowsocks servers to verify the tunnel works.
 /// Run with: cargo test --test ss_pool_test -- --nocapture
 use std::time::Duration;
-use ironbullet::sidecar::shadowsocks_pool::resolve_ss_proxy;
 
 #[tokio::test]
 async fn test_ss_pool_pia_swiss() {
@@ -11,7 +11,10 @@ async fn test_ss_pool_pia_swiss() {
 
     let local_proxy = resolve_ss_proxy(ss_url);
     println!("Local tunnel: {local_proxy}");
-    assert!(local_proxy.starts_with("socks5://127.0.0.1:"), "expected local socks5 URL, got: {local_proxy}");
+    assert!(
+        local_proxy.starts_with("socks5://127.0.0.1:"),
+        "expected local socks5 URL, got: {local_proxy}"
+    );
 
     // Give the embedded server a moment to bind and be ready
     tokio::time::sleep(Duration::from_millis(1000)).await;
@@ -71,13 +74,29 @@ fn base64_encode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         let b0 = bytes[i] as u32;
-        let b1 = if i+1 < bytes.len() { bytes[i+1] as u32 } else { 0 };
-        let b2 = if i+2 < bytes.len() { bytes[i+2] as u32 } else { 0 };
+        let b1 = if i + 1 < bytes.len() {
+            bytes[i + 1] as u32
+        } else {
+            0
+        };
+        let b2 = if i + 2 < bytes.len() {
+            bytes[i + 2] as u32
+        } else {
+            0
+        };
         let n = (b0 << 16) | (b1 << 8) | b2;
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if i+1 < bytes.len() { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if i+2 < bytes.len() { TABLE[(n & 63) as usize] as char } else { '=' });
+        out.push(if i + 1 < bytes.len() {
+            TABLE[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if i + 2 < bytes.len() {
+            TABLE[(n & 63) as usize] as char
+        } else {
+            '='
+        });
         i += 3;
     }
     out

@@ -8,7 +8,9 @@ pub enum JwtAlgorithm {
 }
 
 impl Default for JwtAlgorithm {
-    fn default() -> Self { Self::HS256 }
+    fn default() -> Self {
+        Self::HS256
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -20,7 +22,9 @@ pub enum JwtAction {
 }
 
 impl Default for JwtAction {
-    fn default() -> Self { Self::Sign }
+    fn default() -> Self {
+        Self::Sign
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,8 +57,12 @@ pub struct JwtSettings {
     pub verify_on_decode: bool,
 }
 
-fn default_output_var() -> String { "JWT".to_string() }
-fn default_true() -> bool { true }
+fn default_output_var() -> String {
+    "JWT".to_string()
+}
+fn default_true() -> bool {
+    true
+}
 
 impl Default for JwtSettings {
     fn default() -> Self {

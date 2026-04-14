@@ -8,7 +8,9 @@ pub(super) struct VarTracker {
 
 impl VarTracker {
     pub fn new() -> Self {
-        Self { defined: HashSet::new() }
+        Self {
+            defined: HashSet::new(),
+        }
     }
 
     pub fn define(&mut self, name: &str) {
@@ -51,16 +53,18 @@ pub(super) fn generate_condition_code(cond: &KeyCondition) -> String {
         Comparison::NotEqualTo => format!("{} != \"{}\"", source, escape_str(&cond.value)),
         Comparison::GreaterThan => format!("{} > {}", source, cond.value),
         Comparison::LessThan => format!("{} < {}", source, cond.value),
-        Comparison::MatchesRegex => format!("Regex::new(r\"{}\").unwrap().is_match(&{})", escape_str(&cond.value), source),
+        Comparison::MatchesRegex => format!(
+            "Regex::new(r\"{}\").unwrap().is_match(&{})",
+            escape_str(&cond.value),
+            source
+        ),
         Comparison::Exists => format!("!{}.is_empty()", source),
         Comparison::NotExists => format!("{}.is_empty()", source),
     }
 }
 
 pub(super) fn var_name(s: &str) -> String {
-    s.replace('.', "_")
-        .replace('@', "")
-        .to_lowercase()
+    s.replace('.', "_").replace('@', "").to_lowercase()
 }
 
 pub(super) fn escape_str(s: &str) -> String {

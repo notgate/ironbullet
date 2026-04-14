@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::Block;
 use super::settings_check::KeyCondition;
+use super::Block;
 
 // ── If/Else ──
 

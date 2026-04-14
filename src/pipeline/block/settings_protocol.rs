@@ -1,12 +1,26 @@
 use serde::{Deserialize, Serialize};
 
-fn default_smtp_action() -> String { "VERIFY".into() }
-fn default_ssl_verify() -> bool { true }
-fn default_ftp_command() -> String { "LIST".into() }
-fn default_imap_command() -> String { "LOGIN".into() }
-fn default_pop_command() -> String { "STAT".into() }
-fn default_imap_mailbox() -> String { "INBOX".into() }
-fn default_message_num() -> u32 { 1 }
+fn default_smtp_action() -> String {
+    "VERIFY".into()
+}
+fn default_ssl_verify() -> bool {
+    true
+}
+fn default_ftp_command() -> String {
+    "LIST".into()
+}
+fn default_imap_command() -> String {
+    "LOGIN".into()
+}
+fn default_pop_command() -> String {
+    "STAT".into()
+}
+fn default_imap_mailbox() -> String {
+    "INBOX".into()
+}
+fn default_message_num() -> u32 {
+    1
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TcpRequestSettings {
@@ -23,7 +37,16 @@ pub struct TcpRequestSettings {
 
 impl Default for TcpRequestSettings {
     fn default() -> Self {
-        Self { host: String::new(), port: 80, data: String::new(), output_var: "TCP_RESPONSE".into(), timeout_ms: 5000, use_tls: false, ssl_verify: true, capture: false }
+        Self {
+            host: String::new(),
+            port: 80,
+            data: String::new(),
+            output_var: "TCP_RESPONSE".into(),
+            timeout_ms: 5000,
+            use_tls: false,
+            ssl_verify: true,
+            capture: false,
+        }
     }
 }
 
@@ -39,7 +62,14 @@ pub struct UdpRequestSettings {
 
 impl Default for UdpRequestSettings {
     fn default() -> Self {
-        Self { host: String::new(), port: 53, data: String::new(), output_var: "UDP_RESPONSE".into(), timeout_ms: 5000, capture: false }
+        Self {
+            host: String::new(),
+            port: 53,
+            data: String::new(),
+            output_var: "UDP_RESPONSE".into(),
+            timeout_ms: 5000,
+            capture: false,
+        }
     }
 }
 
@@ -68,11 +98,17 @@ pub struct FtpRequestSettings {
 impl Default for FtpRequestSettings {
     fn default() -> Self {
         Self {
-            host: String::new(), port: 21,
-            username: String::new(), password: String::new(),
-            command: "LIST".into(), remote_path: String::new(),
-            local_path: String::new(), output_dir: String::new(),
-            output_var: "FTP_RESPONSE".into(), timeout_ms: 10000, capture: false,
+            host: String::new(),
+            port: 21,
+            username: String::new(),
+            password: String::new(),
+            command: "LIST".into(),
+            remote_path: String::new(),
+            local_path: String::new(),
+            output_dir: String::new(),
+            output_var: "FTP_RESPONSE".into(),
+            timeout_ms: 10000,
+            capture: false,
         }
     }
 }
@@ -84,6 +120,8 @@ pub struct SshRequestSettings {
     pub username: String,
     pub password: String,
     pub command: String,
+    #[serde(default)]
+    pub ssh_cmd: String,
     pub output_var: String,
     pub timeout_ms: u64,
     pub capture: bool,
@@ -91,7 +129,17 @@ pub struct SshRequestSettings {
 
 impl Default for SshRequestSettings {
     fn default() -> Self {
-        Self { host: String::new(), port: 22, username: String::new(), password: String::new(), command: "banner".into(), output_var: "SSH_RESPONSE".into(), timeout_ms: 10000, capture: false }
+        Self {
+            host: String::new(),
+            port: 22,
+            username: String::new(),
+            password: String::new(),
+            command: "banner".into(),
+            ssh_cmd: String::new(),
+            output_var: "SSH_RESPONSE".into(),
+            timeout_ms: 10000,
+            capture: false,
+        }
     }
 }
 
@@ -120,11 +168,18 @@ pub struct ImapRequestSettings {
 impl Default for ImapRequestSettings {
     fn default() -> Self {
         Self {
-            host: String::new(), port: 993,
-            username: String::new(), password: String::new(),
-            use_tls: true, ssl_verify: true, command: "LOGIN".into(),
-            mailbox: "INBOX".into(), message_num: 1,
-            output_var: "IMAP_RESPONSE".into(), timeout_ms: 10000, capture: false,
+            host: String::new(),
+            port: 993,
+            username: String::new(),
+            password: String::new(),
+            use_tls: true,
+            ssl_verify: true,
+            command: "LOGIN".into(),
+            mailbox: "INBOX".into(),
+            message_num: 1,
+            output_var: "IMAP_RESPONSE".into(),
+            timeout_ms: 10000,
+            capture: false,
         }
     }
 }
@@ -162,13 +217,21 @@ pub struct SmtpRequestSettings {
 impl Default for SmtpRequestSettings {
     fn default() -> Self {
         Self {
-            host: String::new(), port: 587,
-            username: String::new(), password: String::new(),
-            use_tls: true, ssl_verify: true, command: "EHLO".into(),
+            host: String::new(),
+            port: 587,
+            username: String::new(),
+            password: String::new(),
+            use_tls: true,
+            ssl_verify: true,
+            command: "EHLO".into(),
             action: "VERIFY".into(),
-            from: String::new(), to: String::new(),
-            subject: String::new(), body_template: String::new(),
-            output_var: "SMTP_RESPONSE".into(), timeout_ms: 10000, capture: false,
+            from: String::new(),
+            to: String::new(),
+            subject: String::new(),
+            body_template: String::new(),
+            output_var: "SMTP_RESPONSE".into(),
+            timeout_ms: 10000,
+            capture: false,
         }
     }
 }
@@ -195,11 +258,17 @@ pub struct PopRequestSettings {
 impl Default for PopRequestSettings {
     fn default() -> Self {
         Self {
-            host: String::new(), port: 995,
-            username: String::new(), password: String::new(),
-            use_tls: true, ssl_verify: true, command: "STAT".into(),
+            host: String::new(),
+            port: 995,
+            username: String::new(),
+            password: String::new(),
+            use_tls: true,
+            ssl_verify: true,
+            command: "STAT".into(),
             message_num: 1,
-            output_var: "POP_RESPONSE".into(), timeout_ms: 10000, capture: false,
+            output_var: "POP_RESPONSE".into(),
+            timeout_ms: 10000,
+            capture: false,
         }
     }
 }

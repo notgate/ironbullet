@@ -1,6 +1,6 @@
+use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use serde_json::json;
 
 use super::{AppState, IpcResponse};
 
@@ -9,16 +9,16 @@ const GITHUB_REPO: &str = "ZeraTS/ironbullet";
 
 /// Return current app version info (no network call)
 pub fn get_app_info() -> IpcResponse {
-    IpcResponse::ok("app_info", serde_json::json!({
-        "version": CURRENT_VERSION,
-    }))
+    IpcResponse::ok(
+        "app_info",
+        serde_json::json!({
+            "version": CURRENT_VERSION,
+        }),
+    )
 }
 
 /// Check GitHub for the latest release
-pub fn check_for_updates(
-    _state: Arc<Mutex<AppState>>,
-    eval_js: impl Fn(String) + Send + 'static,
-) {
+pub fn check_for_updates(_state: Arc<Mutex<AppState>>, eval_js: impl Fn(String) + Send + 'static) {
     tokio::spawn(async move {
         let url = format!(
             "https://api.github.com/repos/{}/releases/latest",
@@ -87,25 +87,27 @@ pub fn check_for_updates(
             .as_array()
             .and_then(|assets| {
                 // First pass: zip containing platform hint
-                assets.iter().find_map(|a| {
-                    let name = a["name"].as_str().unwrap_or("").to_lowercase();
-                    if name.contains(platform_hint) && name.ends_with(".zip") {
-                        a["browser_download_url"].as_str().map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .or_else(|| {
-                    // Second pass: bare .exe fallback (Windows only)
-                    assets.iter().find_map(|a| {
-                        let name = a["name"].as_str().unwrap_or("");
-                        if name.ends_with(".exe") {
+                assets
+                    .iter()
+                    .find_map(|a| {
+                        let name = a["name"].as_str().unwrap_or("").to_lowercase();
+                        if name.contains(platform_hint) && name.ends_with(".zip") {
                             a["browser_download_url"].as_str().map(|s| s.to_string())
                         } else {
                             None
                         }
                     })
-                })
+                    .or_else(|| {
+                        // Second pass: bare .exe fallback (Windows only)
+                        assets.iter().find_map(|a| {
+                            let name = a["name"].as_str().unwrap_or("");
+                            if name.ends_with(".exe") {
+                                a["browser_download_url"].as_str().map(|s| s.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                    })
             })
             .unwrap_or_default();
 
@@ -150,7 +152,10 @@ pub fn download_update(
         let client = reqwest::Client::new();
 
         // Send progress: started
-        let progress = IpcResponse::ok("update_progress", json!({ "stage": "downloading", "percent": 0 }));
+        let progress = IpcResponse::ok(
+            "update_progress",
+            json!({ "stage": "downloading", "percent": 0 }),
+        );
         eval_js(format!(
             "window.__ipc_callback({})",
             serde_json::to_string(&progress).unwrap()
@@ -165,7 +170,8 @@ pub fn download_update(
         let response = match result {
             Ok(r) => r,
             Err(e) => {
-                let resp = IpcResponse::err("update_download_result", format!("Download failed: {}", e));
+                let resp =
+                    IpcResponse::err("update_download_result", format!("Download failed: {}", e));
                 eval_js(format!(
                     "window.__ipc_callback({})",
                     serde_json::to_string(&resp).unwrap()
@@ -181,7 +187,10 @@ pub fn download_update(
         let current_exe = match std::env::current_exe() {
             Ok(p) => p,
             Err(e) => {
-                let resp = IpcResponse::err("update_download_result", format!("Cannot find exe path: {}", e));
+                let resp = IpcResponse::err(
+                    "update_download_result",
+                    format!("Cannot find exe path: {}", e),
+                );
                 eval_js(format!(
                     "window.__ipc_callback({})",
                     serde_json::to_string(&resp).unwrap()
@@ -197,7 +206,10 @@ pub fn download_update(
         let mut file = match tokio::fs::File::create(&update_path).await {
             Ok(f) => f,
             Err(e) => {
-                let resp = IpcResponse::err("update_download_result", format!("Cannot create temp file: {}", e));
+                let resp = IpcResponse::err(
+                    "update_download_result",
+                    format!("Cannot create temp file: {}", e),
+                );
                 eval_js(format!(
                     "window.__ipc_callback({})",
                     serde_json::to_string(&resp).unwrap()
@@ -215,7 +227,10 @@ pub fn download_update(
             let chunk = match chunk {
                 Ok(c) => c,
                 Err(e) => {
-                    let resp = IpcResponse::err("update_download_result", format!("Download error: {}", e));
+                    let resp = IpcResponse::err(
+                        "update_download_result",
+                        format!("Download error: {}", e),
+                    );
                     eval_js(format!(
                         "window.__ipc_callback({})",
                         serde_json::to_string(&resp).unwrap()
@@ -225,7 +240,8 @@ pub fn download_update(
             };
 
             if let Err(e) = file.write_all(&chunk).await {
-                let resp = IpcResponse::err("update_download_result", format!("Write error: {}", e));
+                let resp =
+                    IpcResponse::err("update_download_result", format!("Write error: {}", e));
                 eval_js(format!(
                     "window.__ipc_callback({})",
                     serde_json::to_string(&resp).unwrap()
@@ -243,7 +259,10 @@ pub fn download_update(
             // Only send progress updates at each percentage point
             if pct != last_pct {
                 last_pct = pct;
-                let progress = IpcResponse::ok("update_progress", json!({ "stage": "downloading", "percent": pct }));
+                let progress = IpcResponse::ok(
+                    "update_progress",
+                    json!({ "stage": "downloading", "percent": pct }),
+                );
                 eval_js(format!(
                     "window.__ipc_callback({})",
                     serde_json::to_string(&progress).unwrap()
@@ -254,7 +273,10 @@ pub fn download_update(
         drop(file);
 
         // Send progress: installing
-        let progress = IpcResponse::ok("update_progress", json!({ "stage": "installing", "percent": 100 }));
+        let progress = IpcResponse::ok(
+            "update_progress",
+            json!({ "stage": "installing", "percent": 100 }),
+        );
         eval_js(format!(
             "window.__ipc_callback({})",
             serde_json::to_string(&progress).unwrap()
@@ -265,8 +287,14 @@ pub fn download_update(
             let zip_data = match std::fs::read(&update_path) {
                 Ok(d) => d,
                 Err(e) => {
-                    let resp = IpcResponse::err("update_download_result", format!("Cannot read zip: {}", e));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                    let resp = IpcResponse::err(
+                        "update_download_result",
+                        format!("Cannot read zip: {}", e),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap()
+                    ));
                     return;
                 }
             };
@@ -275,20 +303,29 @@ pub fn download_update(
             let mut archive = match zip::ZipArchive::new(cursor) {
                 Ok(a) => a,
                 Err(e) => {
-                    let resp = IpcResponse::err("update_download_result", format!("Cannot open zip: {}", e));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                    let resp = IpcResponse::err(
+                        "update_download_result",
+                        format!("Cannot open zip: {}", e),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap()
+                    ));
                     return;
                 }
             };
 
             // Find the main executable in the zip (the one matching our binary name, not sidecar)
-            let exe_name = current_exe.file_name()
+            let exe_name = current_exe
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("ironbullet.exe")
                 .to_string();
 
             let exe_idx = (0..archive.len()).find(|&i| {
-                archive.by_index(i).ok()
+                archive
+                    .by_index(i)
+                    .ok()
                     .map(|f| {
                         let name = f.name().to_lowercase();
                         let fname = std::path::Path::new(&name)
@@ -296,8 +333,8 @@ pub fn download_update(
                             .and_then(|n| n.to_str())
                             .unwrap_or("")
                             .to_string();
-                        fname == exe_name.to_lowercase() || 
-                        (fname.ends_with(".exe") && !fname.contains("sidecar"))
+                        fname == exe_name.to_lowercase()
+                            || (fname.ends_with(".exe") && !fname.contains("sidecar"))
                     })
                     .unwrap_or(false)
             });
@@ -305,8 +342,14 @@ pub fn download_update(
             let idx = match exe_idx {
                 Some(i) => i,
                 None => {
-                    let resp = IpcResponse::err("update_download_result", "No executable found in zip".into());
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                    let resp = IpcResponse::err(
+                        "update_download_result",
+                        "No executable found in zip".into(),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap()
+                    ));
                     return;
                 }
             };
@@ -317,15 +360,27 @@ pub fn download_update(
                 let mut out = match std::fs::File::create(&extracted_path) {
                     Ok(f) => f,
                     Err(e) => {
-                        let resp = IpcResponse::err("update_download_result", format!("Cannot create extracted file: {}", e));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                        let resp = IpcResponse::err(
+                            "update_download_result",
+                            format!("Cannot create extracted file: {}", e),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap()
+                        ));
                         return;
                     }
                 };
                 use std::io::copy;
                 if let Err(e) = copy(&mut zip_file, &mut out) {
-                    let resp = IpcResponse::err("update_download_result", format!("Extraction failed: {}", e));
-                    eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap()));
+                    let resp = IpcResponse::err(
+                        "update_download_result",
+                        format!("Extraction failed: {}", e),
+                    );
+                    eval_js(format!(
+                        "window.__ipc_callback({})",
+                        serde_json::to_string(&resp).unwrap()
+                    ));
                     return;
                 }
             }
@@ -343,7 +398,10 @@ pub fn download_update(
         if let Err(e) = std::fs::rename(&current_exe, &backup_path) {
             let resp = IpcResponse::err(
                 "update_download_result",
-                format!("Cannot rename current exe: {} — try running as administrator", e),
+                format!(
+                    "Cannot rename current exe: {} — try running as administrator",
+                    e
+                ),
             );
             eval_js(format!(
                 "window.__ipc_callback({})",
@@ -355,7 +413,10 @@ pub fn download_update(
         if let Err(e) = std::fs::rename(&exe_to_install, &current_exe) {
             // Restore backup
             let _ = std::fs::rename(&backup_path, &current_exe);
-            let resp = IpcResponse::err("update_download_result", format!("Cannot install update: {}", e));
+            let resp = IpcResponse::err(
+                "update_download_result",
+                format!("Cannot install update: {}", e),
+            );
             eval_js(format!(
                 "window.__ipc_callback({})",
                 serde_json::to_string(&resp).unwrap()

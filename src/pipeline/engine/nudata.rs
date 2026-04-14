@@ -38,7 +38,9 @@ impl ExecutionContext {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| crate::error::AppError::Pipeline(format!("NuData HTTP client error: {e}")))?;
+            .map_err(|e| {
+                crate::error::AppError::Pipeline(format!("NuData HTTP client error: {e}"))
+            })?;
 
         let resp = client
             .post(&endpoint)
@@ -46,29 +48,36 @@ impl ExecutionContext {
             .body(serde_json::to_string(&body).unwrap_or_default())
             .send()
             .await
-            .map_err(|e| crate::error::AppError::Pipeline(format!("NuData solver unreachable: {e} — is nudata-solver running on {solver_url}?")))?;
+            .map_err(|e| {
+                crate::error::AppError::Pipeline(format!(
+                    "NuData solver unreachable: {e} — is nudata-solver running on {solver_url}?"
+                ))
+            })?;
 
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(crate::error::AppError::Pipeline(
-                format!("NuData solver returned {status}: {text}")
-            ));
+            return Err(crate::error::AppError::Pipeline(format!(
+                "NuData solver returned {status}: {text}"
+            )));
         }
 
-        let json: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| crate::error::AppError::Pipeline(format!("NuData solver bad JSON: {e}")))?;
+        let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+            crate::error::AppError::Pipeline(format!("NuData solver bad JSON: {e}"))
+        })?;
 
-        let nds_pmd = json["nds-pmd"]
-            .as_str()
-            .ok_or_else(|| crate::error::AppError::Pipeline("NuData solver returned no nds-pmd field".into()))?;
+        let nds_pmd = json["nds-pmd"].as_str().ok_or_else(|| {
+            crate::error::AppError::Pipeline("NuData solver returned no nds-pmd field".into())
+        })?;
 
-        self.variables.set_user(&settings.output_var, nds_pmd.to_string(), settings.capture);
+        self.variables
+            .set_user(&settings.output_var, nds_pmd.to_string(), settings.capture);
 
         if !settings.sid_var.is_empty() {
             if let Some(sid) = json["sid"].as_str() {
-                self.variables.set_user(&settings.sid_var, sid.to_string(), settings.capture);
+                self.variables
+                    .set_user(&settings.sid_var, sid.to_string(), settings.capture);
             }
         }
 

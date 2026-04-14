@@ -8,11 +8,12 @@ use super::ImportResult;
 // ────────────────────────────────────────────────────────────
 
 pub(super) fn import_openbullet_json(content: &str) -> Result<ImportResult, String> {
-    let json: serde_json::Value = serde_json::from_str(content)
-        .map_err(|e| format!("Failed to parse config JSON: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| format!("Failed to parse config JSON: {}", e))?;
 
     let mut pipeline = Pipeline::default();
-    pipeline.name = json.get("Settings")
+    pipeline.name = json
+        .get("Settings")
         .and_then(|s| s.get("Name"))
         .and_then(|n| n.as_str())
         .unwrap_or("Imported OB2 Config")
@@ -20,7 +21,8 @@ pub(super) fn import_openbullet_json(content: &str) -> Result<ImportResult, Stri
 
     let mut blocks = Vec::new();
 
-    if let Some(ob_blocks) = json.get("Settings")
+    if let Some(ob_blocks) = json
+        .get("Settings")
         .and_then(|s| s.get("Blocks"))
         .and_then(|b| b.as_array())
     {
@@ -30,11 +32,13 @@ pub(super) fn import_openbullet_json(content: &str) -> Result<ImportResult, Stri
                 "HttpRequestBlock" | "Request" => {
                     let mut block = Block::new(BlockType::HttpRequest);
                     if let BlockSettings::HttpRequest(ref mut s) = block.settings {
-                        s.method = ob_block.get("Method")
+                        s.method = ob_block
+                            .get("Method")
                             .and_then(|m| m.as_str())
                             .unwrap_or("GET")
                             .to_string();
-                        s.url = ob_block.get("Url")
+                        s.url = ob_block
+                            .get("Url")
                             .and_then(|u| u.as_str())
                             .unwrap_or("")
                             .to_string();
@@ -64,5 +68,9 @@ pub(super) fn import_openbullet_json(content: &str) -> Result<ImportResult, Stri
     }
 
     pipeline.blocks = blocks;
-    Ok(ImportResult { pipeline, warnings: Vec::new(), security_issues: Vec::new() })
+    Ok(ImportResult {
+        pipeline,
+        warnings: Vec::new(),
+        security_issues: Vec::new(),
+    })
 }

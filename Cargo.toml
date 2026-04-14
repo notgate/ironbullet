@@ -55,7 +55,6 @@ num-bigint = "0.4"
 num-traits = "0.2"
 resvg = "0.43"
 
-wreq = { version = "6.0.0-rc.28", features = ["cookies", "gzip", "deflate", "brotli", "socks"] }
 wreq-util = "3.0.0-rc.10"
 
 # Shadowsocks: embedded local SOCKS5 proxy for ss:// proxy entries.
@@ -64,7 +63,12 @@ shadowsocks         = { version = "1.24", features = ["aead-cipher-2022"] }
 shadowsocks-service = { version = "1.24", default-features = false, features = ["local", "local-socks4"] }
 arboard = "3.6.1"
 
+[target.'cfg(not(windows))'.dependencies]
+ssh2 = { version = "0.9", features = ["vendored-openssl"] }
+wreq = { version = "6.0.0-rc.28", features = ["cookies", "gzip", "deflate", "brotli", "socks", "prefix-symbols"] }
+
 [target.'cfg(windows)'.dependencies]
+wreq = { version = "6.0.0-rc.28", features = ["cookies", "gzip", "deflate", "brotli", "socks"] }
 windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_Console"] }
 
 [dev-dependencies]

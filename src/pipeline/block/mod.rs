@@ -1,34 +1,34 @@
-mod settings_http;
-mod settings_parse;
-pub(crate) mod settings_check;
-pub mod settings_functions;
-mod settings_control;
-mod settings_browser;
-mod settings_protocol;
-mod settings_bypass;
-mod settings_network;
 mod settings_akamai;
-mod settings_extended_functions;
+mod settings_browser;
+mod settings_bypass;
+pub(crate) mod settings_check;
+mod settings_control;
 mod settings_data;
-mod settings_jwt;
+mod settings_extended_functions;
+pub mod settings_functions;
 mod settings_header_spoof;
+mod settings_http;
+mod settings_jwt;
+mod settings_network;
 mod settings_nudata;
+mod settings_parse;
+mod settings_protocol;
 
-pub use settings_http::*;
-pub use settings_parse::*;
-pub use settings_check::*;
-pub use settings_functions::*;
-pub use settings_control::*;
-pub use settings_browser::*;
-pub use settings_protocol::*;
-pub use settings_bypass::*;
-pub use settings_network::*;
 pub use settings_akamai::*;
-pub use settings_extended_functions::*;
+pub use settings_browser::*;
+pub use settings_bypass::*;
+pub use settings_check::*;
+pub use settings_control::*;
 pub use settings_data::*;
-pub use settings_jwt::*;
+pub use settings_extended_functions::*;
+pub use settings_functions::*;
 pub use settings_header_spoof::*;
+pub use settings_http::*;
+pub use settings_jwt::*;
+pub use settings_network::*;
 pub use settings_nudata::NuDataSensorSettings;
+pub use settings_parse::*;
+pub use settings_protocol::*;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -225,17 +225,64 @@ impl BlockType {
 
     pub fn category(&self) -> &'static str {
         match self {
-            Self::HttpRequest | Self::TcpRequest | Self::UdpRequest | Self::FtpRequest | Self::SshRequest | Self::ImapRequest | Self::SmtpRequest | Self::PopRequest => "Requests",
-            Self::CaptchaSolver | Self::CloudflareBypass | Self::LaravelCsrf | Self::OcrCaptcha | Self::RecaptchaInvisible => "Bypass",
+            Self::HttpRequest
+            | Self::TcpRequest
+            | Self::UdpRequest
+            | Self::FtpRequest
+            | Self::SshRequest
+            | Self::ImapRequest
+            | Self::SmtpRequest
+            | Self::PopRequest => "Requests",
+            Self::CaptchaSolver
+            | Self::CloudflareBypass
+            | Self::LaravelCsrf
+            | Self::OcrCaptcha
+            | Self::RecaptchaInvisible => "Bypass",
             Self::XacfSensor | Self::DataDomeSensor | Self::AkamaiV3Sensor => "Sensors",
             Self::RandomUserAgent | Self::RandomData | Self::Plugin => "Utilities",
-            Self::ParseLR | Self::ParseRegex | Self::ParseJSON | Self::ParseCSS | Self::ParseXPath | Self::ParseCookie | Self::LambdaParser | Self::Parse => "Parsing",
+            Self::ParseLR
+            | Self::ParseRegex
+            | Self::ParseJSON
+            | Self::ParseCSS
+            | Self::ParseXPath
+            | Self::ParseCookie
+            | Self::LambdaParser
+            | Self::Parse => "Parsing",
             Self::KeyCheck => "Checks",
-            Self::StringFunction | Self::ListFunction | Self::CryptoFunction | Self::ConversionFunction | Self::DateFunction | Self::CookieContainer | Self::ByteArray | Self::Constants | Self::Dictionary | Self::FloatFunction | Self::IntegerFunction | Self::TimeFunction | Self::GenerateGUID | Self::PhoneCountry => "Functions",
+            Self::StringFunction
+            | Self::ListFunction
+            | Self::CryptoFunction
+            | Self::ConversionFunction
+            | Self::DateFunction
+            | Self::CookieContainer
+            | Self::ByteArray
+            | Self::Constants
+            | Self::Dictionary
+            | Self::FloatFunction
+            | Self::IntegerFunction
+            | Self::TimeFunction
+            | Self::GenerateGUID
+            | Self::PhoneCountry => "Functions",
             Self::FileSystem => "FileSystem",
-            Self::IfElse | Self::Loop | Self::Delay | Self::Script | Self::CaseSwitch | Self::Group => "Control",
-            Self::Log | Self::SetVariable | Self::ClearCookies | Self::Webhook | Self::WebSocket => "Utilities",
-            Self::BrowserOpen | Self::NavigateTo | Self::ClickElement | Self::TypeText | Self::WaitForElement | Self::GetElementText | Self::Screenshot | Self::ExecuteJs => "Browser",
+            Self::IfElse
+            | Self::Loop
+            | Self::Delay
+            | Self::Script
+            | Self::CaseSwitch
+            | Self::Group => "Control",
+            Self::Log
+            | Self::SetVariable
+            | Self::ClearCookies
+            | Self::Webhook
+            | Self::WebSocket => "Utilities",
+            Self::BrowserOpen
+            | Self::NavigateTo
+            | Self::ClickElement
+            | Self::TypeText
+            | Self::WaitForElement
+            | Self::GetElementText
+            | Self::Screenshot
+            | Self::ExecuteJs => "Browser",
             Self::JwtToken | Self::HeaderSpoof | Self::NuDataSensor => "Security",
         }
     }
@@ -269,10 +316,16 @@ impl BlockType {
             Self::ParseCookie => BlockSettings::ParseCookie(ParseCookieSettings::default()),
             Self::Parse => BlockSettings::Parse(ParseSettings::default()),
             Self::KeyCheck => BlockSettings::KeyCheck(KeyCheckSettings::default()),
-            Self::StringFunction => BlockSettings::StringFunction(StringFunctionSettings::default()),
+            Self::StringFunction => {
+                BlockSettings::StringFunction(StringFunctionSettings::default())
+            }
             Self::ListFunction => BlockSettings::ListFunction(ListFunctionSettings::default()),
-            Self::CryptoFunction => BlockSettings::CryptoFunction(CryptoFunctionSettings::default()),
-            Self::ConversionFunction => BlockSettings::ConversionFunction(ConversionFunctionSettings::default()),
+            Self::CryptoFunction => {
+                BlockSettings::CryptoFunction(CryptoFunctionSettings::default())
+            }
+            Self::ConversionFunction => {
+                BlockSettings::ConversionFunction(ConversionFunctionSettings::default())
+            }
             Self::IfElse => BlockSettings::IfElse(IfElseSettings::default()),
             Self::Loop => BlockSettings::Loop(LoopSettings::default()),
             Self::Delay => BlockSettings::Delay(DelaySettings::default()),
@@ -290,33 +343,51 @@ impl BlockType {
             Self::SmtpRequest => BlockSettings::SmtpRequest(SmtpRequestSettings::default()),
             Self::PopRequest => BlockSettings::PopRequest(PopRequestSettings::default()),
             Self::CaptchaSolver => BlockSettings::CaptchaSolver(CaptchaSolverSettings::default()),
-            Self::CloudflareBypass => BlockSettings::CloudflareBypass(CloudflareBypassSettings::default()),
+            Self::CloudflareBypass => {
+                BlockSettings::CloudflareBypass(CloudflareBypassSettings::default())
+            }
             Self::LaravelCsrf => BlockSettings::LaravelCsrf(LaravelCsrfSettings::default()),
             Self::DateFunction => BlockSettings::DateFunction(DateFunctionSettings::default()),
             Self::CaseSwitch => BlockSettings::CaseSwitch(CaseSwitchSettings::default()),
-            Self::CookieContainer => BlockSettings::CookieContainer(CookieContainerSettings::default()),
+            Self::CookieContainer => {
+                BlockSettings::CookieContainer(CookieContainerSettings::default())
+            }
             Self::BrowserOpen => BlockSettings::BrowserOpen(BrowserOpenSettings::default()),
             Self::NavigateTo => BlockSettings::NavigateTo(NavigateToSettings::default()),
             Self::ClickElement => BlockSettings::ClickElement(ClickElementSettings::default()),
             Self::TypeText => BlockSettings::TypeText(TypeTextSettings::default()),
-            Self::WaitForElement => BlockSettings::WaitForElement(WaitForElementSettings::default()),
-            Self::GetElementText => BlockSettings::GetElementText(GetElementTextSettings::default()),
+            Self::WaitForElement => {
+                BlockSettings::WaitForElement(WaitForElementSettings::default())
+            }
+            Self::GetElementText => {
+                BlockSettings::GetElementText(GetElementTextSettings::default())
+            }
             Self::Screenshot => BlockSettings::Screenshot(ScreenshotSettings::default()),
             Self::ExecuteJs => BlockSettings::ExecuteJs(ExecuteJsSettings::default()),
-            Self::RandomUserAgent => BlockSettings::RandomUserAgent(RandomUserAgentSettings::default()),
+            Self::RandomUserAgent => {
+                BlockSettings::RandomUserAgent(RandomUserAgentSettings::default())
+            }
             Self::OcrCaptcha => BlockSettings::OcrCaptcha(OcrCaptchaSettings::default()),
-            Self::RecaptchaInvisible => BlockSettings::RecaptchaInvisible(RecaptchaInvisibleSettings::default()),
+            Self::RecaptchaInvisible => {
+                BlockSettings::RecaptchaInvisible(RecaptchaInvisibleSettings::default())
+            }
             Self::XacfSensor => BlockSettings::XacfSensor(XacfSensorSettings::default()),
             Self::RandomData => BlockSettings::RandomData(RandomDataSettings::default()),
-            Self::DataDomeSensor => BlockSettings::DataDomeSensor(DataDomeSensorSettings::default()),
+            Self::DataDomeSensor => {
+                BlockSettings::DataDomeSensor(DataDomeSensorSettings::default())
+            }
             Self::Plugin => BlockSettings::Plugin(PluginBlockSettings::default()),
-            Self::AkamaiV3Sensor => BlockSettings::AkamaiV3Sensor(AkamaiV3SensorSettings::default()),
+            Self::AkamaiV3Sensor => {
+                BlockSettings::AkamaiV3Sensor(AkamaiV3SensorSettings::default())
+            }
             Self::Group => BlockSettings::Group(GroupSettings::default()),
             Self::ByteArray => BlockSettings::ByteArray(ByteArraySettings::default()),
             Self::Constants => BlockSettings::Constants(ConstantsSettings::default()),
             Self::Dictionary => BlockSettings::Dictionary(DictionarySettings::default()),
             Self::FloatFunction => BlockSettings::FloatFunction(FloatFunctionSettings::default()),
-            Self::IntegerFunction => BlockSettings::IntegerFunction(IntegerFunctionSettings::default()),
+            Self::IntegerFunction => {
+                BlockSettings::IntegerFunction(IntegerFunctionSettings::default())
+            }
             Self::TimeFunction => BlockSettings::TimeFunction(TimeFunctionSettings::default()),
             Self::GenerateGUID => BlockSettings::GenerateGUID(GenerateGUIDSettings::default()),
             Self::PhoneCountry => BlockSettings::PhoneCountry(PhoneCountrySettings::default()),

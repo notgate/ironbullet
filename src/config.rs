@@ -66,19 +66,43 @@ pub struct RecentConfigEntry {
     pub last_opened: String,
 }
 
-fn def_width() -> f64 { 1318.0 }
-fn def_height() -> f64 { 946.0 }
-fn def_zoom() -> u32 { 100 }
-fn def_font_size() -> u32 { 12 }
-fn def_font_family() -> String { "Cascadia Code".into() }
-fn def_font_weight() -> String { "400".into() }
-fn def_max_threads() -> u32 { 100 }
-fn def_sidecar_path() -> String {
-    if cfg!(target_os = "windows") { "reqflow-sidecar.exe".into() } else { "reqflow-sidecar".into() }
+fn def_width() -> f64 {
+    1318.0
 }
-fn def_left_panel_width() -> u32 { 200 }
-fn def_bottom_panel_height() -> u32 { 250 }
-fn def_show_palette() -> bool { true }
+fn def_height() -> f64 {
+    946.0
+}
+fn def_zoom() -> u32 {
+    100
+}
+fn def_font_size() -> u32 {
+    12
+}
+fn def_font_family() -> String {
+    "Cascadia Code".into()
+}
+fn def_font_weight() -> String {
+    "400".into()
+}
+fn def_max_threads() -> u32 {
+    100
+}
+fn def_sidecar_path() -> String {
+    if cfg!(target_os = "windows") {
+        "reqflow-sidecar.exe".into()
+    } else {
+        "reqflow-sidecar".into()
+    }
+}
+fn def_left_panel_width() -> u32 {
+    200
+}
+fn def_bottom_panel_height() -> u32 {
+    250
+}
+fn def_show_palette() -> bool {
+    true
+}
 
 impl Default for GuiConfig {
     fn default() -> Self {
@@ -167,7 +191,7 @@ pub fn load_config() -> GuiConfig {
     let mut cfg = GuiConfig::default();
     let dd = data_dir();
     cfg.default_wordlist_path = dd.join("wordlists").to_string_lossy().to_string();
-    cfg.default_proxy_path    = dd.join("proxies").to_string_lossy().to_string();
+    cfg.default_proxy_path = dd.join("proxies").to_string_lossy().to_string();
     save_config(&cfg);
     cfg
 }

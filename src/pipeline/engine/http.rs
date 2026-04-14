@@ -7,16 +7,18 @@ impl ExecutionContext {
         &mut self,
         block: &Block,
         settings: &HttpRequestSettings,
-        sidecar_tx: &tokio::sync::mpsc::Sender<(SidecarRequest, tokio::sync::oneshot::Sender<SidecarResponse>)>,
+        sidecar_tx: &tokio::sync::mpsc::Sender<(
+            SidecarRequest,
+            tokio::sync::oneshot::Sender<SidecarResponse>,
+        )>,
     ) -> crate::error::Result<()> {
         // ── Interpolate common request fields ─────────────────────────────────
-        let url  = self.variables.interpolate(&settings.url);
+        let url = self.variables.interpolate(&settings.url);
         let body = self.variables.interpolate(&settings.body);
-        let mut headers: Vec<Vec<String>> = settings.headers.iter()
-            .map(|(k, v)| vec![
-                self.variables.interpolate(k),
-                self.variables.interpolate(v),
-            ])
+        let mut headers: Vec<Vec<String>> = settings
+            .headers
+            .iter()
+            .map(|(k, v)| vec![self.variables.interpolate(k), self.variables.interpolate(v)])
             .collect();
 
         // Inject SPOOF_HEADERS set by a preceding HeaderSpoof block.
@@ -26,13 +28,15 @@ impl ExecutionContext {
         if let Some(spoof_json) = self.variables.get("SPOOF_HEADERS") {
             // Consume immediately — clear before processing so a failed parse
             // doesn't leave a poisoned value that re-fires on the next request.
-            self.variables.set_user("SPOOF_HEADERS", String::new(), false);
+            self.variables
+                .set_user("SPOOF_HEADERS", String::new(), false);
             if let Ok(pairs) = serde_json::from_str::<Vec<(String, String)>>(&spoof_json) {
                 for (name, mut value) in pairs {
                     if name == "X-Forwarded-Host" && value.is_empty() {
                         // Fill in actual request host from the (interpolated) URL
                         value = url
-                            .split("://").nth(1)
+                            .split("://")
+                            .nth(1)
                             .unwrap_or("")
                             .split(&['/', '?', '#'][..])
                             .next()
@@ -49,7 +53,8 @@ impl ExecutionContext {
         // Inject custom cookies as a Cookie header (one per line: name=value)
         if !settings.custom_cookies.is_empty() {
             let cookie_str = self.variables.interpolate(&settings.custom_cookies);
-            let cookies: Vec<String> = cookie_str.lines()
+            let cookies: Vec<String> = cookie_str
+                .lines()
                 .map(|l| l.trim())
                 .filter(|l| !l.is_empty())
                 .map(|l| l.to_string())
@@ -92,9 +97,21 @@ impl ExecutionContext {
             http2fp: effective_http2fp,
             follow_redirects: Some(settings.follow_redirects),
             max_redirects: Some(settings.max_redirects as i64),
-            ssl_verify: if settings.ssl_verify { None } else { Some(false) },
-            custom_ciphers: if settings.cipher_suites.is_empty() { None } else { Some(settings.cipher_suites.clone()) },
-            proxy_insecure: if settings.proxy_insecure { Some(true) } else { None },
+            ssl_verify: if settings.ssl_verify {
+                None
+            } else {
+                Some(false)
+            },
+            custom_ciphers: if settings.cipher_suites.is_empty() {
+                None
+            } else {
+                Some(settings.cipher_suites.clone())
+            },
+            proxy_insecure: if settings.proxy_insecure {
+                Some(true)
+            } else {
+                None
+            },
             ..Default::default()
         };
 
@@ -117,7 +134,8 @@ impl ExecutionContext {
                     settings.ssl_verify,
                     settings.proxy_insecure,
                     existing,
-                ).await;
+                )
+                .await;
                 self.rustls_client = Some(RustlsClientSlot {
                     client,
                     proxy: self.proxy.clone(),
@@ -145,7 +163,8 @@ impl ExecutionContext {
                     settings.ssl_verify,
                     settings.proxy_insecure,
                     existing,
-                ).await;
+                )
+                .await;
                 self.wreq_client = Some(WreqClientSlot {
                     client,
                     emulation: emu.to_string(),
@@ -154,13 +173,11 @@ impl ExecutionContext {
                 resp
             }
             #[cfg(not(any(unix, target_os = "windows")))]
-            TlsClient::WreqTLS => {
-                SidecarResponse {
-                    id: sidecar_req.id.clone(),
-                    error: Some("WreqTLS is not available on Windows builds.".into()),
-                    ..Default::default()
-                }
-            }
+            TlsClient::WreqTLS => SidecarResponse {
+                id: sidecar_req.id.clone(),
+                error: Some("WreqTLS is not available on Windows builds.".into()),
+                ..Default::default()
+            },
             TlsClient::AzureTLS => {
                 // Go sidecar path — azuretls with JA3/TLS fingerprinting support.
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
@@ -170,9 +187,8 @@ impl ExecutionContext {
                     ))?;
                 // Wrap with a timeout matching the block's own timeout_ms so a crashed
                 // or unresponsive sidecar fails fast instead of hanging indefinitely.
-                let timeout_dur = std::time::Duration::from_millis(
-                    (settings.timeout_ms as u64).max(5_000)
-                );
+                let timeout_dur =
+                    std::time::Duration::from_millis((settings.timeout_ms as u64).max(5_000));
                 tokio::time::timeout(timeout_dur, resp_rx)
                     .await
                     .map_err(|_| crate::error::AppError::Sidecar(
@@ -191,18 +207,25 @@ impl ExecutionContext {
         }
 
         // ── Store response into pipeline variables ────────────────────────────
-        let var_prefix = if settings.response_var.is_empty() { "SOURCE" } else { &settings.response_var };
+        let var_prefix = if settings.response_var.is_empty() {
+            "SOURCE"
+        } else {
+            &settings.response_var
+        };
 
         // Body
         self.variables.set_data(var_prefix, resp.body.clone());
         // Status code
-        self.variables.set_data(&format!("{}.STATUS", var_prefix), resp.status.to_string());
+        self.variables
+            .set_data(&format!("{}.STATUS", var_prefix), resp.status.to_string());
         // Final URL (after redirects)
-        self.variables.set_data(&format!("{}.URL", var_prefix), resp.final_url.clone());
+        self.variables
+            .set_data(&format!("{}.URL", var_prefix), resp.final_url.clone());
         // Response headers as JSON object
         if let Some(ref hdrs) = resp.headers {
             let hdr_str = serde_json::to_string(hdrs).unwrap_or_default();
-            self.variables.set_data(&format!("{}.HEADERS", var_prefix), hdr_str);
+            self.variables
+                .set_data(&format!("{}.HEADERS", var_prefix), hdr_str);
 
             // Also expose individual headers as SOURCE.HEADERS.<Name>
             for (name, value) in hdrs {
@@ -215,19 +238,19 @@ impl ExecutionContext {
         // Cookies as JSON object
         if let Some(ref cookies) = resp.cookies {
             let cookie_str = serde_json::to_string(cookies).unwrap_or_default();
-            self.variables.set_data(&format!("{}.COOKIES", var_prefix), cookie_str);
+            self.variables
+                .set_data(&format!("{}.COOKIES", var_prefix), cookie_str);
 
             // Also expose individual cookies as SOURCE.COOKIES.<Name>
             for (name, value) in cookies {
-                self.variables.set_data(
-                    &format!("{}.COOKIES.{}", var_prefix, name),
-                    value.clone(),
-                );
+                self.variables
+                    .set_data(&format!("{}.COOKIES.{}", var_prefix, name), value.clone());
             }
         }
 
         // Backward-compat aliases used by legacy checks + output format variables
-        self.variables.set_data("RESPONSECODE", resp.status.to_string());
+        self.variables
+            .set_data("RESPONSECODE", resp.status.to_string());
         self.variables.set_data("ADDRESS", resp.final_url.clone());
         // LASTRESPONSE / LASTHEADERS: always-updated aliases for the {response} and
         // {headers} output format variables so they don't depend on the block's output var name.
@@ -242,10 +265,15 @@ impl ExecutionContext {
             last.request = Some(RequestInfo {
                 method: settings.method.clone(),
                 url: url.clone(),
-                headers: headers.iter().map(|h| (
-                    h.get(0).cloned().unwrap_or_default(),
-                    h.get(1).cloned().unwrap_or_default(),
-                )).collect(),
+                headers: headers
+                    .iter()
+                    .map(|h| {
+                        (
+                            h.get(0).cloned().unwrap_or_default(),
+                            h.get(1).cloned().unwrap_or_default(),
+                        )
+                    })
+                    .collect(),
                 body: body.clone(),
             });
             last.response = Some(ResponseInfo {
@@ -259,12 +287,19 @@ impl ExecutionContext {
         }
 
         // ── Network log entry ─────────────────────────────────────────────────
-        let cookies_sent: Vec<(String, String)> = settings.custom_cookies.lines()
+        let cookies_sent: Vec<(String, String)> = settings
+            .custom_cookies
+            .lines()
             .map(|l| l.trim())
             .filter(|l| !l.is_empty())
-            .filter_map(|l| l.split_once('=').map(|(k, v)| (k.trim().to_string(), v.trim().to_string())))
+            .filter_map(|l| {
+                l.split_once('=')
+                    .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+            })
             .collect();
-        let cookies_set: Vec<(String, String)> = resp.cookies.as_ref()
+        let cookies_set: Vec<(String, String)> = resp
+            .cookies
+            .as_ref()
             .map(|c| c.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
 

@@ -24,11 +24,21 @@ pub struct NuDataSensorSettings {
     pub solver_url: String,
 }
 
-fn default_mode() -> String { "mobile".to_string() }
-fn default_sdk_version() -> String { "2.7.5".to_string() }
-fn default_output_var() -> String { "NDS_PMD".to_string() }
-fn default_true() -> bool { true }
-fn default_solver_url() -> String { "http://127.0.0.1:7450".to_string() }
+fn default_mode() -> String {
+    "mobile".to_string()
+}
+fn default_sdk_version() -> String {
+    "2.7.5".to_string()
+}
+fn default_output_var() -> String {
+    "NDS_PMD".to_string()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_solver_url() -> String {
+    "http://127.0.0.1:7450".to_string()
+}
 
 impl Default for NuDataSensorSettings {
     fn default() -> Self {

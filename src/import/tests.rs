@@ -1,7 +1,7 @@
-use super::*;
 use super::helpers::*;
 use super::lolicode::parse_lolicode_blocks;
 use super::svb::*;
+use super::*;
 use crate::pipeline::block::*;
 
 #[test]
@@ -190,28 +190,52 @@ fn test_opk_psn_full_import() {
     if let Ok(bytes) = std::fs::read(path) {
         let pipeline = import_config_bytes(&bytes).unwrap().pipeline;
         assert!(!pipeline.name.is_empty());
-        assert!(pipeline.blocks.len() >= 10, "PSN should have 10+ blocks, got {}", pipeline.blocks.len());
+        assert!(
+            pipeline.blocks.len() >= 10,
+            "PSN should have 10+ blocks, got {}",
+            pipeline.blocks.len()
+        );
 
         // First HTTP block: should have autoRedirect = False
-        let http0 = pipeline.blocks.iter().find(|b| matches!(b.settings, BlockSettings::HttpRequest(_))).unwrap();
+        let http0 = pipeline
+            .blocks
+            .iter()
+            .find(|b| matches!(b.settings, BlockSettings::HttpRequest(_)))
+            .unwrap();
         if let BlockSettings::HttpRequest(ref s) = http0.settings {
             assert!(!s.url.is_empty(), "PSN first HTTP URL should be populated");
-            assert!(!s.follow_redirects, "PSN first HTTP should have follow_redirects=false");
+            assert!(
+                !s.follow_redirects,
+                "PSN first HTTP should have follow_redirects=false"
+            );
         }
 
         // Should have Parse blocks reading cookies
         let cookie_parse = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::ParseLR(ref s) = b.settings {
                 s.input_var.contains("COOKIES")
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(cookie_parse.is_some(), "PSN should have a Parse block reading cookies");
+        assert!(
+            cookie_parse.is_some(),
+            "PSN should have a Parse block reading cookies"
+        );
 
         // Second HTTP block should have url = @Linked1 → <Linked1>
-        let http_blocks: Vec<_> = pipeline.blocks.iter().filter(|b| matches!(b.settings, BlockSettings::HttpRequest(_))).collect();
+        let http_blocks: Vec<_> = pipeline
+            .blocks
+            .iter()
+            .filter(|b| matches!(b.settings, BlockSettings::HttpRequest(_)))
+            .collect();
         if http_blocks.len() >= 2 {
             if let BlockSettings::HttpRequest(ref s) = http_blocks[1].settings {
-                assert!(s.url.contains('<'), "PSN second HTTP URL should be a variable ref <Linked1>, got: {}", s.url);
+                assert!(
+                    s.url.contains('<'),
+                    "PSN second HTTP URL should be a variable ref <Linked1>, got: {}",
+                    s.url
+                );
             }
         }
 
@@ -220,9 +244,14 @@ fn test_opk_psn_full_import() {
         let http_with_many_headers = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 s.headers.len() > 5
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(http_with_many_headers.is_some(), "PSN should have at least one HTTP block with parsed brace-style headers");
+        assert!(
+            http_with_many_headers.is_some(),
+            "PSN should have at least one HTTP block with parsed brace-style headers"
+        );
     }
 }
 
@@ -231,18 +260,30 @@ fn test_opk_hotmail_full_import() {
     let path = "data/OB2/HOTMAIL X PAYPAL.opk";
     if let Ok(bytes) = std::fs::read(path) {
         let pipeline = import_config_bytes(&bytes).unwrap().pipeline;
-        assert!(pipeline.blocks.len() >= 20, "HOTMAIL should have 20+ blocks, got {}", pipeline.blocks.len());
+        assert!(
+            pipeline.blocks.len() >= 20,
+            "HOTMAIL should have 20+ blocks, got {}",
+            pipeline.blocks.len()
+        );
 
         // Should have UrlEncode blocks with input from $"<input.USER>"
         let url_encode = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::StringFunction(ref s) = b.settings {
                 matches!(s.function_type, StringFnType::URLEncode) && !s.input_var.is_empty()
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(url_encode.is_some(), "HOTMAIL should have UrlEncode with populated input");
+        assert!(
+            url_encode.is_some(),
+            "HOTMAIL should have UrlEncode with populated input"
+        );
         if let Some(block) = url_encode {
             if let BlockSettings::StringFunction(ref s) = block.settings {
-                assert_eq!(s.input_var, "input.USER", "Should extract variable from $\"<input.USER>\"");
+                assert_eq!(
+                    s.input_var, "input.USER",
+                    "Should extract variable from $\"<input.USER>\""
+                );
             }
         }
 
@@ -250,21 +291,34 @@ fn test_opk_hotmail_full_import() {
         let http_with_body = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 !s.body.is_empty() && s.body.contains("login")
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(http_with_body.is_some(), "HOTMAIL should have HTTP block with body containing login data");
+        assert!(
+            http_with_body.is_some(),
+            "HOTMAIL should have HTTP block with body containing login data"
+        );
 
         // HTTP blocks should have headers from {(...)} format
         let http_with_headers = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 s.headers.len() > 5
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(http_with_headers.is_some(), "HOTMAIL should have HTTP block with many headers");
+        assert!(
+            http_with_headers.is_some(),
+            "HOTMAIL should have HTTP block with many headers"
+        );
 
         // Should have disabled blocks
         let disabled_count = pipeline.blocks.iter().filter(|b| b.disabled).count();
-        assert!(disabled_count >= 1, "HOTMAIL should have at least 1 disabled block");
+        assert!(
+            disabled_count >= 1,
+            "HOTMAIL should have at least 1 disabled block"
+        );
     }
 }
 
@@ -273,22 +327,43 @@ fn test_opk_paramount_full_import() {
     let path = "data/OB2/PARAMOUNT+ TLS.opk";
     if let Ok(bytes) = std::fs::read(path) {
         let pipeline = import_config_bytes(&bytes).unwrap().pipeline;
-        assert!(pipeline.blocks.len() >= 10, "PARAMOUNT should have 10+ blocks, got {}", pipeline.blocks.len());
+        assert!(
+            pipeline.blocks.len() >= 10,
+            "PARAMOUNT should have 10+ blocks, got {}",
+            pipeline.blocks.len()
+        );
 
         // Should have x-url proxy pattern extracted
-        let http_blocks: Vec<_> = pipeline.blocks.iter().filter(|b| matches!(b.settings, BlockSettings::HttpRequest(_))).collect();
+        let http_blocks: Vec<_> = pipeline
+            .blocks
+            .iter()
+            .filter(|b| matches!(b.settings, BlockSettings::HttpRequest(_)))
+            .collect();
         assert!(!http_blocks.is_empty(), "PARAMOUNT should have HTTP blocks");
 
         for block in &http_blocks {
             if let BlockSettings::HttpRequest(ref s) = block.settings {
                 // x-url blocks should have the real URL, not localhost
-                assert!(!s.url.contains("localhost"), "PARAMOUNT HTTP URL should not be localhost after x-url extraction, got: {}", s.url);
+                assert!(
+                    !s.url.contains("localhost"),
+                    "PARAMOUNT HTTP URL should not be localhost after x-url extraction, got: {}",
+                    s.url
+                );
                 // x-url, x-proxy headers should be stripped
-                assert!(!s.headers.iter().any(|(k, _)| k == "x-url"), "x-url header should be stripped");
-                assert!(!s.headers.iter().any(|(k, _)| k == "x-proxy"), "x-proxy header should be stripped");
+                assert!(
+                    !s.headers.iter().any(|(k, _)| k == "x-url"),
+                    "x-url header should be stripped"
+                );
+                assert!(
+                    !s.headers.iter().any(|(k, _)| k == "x-proxy"),
+                    "x-proxy header should be stripped"
+                );
                 // Body should be populated for POST requests
                 if s.method == "POST" {
-                    assert!(!matches!(s.body_type, BodyType::None) || !s.body.is_empty(), "POST block should have body");
+                    assert!(
+                        !matches!(s.body_type, BodyType::None) || !s.body.is_empty(),
+                        "POST block should have body"
+                    );
                 }
             }
         }
@@ -300,47 +375,80 @@ fn test_opk_payback_full_import() {
     let path = "data/OB2/PAYBACK.DE LEAK.opk";
     if let Ok(bytes) = std::fs::read(path) {
         let pipeline = import_config_bytes(&bytes).unwrap().pipeline;
-        assert!(pipeline.blocks.len() >= 15, "PAYBACK should have 15+ blocks, got {}", pipeline.blocks.len());
+        assert!(
+            pipeline.blocks.len() >= 15,
+            "PAYBACK should have 15+ blocks, got {}",
+            pipeline.blocks.len()
+        );
 
         // Should have GetRandomItem blocks with inline lists
-        let list_blocks: Vec<_> = pipeline.blocks.iter().filter(|b| {
-            if let BlockSettings::ListFunction(ref s) = b.settings {
-                matches!(s.function_type, ListFnType::RandomItem) && !s.param1.is_empty()
-            } else { false }
-        }).collect();
-        assert!(!list_blocks.is_empty(), "PAYBACK should have GetRandomItem with inline list data");
+        let list_blocks: Vec<_> = pipeline
+            .blocks
+            .iter()
+            .filter(|b| {
+                if let BlockSettings::ListFunction(ref s) = b.settings {
+                    matches!(s.function_type, ListFnType::RandomItem) && !s.param1.is_empty()
+                } else {
+                    false
+                }
+            })
+            .collect();
+        assert!(
+            !list_blocks.is_empty(),
+            "PAYBACK should have GetRandomItem with inline list data"
+        );
 
         // Should have HTTP blocks with body and headers
         let http_with_body = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 !s.body.is_empty() && !s.headers.is_empty()
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(http_with_body.is_some(), "PAYBACK should have HTTP blocks with both body and headers");
+        assert!(
+            http_with_body.is_some(),
+            "PAYBACK should have HTTP blocks with both body and headers"
+        );
 
         // Should have autoRedirect = False on at least one HTTP block
         let no_redirect = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 !s.follow_redirects
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(no_redirect.is_some(), "PAYBACK should have at least one HTTP block with follow_redirects=false");
+        assert!(
+            no_redirect.is_some(),
+            "PAYBACK should have at least one HTTP block with follow_redirects=false"
+        );
 
         // Should have Parse JSON blocks with populated jToken paths
         let json_parse = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::ParseJSON(ref s) = b.settings {
                 !s.json_path.is_empty()
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(json_parse.is_some(), "PAYBACK should have ParseJSON blocks with populated json_path");
+        assert!(
+            json_parse.is_some(),
+            "PAYBACK should have ParseJSON blocks with populated json_path"
+        );
 
         // Should have ConstantString with $"..." interpolated values
         let interp_const = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::SetVariable(ref s) = b.settings {
                 s.value.contains('<') && s.value.contains('>')
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(interp_const.is_some(), "PAYBACK should have SetVariable with interpolated values");
+        assert!(
+            interp_const.is_some(),
+            "PAYBACK should have SetVariable with interpolated values"
+        );
     }
 }
 
@@ -377,14 +485,20 @@ fn test_custom_headers_parsing() {
     let headers = parse_custom_headers(line);
     assert_eq!(headers.len(), 2);
     assert_eq!(headers[0], ("Host".to_string(), "example.com".to_string()));
-    assert_eq!(headers[1], ("X-Custom".to_string(), "value with spaces".to_string()));
+    assert_eq!(
+        headers[1],
+        ("X-Custom".to_string(), "value with spaces".to_string())
+    );
 
     // {...} format (without $ prefix — PSN/HOTMAIL style)
     let line2 = r#"customHeaders = {("Accept", "text/html"), ("Host", "login.live.com")}"#;
     let headers2 = parse_custom_headers(line2);
     assert_eq!(headers2.len(), 2);
     assert_eq!(headers2[0], ("Accept".to_string(), "text/html".to_string()));
-    assert_eq!(headers2[1], ("Host".to_string(), "login.live.com".to_string()));
+    assert_eq!(
+        headers2[1],
+        ("Host".to_string(), "login.live.com".to_string())
+    );
 }
 
 #[test]
@@ -678,13 +792,19 @@ fn test_svb_extract_quoted() {
 #[test]
 fn test_svb_source_conversion() {
     assert_eq!(convert_svb_source_ref("<SOURCE>"), "data.SOURCE");
-    assert_eq!(convert_svb_source_ref("<COOKIES(flwssn)>"), "data.COOKIES[\"flwssn\"]");
+    assert_eq!(
+        convert_svb_source_ref("<COOKIES(flwssn)>"),
+        "data.COOKIES[\"flwssn\"]"
+    );
     assert_eq!(convert_svb_source_ref("<myVar>"), "myVar");
 }
 
 #[test]
 fn test_svb_var_refs_conversion() {
-    assert_eq!(convert_svb_var_refs("email=<USER>&pass=<PASS>"), "email=<input.USER>&pass=<input.PASS>");
+    assert_eq!(
+        convert_svb_var_refs("email=<USER>&pass=<PASS>"),
+        "email=<input.USER>&pass=<input.PASS>"
+    );
     assert_eq!(convert_svb_var_refs("<ua>"), "<ua>"); // non-data vars unchanged
 }
 
@@ -696,30 +816,53 @@ fn test_svb_deexoptions_import() {
         let pipeline = result.pipeline;
 
         assert_eq!(pipeline.name, "deexoptions.com");
-        assert!(pipeline.blocks.len() >= 12, "deexoptions should have 12+ blocks, got {}", pipeline.blocks.len());
+        assert!(
+            pipeline.blocks.len() >= 12,
+            "deexoptions should have 12+ blocks, got {}",
+            pipeline.blocks.len()
+        );
 
         // Should have a RandomUserAgent block
-        let rua = pipeline.blocks.iter().find(|b| matches!(b.block_type, BlockType::RandomUserAgent));
-        assert!(rua.is_some(), "deexoptions should have a RandomUserAgent block");
+        let rua = pipeline
+            .blocks
+            .iter()
+            .find(|b| matches!(b.block_type, BlockType::RandomUserAgent));
+        assert!(
+            rua.is_some(),
+            "deexoptions should have a RandomUserAgent block"
+        );
 
         // Should have HTTP POST blocks with body and headers
         let http_with_body = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 !s.body.is_empty() && s.method == "POST"
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(http_with_body.is_some(), "deexoptions should have POST blocks with body");
+        assert!(
+            http_with_body.is_some(),
+            "deexoptions should have POST blocks with body"
+        );
 
         // HTTP blocks should not follow redirects (AutoRedirect=FALSE)
         let no_redirect = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 !s.follow_redirects
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(no_redirect.is_some(), "deexoptions should have follow_redirects=false");
+        assert!(
+            no_redirect.is_some(),
+            "deexoptions should have follow_redirects=false"
+        );
 
         // Should have keychains
-        let kc = pipeline.blocks.iter().find(|b| matches!(b.block_type, BlockType::KeyCheck));
+        let kc = pipeline
+            .blocks
+            .iter()
+            .find(|b| matches!(b.block_type, BlockType::KeyCheck));
         assert!(kc.is_some(), "deexoptions should have KeyCheck blocks");
         if let BlockSettings::KeyCheck(ref s) = kc.unwrap().settings {
             assert!(!s.keychains.is_empty(), "KeyCheck should have keychains");
@@ -729,9 +872,14 @@ fn test_svb_deexoptions_import() {
         let json_parse = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::ParseJSON(ref s) = b.settings {
                 !s.json_path.is_empty()
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(json_parse.is_some(), "deexoptions should have ParseJSON blocks");
+        assert!(
+            json_parse.is_some(),
+            "deexoptions should have ParseJSON blocks"
+        );
 
         // HTTP headers should contain User-Agent with variable ref
         if let Some(block) = http_with_body {
@@ -752,24 +900,43 @@ fn test_svb_cyberghost_import() {
 
         assert_eq!(pipeline.name, "[CYBERGHOST]");
         assert_eq!(pipeline.author, "@Firexkeyboard");
-        assert!(pipeline.blocks.len() >= 15, "CYBERGHOST should have 15+ blocks, got {}", pipeline.blocks.len());
+        assert!(
+            pipeline.blocks.len() >= 15,
+            "CYBERGHOST should have 15+ blocks, got {}",
+            pipeline.blocks.len()
+        );
 
         // Should have RandomData blocks (from FUNCTION RandomString)
-        let random = pipeline.blocks.iter().filter(|b| matches!(b.block_type, BlockType::RandomData)).count();
-        assert!(random >= 2, "CYBERGHOST should have 2+ RandomData blocks, got {}", random);
+        let random = pipeline
+            .blocks
+            .iter()
+            .filter(|b| matches!(b.block_type, BlockType::RandomData))
+            .count();
+        assert!(
+            random >= 2,
+            "CYBERGHOST should have 2+ RandomData blocks, got {}",
+            random
+        );
 
         // Should have HTTP POST and GET blocks
         let http_post = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 s.method == "POST" && !s.body.is_empty()
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(http_post.is_some(), "CYBERGHOST should have POST block with body");
+        assert!(
+            http_post.is_some(),
+            "CYBERGHOST should have POST block with body"
+        );
 
         let http_get = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 s.method == "GET"
-            } else { false }
+            } else {
+                false
+            }
         });
         assert!(http_get.is_some(), "CYBERGHOST should have GET block");
 
@@ -777,37 +944,59 @@ fn test_svb_cyberghost_import() {
         let http_many_headers = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 s.headers.len() > 5
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(http_many_headers.is_some(), "CYBERGHOST should have HTTP block with 5+ headers");
+        assert!(
+            http_many_headers.is_some(),
+            "CYBERGHOST should have HTTP block with 5+ headers"
+        );
 
         // Should have ParseLR blocks
         let parse_lr = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::ParseLR(ref s) = b.settings {
                 !s.left.is_empty()
-            } else { false }
+            } else {
+                false
+            }
         });
         assert!(parse_lr.is_some(), "CYBERGHOST should have ParseLR blocks");
 
         // Should have IfElse block
-        let if_else = pipeline.blocks.iter().find(|b| matches!(b.block_type, BlockType::IfElse));
+        let if_else = pipeline
+            .blocks
+            .iter()
+            .find(|b| matches!(b.block_type, BlockType::IfElse));
         assert!(if_else.is_some(), "CYBERGHOST should have IfElse block");
 
         // KeyCheck with Custom status
         let custom_kc = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::KeyCheck(ref s) = b.settings {
-                s.keychains.iter().any(|kc| matches!(kc.result, BotStatus::Custom))
-            } else { false }
+                s.keychains
+                    .iter()
+                    .any(|kc| matches!(kc.result, BotStatus::Custom))
+            } else {
+                false
+            }
         });
-        assert!(custom_kc.is_some(), "CYBERGHOST should have KeyCheck with Custom status");
+        assert!(
+            custom_kc.is_some(),
+            "CYBERGHOST should have KeyCheck with Custom status"
+        );
 
         // Should have SetVariable with capture
         let set_cap = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::SetVariable(ref s) = b.settings {
                 s.capture
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(set_cap.is_some(), "CYBERGHOST should have SetVariable with capture");
+        assert!(
+            set_cap.is_some(),
+            "CYBERGHOST should have SetVariable with capture"
+        );
     }
 }
 
@@ -820,53 +1009,91 @@ fn test_svb_nflix3_import() {
 
         assert_eq!(pipeline.name, "NFLIX3");
         assert_eq!(pipeline.runner_settings.threads, 50);
-        assert!(pipeline.blocks.len() >= 25, "NFLIX3 should have 25+ blocks, got {}", pipeline.blocks.len());
+        assert!(
+            pipeline.blocks.len() >= 25,
+            "NFLIX3 should have 25+ blocks, got {}",
+            pipeline.blocks.len()
+        );
 
         // Should have disabled blocks (the !#ADS ones)
         let disabled_count = pipeline.blocks.iter().filter(|b| b.disabled).count();
-        assert!(disabled_count >= 3, "NFLIX3 should have 3+ disabled blocks, got {}", disabled_count);
+        assert!(
+            disabled_count >= 3,
+            "NFLIX3 should have 3+ disabled blocks, got {}",
+            disabled_count
+        );
 
         // Should have RandomUserAgent block
-        let rua = pipeline.blocks.iter().find(|b| matches!(b.block_type, BlockType::RandomUserAgent));
+        let rua = pipeline
+            .blocks
+            .iter()
+            .find(|b| matches!(b.block_type, BlockType::RandomUserAgent));
         assert!(rua.is_some(), "NFLIX3 should have RandomUserAgent block");
 
         // Should have cookie PARSE blocks
         let cookie_parse = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::ParseLR(ref s) = b.settings {
                 s.input_var.contains("COOKIES")
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(cookie_parse.is_some(), "NFLIX3 should have PARSE block reading cookies");
+        assert!(
+            cookie_parse.is_some(),
+            "NFLIX3 should have PARSE block reading cookies"
+        );
 
         // Should have a Translate block (as Script)
         let translate = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::Script(ref s) = b.settings {
                 s.code.contains("Translate")
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(translate.is_some(), "NFLIX3 should have Translate script block");
+        assert!(
+            translate.is_some(),
+            "NFLIX3 should have Translate script block"
+        );
 
         // HTTP POST with body and many headers
         let http_post = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::HttpRequest(ref s) = b.settings {
                 s.method == "POST" && !s.body.is_empty() && s.headers.len() > 10
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(http_post.is_some(), "NFLIX3 should have POST block with body and 10+ headers");
+        assert!(
+            http_post.is_some(),
+            "NFLIX3 should have POST block with body and 10+ headers"
+        );
 
         // Should have Replace blocks
         let replace = pipeline.blocks.iter().find(|b| {
             if let BlockSettings::StringFunction(ref s) = b.settings {
                 matches!(s.function_type, StringFnType::Replace)
-            } else { false }
+            } else {
+                false
+            }
         });
-        assert!(replace.is_some(), "NFLIX3 should have Replace string function");
+        assert!(
+            replace.is_some(),
+            "NFLIX3 should have Replace string function"
+        );
 
         // Body should have <input.USER> and <input.PASS> (converted from <USER>/<PASS>)
         if let Some(block) = http_post {
             if let BlockSettings::HttpRequest(ref s) = block.settings {
-                assert!(s.body.contains("<input.PASS>"), "HTTP body should have <input.PASS>, got body: {}...", &s.body[..100.min(s.body.len())]);
-                assert!(s.body.contains("<input.USER>"), "HTTP body should have <input.USER>");
+                assert!(
+                    s.body.contains("<input.PASS>"),
+                    "HTTP body should have <input.PASS>, got body: {}...",
+                    &s.body[..100.min(s.body.len())]
+                );
+                assert!(
+                    s.body.contains("<input.USER>"),
+                    "HTTP body should have <input.USER>"
+                );
             }
         }
     }

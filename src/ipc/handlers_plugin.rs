@@ -15,11 +15,17 @@ pub(super) fn get_plugin_blocks(
             let s = state.lock().await;
             let blocks = s.plugin_manager.all_block_infos();
             let plugins = s.plugin_manager.all_plugin_metas();
-            let resp = IpcResponse::ok("plugin_blocks_loaded", serde_json::json!({
-                "blocks": serde_json::to_value(&blocks).unwrap_or_default(),
-                "plugins": serde_json::to_value(&plugins).unwrap_or_default(),
-            }));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "plugin_blocks_loaded",
+                serde_json::json!({
+                    "blocks": serde_json::to_value(&blocks).unwrap_or_default(),
+                    "plugins": serde_json::to_value(&plugins).unwrap_or_default(),
+                }),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
@@ -35,18 +41,18 @@ pub(super) fn import_plugin(
             let s = state.lock().await;
             let plugins_dir = s.config.plugins_path.clone();
             drop(s);
-            
+
             let mut dialog = rfd::FileDialog::new()
                 .set_title("Import Plugin")
                 .add_filter("Plugin DLL", &["dll"])
                 .add_filter("All files", &["*"]);
-            
+
             if !plugins_dir.is_empty() {
                 if let Ok(path) = std::path::PathBuf::from(&plugins_dir).canonicalize() {
                     dialog = dialog.set_directory(path);
                 }
             }
-            
+
             let pick_path = dialog.pick_file();
             if let Some(src_path) = pick_path {
                 let mut s = state.lock().await;
@@ -75,15 +81,27 @@ pub(super) fn import_plugin(
                         s.plugin_manager = Arc::new(pm);
                         let blocks = s.plugin_manager.all_block_infos();
                         let plugins = s.plugin_manager.all_plugin_metas();
-                        let resp = IpcResponse::ok("plugin_blocks_loaded", serde_json::json!({
-                            "blocks": serde_json::to_value(&blocks).unwrap_or_default(),
-                            "plugins": serde_json::to_value(&plugins).unwrap_or_default(),
-                        }));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp = IpcResponse::ok(
+                            "plugin_blocks_loaded",
+                            serde_json::json!({
+                                "blocks": serde_json::to_value(&blocks).unwrap_or_default(),
+                                "plugins": serde_json::to_value(&plugins).unwrap_or_default(),
+                            }),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                     Err(e) => {
-                        let resp = IpcResponse::err("import_error", format!("Failed to copy plugin: {}", e));
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp = IpcResponse::err(
+                            "import_error",
+                            format!("Failed to copy plugin: {}", e),
+                        );
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                     }
                 }
             }
@@ -105,19 +123,22 @@ pub(super) fn reload_plugins(
             s.plugin_manager = Arc::new(pm);
             let blocks = s.plugin_manager.all_block_infos();
             let plugins = s.plugin_manager.all_plugin_metas();
-            let resp = IpcResponse::ok("plugin_blocks_loaded", serde_json::json!({
-                "blocks": serde_json::to_value(&blocks).unwrap_or_default(),
-                "plugins": serde_json::to_value(&plugins).unwrap_or_default(),
-            }));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "plugin_blocks_loaded",
+                serde_json::json!({
+                    "blocks": serde_json::to_value(&blocks).unwrap_or_default(),
+                    "plugins": serde_json::to_value(&plugins).unwrap_or_default(),
+                }),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }
 
-pub(super) fn compile_plugin(
-    data: serde_json::Value,
-    eval_js: impl Fn(String) + Send + 'static,
-) {
+pub(super) fn compile_plugin(data: serde_json::Value, eval_js: impl Fn(String) + Send + 'static) {
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
@@ -230,30 +251,46 @@ pub(super) fn save_plugin_files(
     let rt = tokio::runtime::Handle::try_current();
     if let Ok(handle) = rt {
         handle.spawn(async move {
-            let lib_rs = data.get("lib_rs").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let cargo_toml = data.get("cargo_toml").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let dir_str = data.get("dir").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let lib_rs = data
+                .get("lib_rs")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let cargo_toml = data
+                .get("cargo_toml")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let dir_str = data
+                .get("dir")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
 
             // Get default directory for plugin projects
             let default_dir = { state.lock().await.config.plugins_path.clone() };
 
             let dir = if dir_str.is_empty() {
                 // Use file picker
-                let mut dialog = rfd::FileDialog::new()
-                    .set_title("Choose plugin project directory");
-                
+                let mut dialog =
+                    rfd::FileDialog::new().set_title("Choose plugin project directory");
+
                 if !default_dir.is_empty() {
                     if let Ok(path) = std::path::PathBuf::from(&default_dir).canonicalize() {
                         dialog = dialog.set_directory(path);
                     }
                 }
-                
+
                 let pick = dialog.pick_folder();
                 match pick {
                     Some(p) => p,
                     None => {
-                        let resp = IpcResponse::err("save_plugin_result", "No directory selected".into());
-                        eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+                        let resp =
+                            IpcResponse::err("save_plugin_result", "No directory selected".into());
+                        eval_js(format!(
+                            "window.__ipc_callback({})",
+                            serde_json::to_string(&resp).unwrap_or_default()
+                        ));
                         return;
                     }
                 }
@@ -266,10 +303,16 @@ pub(super) fn save_plugin_files(
             let _ = std::fs::write(dir.join("Cargo.toml"), &cargo_toml);
             let _ = std::fs::write(src_dir.join("lib.rs"), &lib_rs);
 
-            let resp = IpcResponse::ok("save_plugin_result", serde_json::json!({
-                "dir": dir.display().to_string(),
-            }));
-            eval_js(format!("window.__ipc_callback({})", serde_json::to_string(&resp).unwrap_or_default()));
+            let resp = IpcResponse::ok(
+                "save_plugin_result",
+                serde_json::json!({
+                    "dir": dir.display().to_string(),
+                }),
+            );
+            eval_js(format!(
+                "window.__ipc_callback({})",
+                serde_json::to_string(&resp).unwrap_or_default()
+            ));
         });
     }
 }

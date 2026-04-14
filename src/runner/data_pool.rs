@@ -23,13 +23,27 @@ impl DataPool {
         }
     }
 
+    pub fn with_limits(lines: Vec<String>, skip: usize, take: usize) -> Self {
+        Self::new(apply_limits(lines, skip, take))
+    }
+
     pub fn from_file(path: &str, skip_empty: bool) -> std::io::Result<Self> {
+        Self::from_file_with_limits(path, skip_empty, 0, 0)
+    }
+
+    pub fn from_file_with_limits(
+        path: &str,
+        skip_empty: bool,
+        skip: usize,
+        take: usize,
+    ) -> std::io::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        let lines: Vec<String> = content.lines()
+        let lines: Vec<String> = content
+            .lines()
             .filter(|l| !skip_empty || !l.trim().is_empty())
             .map(|l| l.to_string())
             .collect();
-        Ok(Self::new(lines))
+        Ok(Self::with_limits(lines, skip, take))
     }
 
     pub fn next_line(&self) -> Option<(String, u32)> {
@@ -55,7 +69,10 @@ impl DataPool {
                     for line in eq.drain(..) {
                         rq.push((line, 0)); // retry_count=0: fresh start
                     }
-                    eprintln!("[data_pool] replaying {} errored credentials for final pass", count);
+                    eprintln!(
+                        "[data_pool] replaying {} errored credentials for final pass",
+                        count
+                    );
                     return rq.pop();
                 }
             }
@@ -89,5 +106,58 @@ impl DataPool {
         let idx = self.index.load(Ordering::Relaxed);
         let retry_count = self.retry_queue.lock().map(|q| q.len()).unwrap_or(0);
         self.lines.len().saturating_sub(idx) + retry_count
+    }
+}
+
+fn apply_limits(lines: Vec<String>, skip: usize, take: usize) -> Vec<String> {
+    let iter = lines.into_iter().skip(skip);
+
+    if take == 0 {
+        iter.collect()
+    } else {
+        iter.take(take).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DataPool;
+
+    #[test]
+    fn with_limits_skips_prefix_before_processing() {
+        let pool = DataPool::with_limits(
+            vec![
+                "line1".into(),
+                "line2".into(),
+                "line3".into(),
+                "line4".into(),
+            ],
+            2,
+            0,
+        );
+
+        assert_eq!(pool.total(), 2);
+        assert_eq!(pool.next_line(), Some(("line3".into(), 0)));
+        assert_eq!(pool.next_line(), Some(("line4".into(), 0)));
+        assert_eq!(pool.next_line(), None);
+    }
+
+    #[test]
+    fn with_limits_applies_take_after_skip() {
+        let pool = DataPool::with_limits(
+            vec![
+                "line1".into(),
+                "line2".into(),
+                "line3".into(),
+                "line4".into(),
+            ],
+            1,
+            2,
+        );
+
+        assert_eq!(pool.total(), 2);
+        assert_eq!(pool.next_line(), Some(("line2".into(), 0)));
+        assert_eq!(pool.next_line(), Some(("line3".into(), 0)));
+        assert_eq!(pool.next_line(), None);
     }
 }
