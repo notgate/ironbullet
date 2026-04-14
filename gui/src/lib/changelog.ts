@@ -10,6 +10,29 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.6.1',
+		date: '2026-04-14',
+		highlights: 'Hotfix release for proxy mode regressions, settings persistence, startup stability, and packaged sidecar assets.',
+		sections: [
+			{
+				title: 'Bug Fixes',
+				items: [
+					'Proxy mode regression fixed (issue #67): Sticky and No Proxies mode selections now round-trip correctly instead of collapsing back to Rotate.',
+					'Single-tab settings changes now mark the workspace dirty immediately (issue #68): tab state tracking now detects config edits even when only one tab is open.',
+					'Proxy settings persistence hardened (issue #12): proxy-related settings changes are cloned and synchronized correctly before save, so saved settings survive reloads.',
+					'Startup crash protection added (issue #69): runner initialization now tolerates missing or legacy config fields instead of panicking during launch.',
+				],
+			},
+			{
+				title: 'Release Assets',
+				items: [
+					'Windows and Linux release archives include the reqflow sidecar alongside the main IronBullet binary.',
+					'Linux launcher text updated to point users to the v0.6.1 AppImage when WebKitGTK is unavailable.',
+				],
+			},
+		],
+	},
+	{
 		version: '0.6.0',
 		date: '2026-04-07',
 		highlights: 'Mega update — error requeue, sticky proxy fix, custom user inputs, right-click context menu, full stat numbers.',

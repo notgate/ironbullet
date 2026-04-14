@@ -18,4 +18,6 @@ data/tb_*
 data/test_*
 data/testsite_*
 results/
+release/
+issue*.json
 UI_DEBUG_REPORT.md
